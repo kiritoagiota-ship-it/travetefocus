@@ -1,0 +1,1189 @@
+#:import rgba kivy.utils.get_color_from_hex
+#:import dp   kivy.metrics.dp
+
+# ── Defaults globais ─────────────────────────────────────────
+<Label>:
+    font_name: "rajdhani.ttf"
+<TextInput>:
+    font_name: "rajdhani.ttf"
+<Button>:
+    font_name: "rajdhani.ttf"
+
+# ════════════════════════════════════════════════════════════
+#  BOTÃO ANGULAR SCI-FI — Chanfro 20px visível
+# ════════════════════════════════════════════════════════════
+<BotaoAngular>:
+    background_normal:  ""
+    background_color:   0, 0, 0, 0
+    color:              self.cor_texto
+    font_size:          "15sp"
+    canvas.before:
+        PushMatrix
+        Scale:
+            xyz:    (self.escala, self.escala, 1)
+            origin: self.center
+        # Fundo sólido — 0.12 em vez de 0.18 para cor de fundo mais visível
+        Color:
+            rgba: (self.cor_borda[0]*0.25, self.cor_borda[1]*0.25, self.cor_borda[2]*0.25, 0.96) if self.state == "down" else (self.cor_fundo[0], self.cor_fundo[1], self.cor_fundo[2], 0.98)
+        Rectangle:
+            pos:  self.pos
+            size: self.size
+        # Faixas de "varredura" internas (detalhe holográfico)
+        Color:
+            rgba: (self.cor_borda[0], self.cor_borda[1], self.cor_borda[2], 0.04)
+        Rectangle:
+            pos:  (self.x, self.center_y - 0.5)
+            size: (self.width, 1)
+        # Cortes angulares — dp(18) escala em qualquer densidade
+        Color:
+            rgba: 0.02, 0.02, 0.05, 1
+        Triangle:
+            points: [self.x, self.y, self.x+dp(18), self.y, self.x, self.y+dp(18)]
+        Triangle:
+            points: [self.right-dp(18), self.y, self.right, self.y, self.right, self.y+dp(18)]
+        Triangle:
+            points: [self.x, self.top-dp(18), self.x, self.top, self.x+dp(18), self.top]
+        Triangle:
+            points: [self.right-dp(18), self.top, self.right, self.top, self.right, self.top-dp(18)]
+        # Halo de respiração
+        Color:
+            rgba: (self.cor_borda[0], self.cor_borda[1], self.cor_borda[2], self.brilho * 0.60)
+        Line:
+            points: [self.x+dp(18), self.y, self.right-dp(18), self.y, self.right, self.y+dp(18), self.right, self.top-dp(18), self.right-dp(18), self.top, self.x+dp(18), self.top, self.x, self.top-dp(18), self.x, self.y+dp(18), self.x+dp(18), self.y]
+            width:  6
+        # Borda chanfrada principal
+        Color:
+            rgba: self.cor_borda
+        Line:
+            points: [self.x+dp(18), self.y, self.right-dp(18), self.y, self.right, self.y+dp(18), self.right, self.top-dp(18), self.right-dp(18), self.top, self.x+dp(18), self.top, self.x, self.top-dp(18), self.x, self.y+dp(18), self.x+dp(18), self.y]
+            width:  1.8
+        # Linha interna de detalhe
+        Color:
+            rgba: (self.cor_borda[0], self.cor_borda[1], self.cor_borda[2], 0.14)
+        Line:
+            points: [self.x+dp(22), self.y+dp(4), self.right-dp(22), self.y+dp(4), self.right-dp(4), self.y+dp(22), self.right-dp(4), self.top-dp(22), self.right-dp(22), self.top-dp(4), self.x+dp(22), self.top-dp(4), self.x+dp(4), self.top-dp(22), self.x+dp(4), self.y+dp(22), self.x+dp(22), self.y+dp(4)]
+            width:  1
+    canvas.after:
+        PopMatrix
+
+# Vermelho destrutivo
+<BotaoAngularAlerta>:
+    cor_borda:    [1.0, 0.18, 0.28, 0.9]
+    cor_borda_kv: [1.0, 0.18, 0.28, 0.9]
+    cor_fundo:    [0.14, 0.02, 0.04, 0.92]
+    cor_texto:    [1.0, 0.35, 0.42, 1.0]
+
+# Roxo operador
+<BotaoAngularOperador>:
+    cor_borda:    [0.58, 0.10, 0.92, 0.9]
+    cor_borda_kv: [0.58, 0.10, 0.92, 0.9]
+    cor_fundo:    [0.10, 0.02, 0.20, 0.92]
+    cor_texto:    [0.78, 0.45, 1.00, 1.0]
+
+# BotaoAngularMenu — herda BotaoAngular; breathing gerenciado em Python
+
+# ════════════════════════════════════════════════════════════
+#  LISTA ITEM ANGULAR
+# ════════════════════════════════════════════════════════════
+<ListaItem>:
+    background_normal: ""
+    background_color:  0, 0, 0, 0
+    color:             self.cor_texto
+    size_hint_y:       None
+    height:            dp(68)
+    font_size:         "15sp"
+    halign:            "left"
+    text_size:         self.size
+    markup:            True
+    canvas.before:
+        PushMatrix
+        Scale:
+            xyz:    (self.escala, self.escala, 1)
+            origin: self.center
+        Color:
+            rgba: (0, 0.9, 1, 0.10) if self.state == "down" else self.cor_fundo
+        Rectangle:
+            pos:  self.pos
+            size: self.size
+        # Corte direito em dp
+        Color:
+            rgba: 0.02, 0.02, 0.04, 1
+        Triangle:
+            points: [self.right-dp(12), self.y, self.right, self.y, self.right, self.y+dp(12)]
+        Triangle:
+            points: [self.right, self.top-dp(12), self.right-dp(12), self.top, self.right, self.top]
+        # Acento esquerdo
+        Color:
+            rgba: self.cor_borda
+        Rectangle:
+            pos:  (self.x, self.y + dp(8))
+            size: (dp(3), self.height - dp(16))
+        # Borda
+        Color:
+            rgba: self.cor_borda
+        Line:
+            points: [self.x, self.y, self.right-dp(12), self.y, self.right, self.y+dp(12), self.right, self.top-dp(12), self.right-dp(12), self.top, self.x, self.top, self.x, self.y]
+            width:  1.3
+    canvas.after:
+        PopMatrix
+
+# ════════════════════════════════════════════════════════════
+#  INPUT HOLOGRÁFICO
+#  ─────────────────────────────────────────────────────────
+#  REGRAS CRÍTICAS:
+#   1. multiline: False  — garante input de linha única
+#   2. canvas.before usa APENAS RoundedRectangle + Line simples
+#      (sem Triangle, sem PushMatrix/Scale)
+#      → nenhum artefato de coordenadas que bloqueie o touch
+#   3. A classe Python NÃO sobrescreve nenhum método de buffer
+# ════════════════════════════════════════════════════════════
+<InputHolografico>:
+    multiline:         False
+    background_normal: ""
+    background_active: ""
+    background_color:  0, 0, 0, 0
+    foreground_color:  0, 0.9, 1, 1
+    cursor_color:      0, 0.9, 1, 1
+    padding:           [dp(14), dp(14)]
+    canvas.before:
+        Color:
+            rgba: 0.04, 0.04, 0.12, 1
+        RoundedRectangle:
+            pos:    self.pos
+            size:   self.size
+            radius: [8]
+        Color:
+            rgba: self.borda_color
+        Line:
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 8]
+            width: 1.6
+
+# ════════════════════════════════════════════════════════════
+#  BARRA CIRCULAR (XP ring)
+# ════════════════════════════════════════════════════════════
+<BarraCircular>:
+    canvas.before:
+        PushMatrix
+        Rotate:
+            angle:  self.angulo_anel_externo
+            origin: self.center
+        Color:
+            rgba: rgba("#6622aa44")
+        Line:
+            width:       3
+            circle:      (self.center_x, self.center_y, min(self.width, self.height)/2.1)
+            dash_length: 18
+            dash_offset: 14
+        PopMatrix
+        Color:
+            rgba: rgba("#0a0a1e")
+        Line:
+            width:  16
+            circle: (self.center_x, self.center_y, min(self.width, self.height)/2.55)
+        Color:
+            rgba: root.cor_anel
+        Line:
+            width:  16
+            circle: (self.center_x, self.center_y, min(self.width, self.height)/2.55, 0, self.angulo_preenchimento)
+
+    # Apenas o % no centro — XP fica no lbl_xp_fracao abaixo do anel
+    Label:
+        text:      f"{(root.valor_display/root.maximo*100) if root.maximo>0 else 0:.1f}%"
+        font_name: "orbitron.ttf"
+        font_size: "32sp"
+        color:     root.cor_anel
+        bold:      True
+        halign:    "center"
+        valign:    "middle"
+        pos:       root.pos
+        size:      root.size
+        text_size: root.size
+
+# ════════════════════════════════════════════════════════════
+#  TELA LOADING
+# ════════════════════════════════════════════════════════════
+<TelaLoading>:
+    name: "loading"
+    FloatLayout:
+        canvas.before:
+            Color:
+                rgba: rgba("#020204")
+            Rectangle:
+                pos:  self.pos
+                size: self.size
+        BoxLayout:
+            pos_hint:  {"center_x": 0.5, "center_y": 0.72}
+            size_hint: (0.70, 0.32)
+            ReatorArcShader:
+                id:        reator_shader
+                size_hint: (1, 1)
+        BoxLayout:
+            orientation: 'horizontal'
+            pos_hint:    {"center_x": 0.5, "center_y": 0.53}
+            size_hint:   (0.90, None)
+            height:      dp(90)
+            spacing:     dp(18)
+            EspadaHolografica:
+                id:          espada_esq
+                size_hint_x: None
+                width:       dp(46)
+                cor:         [0, 0.89, 1, 1]
+            Label:
+                id:        titulo_label
+                text:      ""
+                font_name: "orbitron.ttf"
+                font_size: "34sp"
+                color:     rgba("#00e5ff")
+                bold:      True
+                halign:    "center"
+                valign:    "middle"
+                text_size: self.size
+            EspadaHolografica:
+                id:          espada_dir
+                size_hint_x: None
+                width:       dp(46)
+                cor:         [0.6, 0.1, 0.9, 1]
+        Label:
+            id:        version_label
+            text:      "[ NERVEGEAR SYSTEM V6.0 ]"
+            font_name: "orbitron.ttf"
+            font_size: "12sp"
+            color:     rgba("#8a2be2")
+            pos_hint:  {"center_x": 0.5, "center_y": 0.445}
+            opacity:   0
+        BoxLayout:
+            id:           terminal_box
+            opacity:      0
+            orientation:  'vertical'
+            pos_hint:     {"center_x": 0.5, "center_y": 0.22}
+            size_hint:    (0.86, 0.22)
+            padding:      dp(14)
+            canvas.before:
+                Color:
+                    rgba: rgba("#07071888")
+                RoundedRectangle:
+                    pos:    self.pos
+                    size:   self.size
+                    radius: [8]
+                Color:
+                    rgba: rgba("#00e5ff44")
+                Line:
+                    rounded_rectangle: [self.x, self.y, self.width, self.height, 8]
+                    width: 1.3
+            ScrollView:
+                Label:
+                    id:           console_text
+                    text:         ""
+                    font_size:    "14sp"
+                    color:        rgba("#00ff88")
+                    halign:       "left"
+                    valign:       "bottom"
+                    size_hint_y:  None
+                    height:       self.texture_size[1]
+                    text_size:    self.width, None
+                    markup:       True
+        BarraNeon:
+            id:        barra_loading
+            opacity:   0
+            pos_hint:  {"center_x": 0.5, "center_y": 0.05}
+            size_hint: (0.86, None)
+            height:    dp(14)
+        Widget:
+            id:        flash_overlay
+            opacity:   0
+            size_hint: (1, 1)
+            canvas:
+                Color:
+                    rgba: 1, 1, 1, 1
+                Rectangle:
+                    pos:  self.pos
+                    size: self.size
+
+# ════════════════════════════════════════════════════════════
+#  MENU PRINCIPAL
+# ════════════════════════════════════════════════════════════
+<MenuPrincipal>:
+    name: "menu"
+    canvas.before:
+        Color:
+            rgba: 0.02, 0.02, 0.05, 1
+        Rectangle:
+            pos:  self.pos
+            size: self.size
+    HUDParallax:
+        GridHolografico:
+            size_hint: 1, 1
+            pos_hint:  {'x': 0, 'y': 0}
+        FundoAnimado:
+            size_hint: 1, 1
+        FloatLayout:
+            size_hint: 1, 1
+
+            # ── Título ───────────────────────────────────────
+            BoxLayout:
+                orientation: 'vertical'
+                pos_hint:    {"center_x": 0.5, "top": 0.97}
+                size_hint:   (1.0, None)
+                height:      dp(110)
+                spacing:     dp(4)
+                padding:     [dp(20), dp(14), dp(20), 0]
+                Label:
+                    text:      "TRAVETE FOCUS"
+                    font_name: "orbitron.ttf"
+                    font_size: "32sp"
+                    color:     rgba("#00e5ff")
+                    bold:      True
+                    halign:    "center"
+                    valign:    "middle"
+                    text_size: self.size
+                Label:
+                    text:      "NERVEGEAR  ·  AINCRAD EDITION"
+                    font_name: "orbitron.ttf"
+                    font_size: "10sp"
+                    color:     rgba("#8a2be266")
+                    halign:    "center"
+                    valign:    "middle"
+                    text_size: self.size
+
+            # ── Linha decorativa superior ─────────────────────
+            Widget:
+                pos_hint:  {"center_x": 0.5, "center_y": 0.76}
+                size_hint: (0.88, None)
+                height:    dp(1)
+                canvas:
+                    Color:
+                        rgba: rgba("#00e5ff33")
+                    Rectangle:
+                        pos:  self.pos
+                        size: self.size
+
+            # ── Botão principal SYSTEM LINK START ─────────────
+            BotaoAngularMenu:
+                text:      "⬡   SYSTEM LINK START   ⬡"
+                font_name: "orbitron.ttf"
+                font_size: "17sp"
+                bold:      True
+                pos_hint:  {"center_x": 0.5, "center_y": 0.62}
+                size_hint: (0.88, None)
+                height:    dp(64)
+                on_release: app.mudar_tela("registro")
+
+            # ── Linha decorativa ──────────────────────────────
+            Widget:
+                pos_hint:  {"center_x": 0.5, "center_y": 0.545}
+                size_hint: (0.70, None)
+                height:    dp(1)
+                canvas:
+                    Color:
+                        rgba: rgba("#8a2be222")
+                    Rectangle:
+                        pos:  self.pos
+                        size: self.size
+
+            # ── Botões secundários VERTICAIS com cores únicas ──
+            BoxLayout:
+                orientation: 'vertical'
+                pos_hint:    {"center_x": 0.5, "center_y": 0.37}
+                size_hint:   (0.88, None)
+                height:      dp(220)
+                spacing:     dp(8)
+
+                # MEMÓRIAS — roxo (arquivo/histórico)
+                BotaoAngularMenu:
+                    text:         "🗂  MEMÓRIAS"
+                    font_size:    "14sp"
+                    cor_borda:    [0.55, 0.10, 0.92, 0.9]
+                    cor_borda_kv: [0.55, 0.10, 0.92, 0.9]
+                    cor_fundo:    [0.08, 0.02, 0.18, 0.95]
+                    cor_texto:    [0.75, 0.40, 1.00, 1.0]
+                    on_release:   app.mudar_tela("memorias")
+
+                # PROGRESSO — ciano (evolução/XP)
+                BotaoAngularMenu:
+                    text:         "⬡  PROGRESSO"
+                    font_size:    "14sp"
+                    cor_borda:    [0.00, 0.85, 1.00, 0.9]
+                    cor_borda_kv: [0.00, 0.85, 1.00, 0.9]
+                    cor_fundo:    [0.02, 0.10, 0.18, 0.95]
+                    cor_texto:    [0.00, 0.90, 1.00, 1.0]
+                    on_release:   app.mudar_tela("progresso")
+
+                # GANHOS — verde (dinheiro/produção)
+                BotaoAngularMenu:
+                    text:         "💰  GANHOS"
+                    font_size:    "14sp"
+                    cor_borda:    [0.00, 1.00, 0.55, 0.9]
+                    cor_borda_kv: [0.00, 1.00, 0.55, 0.9]
+                    cor_fundo:    [0.02, 0.14, 0.08, 0.95]
+                    cor_texto:    [0.00, 1.00, 0.55, 1.0]
+                    on_release:   app.mudar_tela("ganhos")
+
+                # CALCULADORA — laranja (cálculo/tático)
+                BotaoAngularMenu:
+                    text:         "🔢  CALCULADORA"
+                    font_size:    "14sp"
+                    cor_borda:    [1.00, 0.60, 0.00, 0.9]
+                    cor_borda_kv: [1.00, 0.60, 0.00, 0.9]
+                    cor_fundo:    [0.16, 0.08, 0.00, 0.95]
+                    cor_texto:    [1.00, 0.72, 0.00, 1.0]
+                    on_release:   app.mudar_tela("calculadora")
+
+            # ── Linha decorativa inferior ─────────────────────
+            Widget:
+                pos_hint:  {"center_x": 0.5, "center_y": 0.375}
+                size_hint: (0.88, None)
+                height:    dp(1)
+                canvas:
+                    Color:
+                        rgba: rgba("#00e5ff1a")
+                    Rectangle:
+                        pos:  self.pos
+                        size: self.size
+
+            # ── Rodapé ────────────────────────────────────────
+            Label:
+                text:      "[ SISTEMA OPERACIONAL DE CONFECÇÃO ]"
+                font_name: "orbitron.ttf"
+                font_size: "9sp"
+                color:     rgba("#ffffff14")
+                pos_hint:  {"center_x": 0.5, "center_y": 0.06}
+                halign:    "center"
+                valign:    "middle"
+                text_size: self.size
+
+# ════════════════════════════════════════════════════════════
+#  TELA REGISTRO
+#  CRÍTICO: GridHolografico tem pos_hint/size_hint explícitos
+#  para não "vazar" coordenadas e bloquear os inputs.
+# ════════════════════════════════════════════════════════════
+<TelaRegistro>:
+    name: "registro"
+    canvas.before:
+        Color:
+            rgba: 0.02, 0.02, 0.05, 1
+        Rectangle:
+            pos:  self.pos
+            size: self.size
+    GridHolografico:
+        size_hint: 1, 1
+        pos_hint:  {'x': 0, 'y': 0}
+    BoxLayout:
+        orientation: "vertical"
+        padding:     [dp(16), dp(18), dp(16), dp(14)]
+        spacing:     dp(10)
+        size_hint:   1, 1
+        Label:
+            text:        "REGISTRO DIÁRIO"
+            font_name:   "orbitron.ttf"
+            font_size:   "20sp"
+            color:       rgba("#00e5ff")
+            bold:        True
+            size_hint_y: None
+            height:      dp(40)
+            halign:      "center"
+            valign:      "middle"
+            text_size:   self.size
+        InputHolografico:
+            id:              nome_input
+            hint_text:       "   Nome da Peça"
+            hint_text_color: 0.32, 0.32, 0.50, 1
+            font_size:       "17sp"
+            size_hint_y:     None
+            height:          dp(58)
+        InputHolografico:
+            id:              qtd_input
+            hint_text:       "   Quantidade"
+            hint_text_color: 0.32, 0.32, 0.50, 1
+            font_size:       "17sp"
+            size_hint_y:     None
+            height:          dp(58)
+            input_filter:    'int'
+        BotaoAngular:
+            text:        "✦  Adicionar Lote  ✦"
+            font_size:   "16sp"
+            size_hint_y: None
+            height:      dp(58)
+            on_release:  root.adicionar_item()
+        Widget:
+            size_hint_y: None
+            height:      dp(1)
+            canvas:
+                Color:
+                    rgba: rgba("#ffffff0c")
+                Rectangle:
+                    pos:  self.pos
+                    size: self.size
+        Label:
+            id:          empty_state
+            text:        "[ SEM LOTES REGISTRADOS ]\n\nDigite o nome e a quantidade\npara iniciar o turno."
+            font_name:   "orbitron.ttf"
+            font_size:   "13sp"
+            color:       rgba("#00e5ff22")
+            halign:      "center"
+            valign:      "middle"
+            text_size:   self.size
+            size_hint_y: None
+            height:      dp(200)
+            opacity:     1
+        ScrollView:
+            GridLayout:
+                id:            lista_container
+                cols:          1
+                size_hint_y:   None
+                height:        self.minimum_height
+                spacing:       dp(8)
+                padding:       [0, dp(4), 0, dp(4)]
+        BoxLayout:
+            size_hint_y: None
+            height:      dp(58)
+            spacing:     dp(12)
+            BotaoAngular:
+                text:        "← Voltar"
+                font_size:   "14sp"
+                size_hint_x: 0.36
+                on_release:  app.mudar_tela("menu")
+            BotaoAngular:
+                text:        "⬡  Finalizar Dia"
+                font_size:   "14sp"
+                size_hint_x: 0.64
+                cor_borda:   [0, 1, 0.55, 0.9]
+                cor_borda_kv: [0, 1, 0.55, 0.9]
+                cor_texto:   [0, 1, 0.55, 1.0]
+                on_release:  root.finalizar_dia()
+
+# ════════════════════════════════════════════════════════════
+#  TELA MEMÓRIAS
+# ════════════════════════════════════════════════════════════
+<TelaMemorias>:
+    name: "memorias"
+    canvas.before:
+        Color:
+            rgba: 0.02, 0.02, 0.05, 1
+        Rectangle:
+            pos:  self.pos
+            size: self.size
+    GridHolografico:
+        size_hint: 1, 1
+        pos_hint:  {'x': 0, 'y': 0}
+    BoxLayout:
+        orientation: "vertical"
+        padding:     [dp(16), dp(18), dp(16), dp(14)]
+        spacing:     dp(8)
+        size_hint:   1, 1
+        Label:
+            text:        "BANCO DE MEMÓRIAS"
+            font_name:   "orbitron.ttf"
+            font_size:   "20sp"
+            color:       rgba("#00e5ff")
+            bold:        True
+            size_hint_y: None
+            height:      dp(40)
+            halign:      "center"
+            valign:      "middle"
+            text_size:   self.size
+        GraficoBarras:
+            id:          grafico_barras
+            size_hint_y: None
+            height:      dp(130)
+        Widget:
+            size_hint_y: None
+            height:      dp(4)
+        ScrollView:
+            size_hint_y: None
+            height:      dp(46)
+            do_scroll_y: False
+            do_scroll_x: True
+            BoxLayout:
+                id:              filtros_container
+                orientation:     'horizontal'
+                size_hint_x:     None
+                width:           self.minimum_width
+                spacing:         dp(8)
+                padding:         [dp(4), dp(4)]
+        Widget:
+            size_hint_y: None
+            height:      dp(1)
+            canvas:
+                Color:
+                    rgba: rgba("#ffffff0c")
+                Rectangle:
+                    pos:  self.pos
+                    size: self.size
+        ScrollView:
+            GridLayout:
+                id:            memorias_container
+                cols:          1
+                size_hint_y:   None
+                height:        self.minimum_height
+                spacing:       dp(8)
+                padding:       [0, dp(4), 0, dp(4)]
+        BoxLayout:
+            size_hint_y: None
+            height:      dp(58)
+            spacing:     dp(12)
+            BotaoAngular:
+                text:        "← Voltar"
+                font_size:   "14sp"
+                size_hint_x: 0.50
+                on_release:  app.mudar_tela("menu")
+            BotaoAngularAlerta:
+                text:        "⚠  WIPE DATA"
+                font_size:   "14sp"
+                size_hint_x: 0.50
+                on_release:  root.confirmar_wipe()
+
+# ════════════════════════════════════════════════════════════
+#  TELA PROGRESSO
+# ════════════════════════════════════════════════════════════
+<TelaProgresso>:
+    name: "progresso"
+    canvas.before:
+        Color:
+            rgba: 0.02, 0.02, 0.05, 1
+        Rectangle:
+            pos:  self.pos
+            size: self.size
+    GridHolografico:
+        size_hint: 1, 1
+        pos_hint:  {'x': 0, 'y': 0}
+    BoxLayout:
+        orientation: "vertical"
+        padding:     [dp(16), dp(12), dp(16), dp(12)]
+        spacing:     dp(8)
+        size_hint:   1, 1
+
+        Label:
+            text:        "SISTEMA DE PROGRESSO"
+            font_name:   "orbitron.ttf"
+            font_size:   "14sp"
+            color:       rgba("#00e5ff44")
+            size_hint_y: None
+            height:      dp(24)
+            halign:      "center"
+            valign:      "middle"
+            text_size:   self.size
+
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint_y: None
+            height:      dp(68)
+            spacing:     0
+            canvas.before:
+                Color:
+                    rgba: rgba("#06061688")
+                Rectangle:
+                    pos:  self.pos
+                    size: self.size
+                Color:
+                    rgba: rgba("#8a2be255")
+                Line:
+                    points: [self.x+12, self.y, self.right-12, self.y, self.right, self.y+12, self.right, self.top-12, self.right-12, self.top, self.x+12, self.top, self.x, self.top-12, self.x, self.y+12, self.x+12, self.y]
+                    width:  1.4
+            Label:
+                id:        lbl_level_num
+                text:      "LVL  1"
+                font_name: "orbitron.ttf"
+                font_size: "26sp"
+                color:     rgba("#00e5ff")
+                bold:      True
+                halign:    "center"
+                valign:    "middle"
+                text_size: self.size
+            Label:
+                id:        lbl_titulo
+                text:      "Novato da Cidade do Começo"
+                font_name: "rajdhani.ttf"
+                font_size: "14sp"
+                color:     rgba("#aa55ff")
+                halign:    "center"
+                valign:    "middle"
+                text_size: self.size
+
+        Label:
+            id:          lbl_streak
+            text:        "STREAK  0  DIAS"
+            font_name:   "orbitron.ttf"
+            font_size:   "12sp"
+            color:       rgba("#00e5ff88")
+            size_hint_y: None
+            height:      dp(22)
+            halign:      "center"
+            valign:      "middle"
+            text_size:   self.size
+
+        BarraCircular:
+            id:          barra_circular
+            size_hint_y: 1
+
+        Label:
+            id:          lbl_xp_fracao
+            text:        "0  /  800 XP"
+            font_name:   "orbitron.ttf"
+            font_size:   "14sp"
+            color:       rgba("#00e5ffcc")
+            size_hint_y: None
+            height:      dp(26)
+            halign:      "center"
+            valign:      "middle"
+            text_size:   self.size
+
+        BoxLayout:
+            size_hint_y: None
+            height:      dp(56)
+            spacing:     dp(6)
+            canvas.before:
+                Color:
+                    rgba: rgba("#06061666")
+                Rectangle:
+                    pos:  self.pos
+                    size: self.size
+            Label:
+                id:        lbl_total_xp
+                text:      "XP TOTAL\n[color=#00e5ff]0[/color]"
+                markup:    True
+                font_name: "rajdhani.ttf"
+                font_size: "13sp"
+                color:     rgba("#555577")
+                halign:    "center"
+                valign:    "middle"
+                text_size: self.size
+            Label:
+                id:        lbl_total_pecas
+                text:      "PEÇAS TOTAL\n[color=#00e5ff]0[/color]"
+                markup:    True
+                font_name: "rajdhani.ttf"
+                font_size: "13sp"
+                color:     rgba("#555577")
+                halign:    "center"
+                valign:    "middle"
+                text_size: self.size
+            Label:
+                id:        lbl_melhor_dia
+                text:      "MELHOR DIA\n[color=#ffcc00]0 un.[/color]"
+                markup:    True
+                font_name: "rajdhani.ttf"
+                font_size: "13sp"
+                color:     rgba("#555577")
+                halign:    "center"
+                valign:    "middle"
+                text_size: self.size
+
+        BotaoAngular:
+            text:        "← Voltar"
+            font_size:   "14sp"
+            size_hint_y: None
+            height:      dp(56)
+            on_release:  app.mudar_tela("menu")
+
+# ════════════════════════════════════════════════════════════
+#  CALCULADORA TÁTICA
+# ════════════════════════════════════════════════════════════
+<TelaCalculadora>:
+    name: "calculadora"
+    canvas.before:
+        Color:
+            rgba: 0.02, 0.02, 0.05, 1
+        Rectangle:
+            pos:  self.pos
+            size: self.size
+    GridHolografico:
+        size_hint: 1, 1
+        pos_hint:  {'x': 0, 'y': 0}
+    BoxLayout:
+        orientation: "vertical"
+        padding:     [dp(14), dp(16), dp(14), dp(12)]
+        spacing:     dp(10)
+        size_hint:   1, 1
+        Label:
+            text:        "CÁLCULO TÁTICO"
+            font_name:   "orbitron.ttf"
+            font_size:   "19sp"
+            color:       rgba("#00e5ff")
+            bold:        True
+            size_hint_y: None
+            height:      dp(36)
+            halign:      "center"
+            valign:      "middle"
+            text_size:   self.size
+        # Display
+        BoxLayout:
+            size_hint_y: None
+            height:      dp(72)
+            padding:     [dp(14), 0]
+            canvas.before:
+                Color:
+                    rgba: rgba("#07071ccc")
+                Rectangle:
+                    pos:  self.pos
+                    size: self.size
+                Color:
+                    rgba: rgba("#00e5ff44")
+                Line:
+                    points: [self.x+10, self.y, self.right-10, self.y, self.right, self.y+10, self.right, self.top-10, self.right-10, self.top, self.x+10, self.top, self.x, self.top-10, self.x, self.y+10, self.x+10, self.y]
+                    width:  1.5
+            Label:
+                id:        calc_display
+                text:      ""
+                font_size: "32sp"
+                font_name: "orbitron.ttf"
+                color:     rgba("#ffffff")
+                halign:    "right"
+                valign:    "middle"
+                text_size: self.size
+        # Grid de botões
+        GridLayout:
+            cols:        4
+            spacing:     dp(7)
+            size_hint_y: 1
+            BotaoAngular:
+                text:      "7"
+                font_size: "20sp"
+                on_release: root.add_texto("7")
+            BotaoAngular:
+                text:      "8"
+                font_size: "20sp"
+                on_release: root.add_texto("8")
+            BotaoAngular:
+                text:      "9"
+                font_size: "20sp"
+                on_release: root.add_texto("9")
+            BotaoAngularOperador:
+                text:      "÷"
+                font_size: "20sp"
+                on_release: root.add_texto("/")
+            BotaoAngular:
+                text:      "4"
+                font_size: "20sp"
+                on_release: root.add_texto("4")
+            BotaoAngular:
+                text:      "5"
+                font_size: "20sp"
+                on_release: root.add_texto("5")
+            BotaoAngular:
+                text:      "6"
+                font_size: "20sp"
+                on_release: root.add_texto("6")
+            BotaoAngularOperador:
+                text:      "×"
+                font_size: "20sp"
+                on_release: root.add_texto("*")
+            BotaoAngular:
+                text:      "1"
+                font_size: "20sp"
+                on_release: root.add_texto("1")
+            BotaoAngular:
+                text:      "2"
+                font_size: "20sp"
+                on_release: root.add_texto("2")
+            BotaoAngular:
+                text:      "3"
+                font_size: "20sp"
+                on_release: root.add_texto("3")
+            BotaoAngularOperador:
+                text:      "−"
+                font_size: "20sp"
+                on_release: root.add_texto("-")
+            BotaoAngular:
+                text:      "."
+                font_size: "20sp"
+                on_release: root.add_texto(".")
+            BotaoAngular:
+                text:      "0"
+                font_size: "20sp"
+                on_release: root.add_texto("0")
+            BotaoAngularAlerta:
+                text:      "⌫"
+                font_size: "18sp"
+                on_release: root.backspace()
+            BotaoAngularOperador:
+                text:      "+"
+                font_size: "20sp"
+                on_release: root.add_texto("+")
+        # Linha final
+        BoxLayout:
+            size_hint_y: None
+            height:      dp(56)
+            spacing:     dp(10)
+            BotaoAngular:
+                text:        "← Voltar"
+                size_hint_x: 0.22
+                font_size:   "13sp"
+                on_release:  app.mudar_tela("menu")
+            BotaoAngularAlerta:
+                text:        "C"
+                size_hint_x: 0.18
+                font_size:   "17sp"
+                on_release:  root.limpar()
+            BotaoAngular:
+                text:        "="
+                size_hint_x: 0.60
+                font_name:   "orbitron.ttf"
+                font_size:   "22sp"
+                cor_borda:   [0, 1, 0.55, 0.9]
+                cor_borda_kv: [0, 1, 0.55, 0.9]
+                cor_texto:   [0, 1, 0.55, 1]
+                on_release:  root.calcular()
+
+# ════════════════════════════════════════════════════════════
+#  TELA GANHOS
+#  Fluxo: Configure → Abra um período → Finalize turnos → Feche para calcular
+# ════════════════════════════════════════════════════════════
+<TelaGanhos>:
+    name: "ganhos"
+    canvas.before:
+        Color:
+            rgba: 0.02, 0.02, 0.05, 1
+        Rectangle:
+            pos:  self.pos
+            size: self.size
+    GridHolografico:
+        size_hint: 1, 1
+        pos_hint:  {'x': 0, 'y': 0}
+    BoxLayout:
+        orientation: "vertical"
+        padding:     [dp(16), dp(14), dp(16), dp(12)]
+        spacing:     dp(10)
+        size_hint:   1, 1
+
+        # ── Título ──────────────────────────────────────────
+        Label:
+            text:        "CONTROLE DE GANHOS"
+            font_name:   "orbitron.ttf"
+            font_size:   "19sp"
+            color:       rgba("#00ff88")
+            bold:        True
+            size_hint_y: None
+            height:      dp(36)
+            halign:      "center"
+            valign:      "middle"
+            text_size:   self.size
+
+        # ══ BLOCO 1: STATUS DO PERÍODO ATUAL ════════════════
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint_y: None
+            height:      dp(172)
+            spacing:     dp(6)
+            padding:     [dp(14), dp(10), dp(14), dp(10)]
+            canvas.before:
+                Color:
+                    rgba: rgba("#07071ccc")
+                Rectangle:
+                    pos:  self.pos
+                    size: self.size
+                Color:
+                    rgba: rgba("#00ff8866")
+                Line:
+                    points: [self.x+dp(12), self.y, self.right-dp(12), self.y, self.right, self.y+dp(12), self.right, self.top-dp(12), self.right-dp(12), self.top, self.x+dp(12), self.top, self.x, self.top-dp(12), self.x, self.y+dp(12), self.x+dp(12), self.y]
+                    width:  1.5
+
+            Label:
+                id:          lbl_periodo_status
+                text:        "[color=#444444]── Nenhum período aberto ──[/color]"
+                markup:      True
+                font_name:   "orbitron.ttf"
+                font_size:   "11sp"
+                size_hint_y: None
+                height:      dp(22)
+                halign:      "center"
+                valign:      "middle"
+                text_size:   self.size
+
+            BoxLayout:
+                size_hint_y: None
+                height:      dp(52)
+                spacing:     dp(8)
+                Label:
+                    id:        lbl_periodo_pecas
+                    text:      ""
+                    markup:    True
+                    font_name: "rajdhani.ttf"
+                    font_size: "15sp"
+                    halign:    "center"
+                    valign:    "middle"
+                    text_size: self.size
+                Label:
+                    id:        lbl_periodo_ganho
+                    text:      ""
+                    markup:    True
+                    font_name: "rajdhani.ttf"
+                    font_size: "15sp"
+                    halign:    "center"
+                    valign:    "middle"
+                    text_size: self.size
+
+            Label:
+                id:          lbl_periodo_bonus
+                text:        ""
+                markup:      True
+                font_name:   "orbitron.ttf"
+                font_size:   "10sp"
+                size_hint_y: None
+                height:      dp(20)
+                halign:      "center"
+                valign:      "middle"
+                text_size:   self.size
+
+            BoxLayout:
+                size_hint_y: None
+                height:      dp(46)
+                spacing:     dp(10)
+                BotaoAngular:
+                    text:         "⊕  ABRIR PERÍODO"
+                    font_size:    "13sp"
+                    cor_borda:    [0, 1, 0.55, 0.9]
+                    cor_borda_kv: [0, 1, 0.55, 0.9]
+                    cor_texto:    [0, 1, 0.55, 1]
+                    on_release:   root.abrir_periodo()
+                BotaoAngular:
+                    id:           btn_fechar_periodo
+                    text:         "✓  FECHAR E CALCULAR"
+                    font_size:    "13sp"
+                    cor_borda:    [1, 0.65, 0, 0.9]
+                    cor_borda_kv: [1, 0.65, 0, 0.9]
+                    cor_texto:    [1, 0.80, 0, 1]
+                    opacity:      0
+                    disabled:     True
+                    on_release:   root.fechar_periodo()
+
+        # ══ BLOCO 2: CONFIGURAÇÕES ══════════════════════════
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint_y: None
+            height:      dp(148)
+            spacing:     dp(6)
+            padding:     [dp(12), dp(10), dp(12), dp(10)]
+            canvas.before:
+                Color:
+                    rgba: rgba("#04040e99")
+                Rectangle:
+                    pos:  self.pos
+                    size: self.size
+                Color:
+                    rgba: rgba("#00e5ff22")
+                Line:
+                    rounded_rectangle: [self.x, self.y, self.width, self.height, 8]
+                    width: 1
+
+            Label:
+                text:        "CONFIGURAÇÕES DO CÁLCULO"
+                font_name:   "orbitron.ttf"
+                font_size:   "10sp"
+                color:       rgba("#00e5ff55")
+                size_hint_y: None
+                height:      dp(18)
+                halign:      "center"
+                text_size:   self.size
+
+            BoxLayout:
+                size_hint_y: None
+                height:      dp(44)
+                spacing:     dp(8)
+                Label:
+                    text:        "Base R$"
+                    font_name:   "rajdhani.ttf"
+                    font_size:   "13sp"
+                    color:       rgba("#888888")
+                    size_hint_x: 0.22
+                    halign:      "right"
+                    valign:      "middle"
+                    text_size:   self.size
+                InputHolografico:
+                    id:           inp_valor_base
+                    text:         "0.25"
+                    input_filter: 'float'
+                    font_size:    "16sp"
+                    halign:       "center"
+                    size_hint_x:  0.28
+                Label:
+                    text:        "Bônus R$"
+                    font_name:   "rajdhani.ttf"
+                    font_size:   "13sp"
+                    color:       rgba("#888888")
+                    size_hint_x: 0.22
+                    halign:      "right"
+                    valign:      "middle"
+                    text_size:   self.size
+                InputHolografico:
+                    id:           inp_valor_bonus
+                    text:         "0.30"
+                    input_filter: 'float'
+                    font_size:    "16sp"
+                    halign:       "center"
+                    size_hint_x:  0.28
+
+            BoxLayout:
+                size_hint_y: None
+                height:      dp(44)
+                spacing:     dp(8)
+                Label:
+                    text:        "Meta"
+                    font_name:   "rajdhani.ttf"
+                    font_size:   "13sp"
+                    color:       rgba("#888888")
+                    size_hint_x: 0.14
+                    halign:      "right"
+                    valign:      "middle"
+                    text_size:   self.size
+                InputHolografico:
+                    id:           inp_meta_bonus
+                    text:         "3000"
+                    input_filter: 'int'
+                    font_size:    "15sp"
+                    halign:       "center"
+                    size_hint_x:  0.24
+                BotaoAngular:
+                    id:          spin_tipo
+                    text:        "Semanal"
+                    font_size:   "12sp"
+                    size_hint_x: 0.30
+                    on_release:  root._ciclar_tipo()
+                BotaoAngular:
+                    text:         "✓ OK"
+                    font_size:    "13sp"
+                    size_hint_x:  0.32
+                    cor_borda:    [0, 1, 0.55, 0.9]
+                    cor_borda_kv: [0, 1, 0.55, 0.9]
+                    cor_texto:    [0, 1, 0.55, 1]
+                    on_release:   root.salvar_config()
+
+        # ══ BLOCO 3: HISTÓRICO ═══════════════════════════════
+        Label:
+            text:        "HISTÓRICO DE PERÍODOS FECHADOS"
+            font_name:   "orbitron.ttf"
+            font_size:   "9sp"
+            color:       rgba("#00e5ff33")
+            size_hint_y: None
+            height:      dp(20)
+            halign:      "center"
+            text_size:   self.size
+
+        ScrollView:
+            GridLayout:
+                id:            historico_container
+                cols:          1
+                size_hint_y:   None
+                height:        self.minimum_height
+                spacing:       dp(7)
+                padding:       [0, dp(2), 0, dp(2)]
+
+        BotaoAngular:
+            text:        "← Voltar"
+            font_size:   "14sp"
+            size_hint_y: None
+            height:      dp(54)
+            on_release:  app.mudar_tela("menu")
+
+# ════════════════════════════════════════════════════════════
+#  ROOT
+# ════════════════════════════════════════════════════════════
+RootWidget:
+    Gerenciador:
+        id: sm
+        TelaLoading:
+        MenuPrincipal:
+        TelaRegistro:
+        TelaMemorias:
+        TelaProgresso:
+        TelaGanhos:
+        TelaCalculadora:

@@ -1,0 +1,25 @@
+{
+  "memorias": [],
+  "total_geral": 0,
+  "meta_geral": 10000,
+  "total_xp": 0,
+  "registros": [],
+  "streak": 1,
+  "melhor_dia": 0,
+  "ultima_data": "10/05/2026",
+  "periodos_ganhos": [
+    {
+      "tipo": "semanal",
+      "data_inicio": "10/05/2026",
+      "data_fim": null,
+      "total_pecas": 0,
+      "total_ganho": 0.0
+    }
+  ],
+  "config_ganhos": {
+    "valor_base": 0.25,
+    "valor_bonus": 0.3,
+    "meta_bonus": 3000,
+    "tipo_periodo": "semanal"
+  }
+}
