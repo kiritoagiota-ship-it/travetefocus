@@ -27,7 +27,15 @@ jobs:
           pip install buildozer cython==0.29.33
 
       - name: Build APK
-        run: buildozer android debug
+        run: |
+          # Aceita as licenças do Android automaticamente
+          yes | sdkmanager --licenses
+          # Inicia o build
+          buildozer android debug
+        env:
+          # Garante que o buildozer veja as ferramentas do Android
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+          ANDROID_NDK_ROOT: /usr/local/lib/android/sdk/ndk-bundle
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
