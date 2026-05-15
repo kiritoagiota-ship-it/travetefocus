@@ -1,4 +1,4 @@
-name: Build APK
+name: Build TraveteFocus APK
 
 on:
   push:
@@ -8,9 +8,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    timeout-minutes: 60
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Python
@@ -18,42 +19,48 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
+      - name: Instala dependências
         run: |
-          sudo apt-get update
+          sudo apt-get update -qq
           sudo apt-get install -y \
-            git \
-            zip \
-            unzip \
+            git zip unzip wget curl \
             openjdk-17-jdk \
-            autoconf \
-            libtool \
-            pkg-config \
-            zlib1g-dev \
-            libncurses5-dev \
-            libncursesw5-dev \
-            libtinfo5 \
-            cmake \
-            libffi-dev \
-            libssl-dev \
-            libstdc++6 \
-            libgcc1 \
-            patch \
-            lbzip2
-          pip install --upgrade pip
-          pip install buildozer cython==0.29.33
+            autoconf libtool pkg-config \
+            zlib1g-dev libncurses5-dev libncursesw5-dev \
+            cmake libffi-dev libssl-dev \
+            libltdl-dev libsqlite3-dev \
+            ccache
+          pip install --upgrade pip setuptools wheel
+          pip install cython==0.29.36
+          pip install buildozer==1.5.0
 
-      - name: Build APK with Buildozer
+      - name: Cache buildozer
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            ~/.gradle
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            buildozer-${{ runner.os }}-
+
+      - name: Aceita licenças Android
+        run: |
+          mkdir -p ~/.buildozer/android/platform/android-sdk/cmdline-tools
+          yes | pip install --upgrade buildozer 2>/dev/null || true
+
+      - name: Compila APK
+        env:
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         run: |
           buildozer android debug
-        env:
-          # Esta variável faz o Buildozer aceitar as licenças do Android automaticamente
-          APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
-          # Garante que ele use o Python correto
-          PYTHONPATH: .
 
-      - name: Upload APK Artifact
+      - name: Lista APKs
+        run: find . -name "*.apk" 2>/dev/null || echo "Nenhum APK encontrado"
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: TraveteFocus-APK
           path: bin/*.apk
+          if-no-files-found: error
