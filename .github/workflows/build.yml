@@ -29,14 +29,18 @@ jobs:
           sudo apt update
           sudo apt install -y git zip unzip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
 
-      - name: Instalar Buildozer e Cython Correto
+      - name: Instalar Ferramentas de Build
         run: |
           python -m pip install --upgrade pip
-          pip install cython==0.29.36 virtualenv
-          pip install "buildozer>=1.5.0"
+          pip install cython virtualenv
+          pip install "buildozer==1.5.0"
 
-      - name: Compilar o APK com Buildozer
-        run: buildozer android debug
+      - name: Limpar e Compilar APK
+        run: |
+          buildozer android clean
+          buildozer android debug
+        env:
+          PLAYSTORE_BUILD: "False"
 
       - name: Guardar o APK pronto
         uses: actions/upload-artifact@v4
