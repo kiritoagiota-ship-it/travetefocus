@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Configurar Java 17 (Resolve o erro do SDK)
+      - name: Configurar Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -29,10 +29,10 @@ jobs:
           sudo apt update
           sudo apt install -y git zip unzip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
 
-      - name: Instalar Buildozer e Cython
+      - name: Instalar Buildozer e Cython Correto
         run: |
-          pip install --upgrade pip
-          pip install cython virtualenv
+          python -m pip install --upgrade pip
+          pip install cython==0.29.36 virtualenv
           pip install "buildozer>=1.5.0"
 
       - name: Compilar o APK com Buildozer
