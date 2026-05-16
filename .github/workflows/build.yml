@@ -1,4 +1,4 @@
-name: Build TraveteFocus APK
+name: Build Travete Focus APK
 
 on:
   push:
@@ -8,106 +8,38 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
 
     steps:
-      - name: Checkout
+      - name: Checkout do código
         uses: actions/checkout@v4
 
-      - name: Setup Python 3.10
+      - name: Configurar Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Instala dependências
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            git zip unzip wget curl \
-            openjdk-17-jdk \
-            autoconf libtool pkg-config \
-            zlib1g-dev libncurses5-dev libncursesw5-dev \
-            cmake libffi-dev libssl-dev \
-            libltdl-dev libsqlite3-dev ccache
-          pip install --upgrade pip setuptools wheel
-          pip install cython==0.29.36 buildozer==1.5.0
-
-      - name: Cache Android SDK e NDK
-        uses: actions/cache@v4
-        id: cache-android
+      - name: Configurar Java 17 (Resolve o erro do SDK)
+        uses: actions/setup-java@v4
         with:
-          path: |
-            ~/.buildozer/android/platform/android-sdk
-            ~/.buildozer/android/platform/android-ndk-r25b
-          key: android-sdk-ndk-${{ runner.os }}-v3
+          distribution: 'temurin'
+          java-version: '17'
 
-      - name: Instala Android SDK
-        if: steps.cache-android.outputs.cache-hit != 'true'
+      - name: Instalar dependências do Ubuntu
         run: |
-          SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
-          mkdir -p $SDK_ROOT/cmdline-tools
+          sudo apt update
+          sudo apt install -y git zip unzip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
 
-          # Baixa cmdline-tools
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O /tmp/cmdtools.zip
-          unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools
-          mv /tmp/cmdtools/cmdline-tools $SDK_ROOT/cmdline-tools/latest
-
-          # Cria symlink que o buildozer espera
-          mkdir -p $SDK_ROOT/tools/bin
-          ln -sf $SDK_ROOT/cmdline-tools/latest/bin/sdkmanager $SDK_ROOT/tools/bin/sdkmanager
-          ln -sf $SDK_ROOT/cmdline-tools/latest/bin/avdmanager $SDK_ROOT/tools/bin/avdmanager
-
-          # Aceita licenças
-          yes | $SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
-            --sdk_root=$SDK_ROOT \
-            --licenses 2>/dev/null || true
-
-          # Instala pacotes
-          $SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
-            --sdk_root=$SDK_ROOT \
-            "platforms;android-33" \
-            "build-tools;33.0.2" \
-            "platform-tools" 2>/dev/null
-
-          echo "✓ Android SDK instalado"
-
-      - name: Instala Android NDK
-        if: steps.cache-android.outputs.cache-hit != 'true'
+      - name: Instalar Buildozer e Cython
         run: |
-          NDK_DIR=$HOME/.buildozer/android/platform
-          mkdir -p $NDK_DIR
-          wget -q https://dl.google.com/android/repository/android-ndk-r25b-linux.zip -O /tmp/ndk.zip
-          echo "Extraindo NDK (~1GB, aguarde)..."
-          unzip -q /tmp/ndk.zip -d $NDK_DIR
-          echo "✓ NDK instalado"
+          pip install --upgrade pip
+          pip install cython virtualenv
+          pip install "buildozer>=1.5.0"
 
-      - name: Configura variáveis de ambiente
-        run: |
-          SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
-          NDK_ROOT=$HOME/.buildozer/android/platform/android-ndk-r25b
-          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> $GITHUB_ENV
-          echo "ANDROID_HOME=$SDK_ROOT" >> $GITHUB_ENV
-          echo "ANDROID_NDK_HOME=$NDK_ROOT" >> $GITHUB_ENV
-          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$SDK_ROOT/platform-tools" >> $GITHUB_PATH
-          echo "$SDK_ROOT/tools/bin" >> $GITHUB_PATH
+      - name: Compilar o APK com Buildozer
+        run: buildozer android debug
 
-      - name: Verifica instalação
-        run: |
-          echo "SDK: $ANDROID_SDK_ROOT"
-          echo "NDK: $ANDROID_NDK_HOME"
-          ls $ANDROID_SDK_ROOT/tools/bin/
-          sdkmanager --version || echo "sdkmanager via path"
-
-      - name: Compila APK
-        env:
-          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-        run: |
-          buildozer android debug 2>&1
-
-      - name: Upload APK
+      - name: Guardar o APK pronto
         uses: actions/upload-artifact@v4
         with:
           name: TraveteFocus-APK
           path: bin/*.apk
-          if-no-files-found: error
