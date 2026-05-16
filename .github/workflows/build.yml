@@ -35,10 +35,8 @@ jobs:
           pip install cython virtualenv
           pip install "buildozer==1.5.0"
 
-      - name: Limpar e Compilar APK
-        run: |
-          buildozer android clean
-          buildozer android debug
+      - name: Compilar APK com Buildozer
+        run: buildozer android debug
         env:
           PLAYSTORE_BUILD: "False"
 
