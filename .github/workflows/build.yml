@@ -1,4 +1,4 @@
-name: Build Travete Focus APK
+name: Build TraveteFocus APK
 
 on:
   push:
@@ -8,40 +8,114 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
 
     steps:
-      - name: Checkout do código
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configurar Python 3.10
+      - name: Setup Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Configurar Java 17
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Instalar dependências do Ubuntu
+      - name: Instala dependências
         run: |
-          sudo apt update
-          sudo apt install -y git zip unzip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            git zip unzip wget \
+            autoconf libtool pkg-config \
+            zlib1g-dev libncurses5-dev libncursesw5-dev \
+            cmake libffi-dev libssl-dev \
+            libltdl-dev libsqlite3-dev ccache \
+            python3-dev libpython3-dev
+          pip install --upgrade pip setuptools wheel
+          pip install cython==0.29.36
+          pip install buildozer==1.5.0
 
-      - name: Instalar Ferramentas de Build
+      - name: Cache Android SDK e NDK
+        uses: actions/cache@v4
+        id: cache-sdk
+        with:
+          path: ~/.buildozer
+          key: android-sdk-ndk-v7-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            android-sdk-ndk-v7-${{ runner.os }}-
+
+      - name: Instala Android SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
         run: |
-          python -m pip install --upgrade pip
-          pip install cython virtualenv
-          pip install "buildozer==1.5.0"
+          SDK=$HOME/.buildozer/android/platform/android-sdk
+          mkdir -p $SDK/cmdline-tools $SDK/tools/bin
 
-      - name: Compilar APK com Buildozer
-        run: buildozer android debug
-        env:
-          PLAYSTORE_BUILD: "False"
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O /tmp/ct.zip
+          unzip -q /tmp/ct.zip -d /tmp/ct
+          mv /tmp/ct/cmdline-tools $SDK/cmdline-tools/latest
+          chmod +x $SDK/cmdline-tools/latest/bin/sdkmanager
 
-      - name: Guardar o APK pronto
+          # Symlink que o buildozer espera
+          ln -sf $SDK/cmdline-tools/latest/bin/sdkmanager $SDK/tools/bin/sdkmanager
+
+          # Aceita licenças sem broken pipe
+          yes 2>/dev/null | $SDK/cmdline-tools/latest/bin/sdkmanager \
+            --sdk_root=$SDK --licenses || true
+
+          # Instala plataforma e ferramentas
+          $SDK/cmdline-tools/latest/bin/sdkmanager \
+            --sdk_root=$SDK \
+            "platforms;android-33" \
+            "build-tools;33.0.2" \
+            "platform-tools"
+
+          echo "✓ SDK instalado"
+
+      - name: Instala Android NDK 23b
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
+        run: |
+          NDK_DIR=$HOME/.buildozer/android/platform
+          mkdir -p $NDK_DIR
+          wget -q https://dl.google.com/android/repository/android-ndk-r23b-linux.zip -O /tmp/ndk.zip
+          unzip -q /tmp/ndk.zip -d $NDK_DIR
+          echo "✓ NDK instalado"
+
+      - name: Configura variáveis de ambiente
+        run: |
+          SDK=$HOME/.buildozer/android/platform/android-sdk
+          NDK=$HOME/.buildozer/android/platform/android-ndk-r23b
+          echo "ANDROID_SDK_ROOT=$SDK" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$SDK" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$NDK" >> $GITHUB_ENV
+          echo "$SDK/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$SDK/platform-tools" >> $GITHUB_PATH
+          echo "$SDK/tools/bin" >> $GITHUB_PATH
+
+      - name: Compila APK
+        run: |
+          # Redireciona log para arquivo — evita estouro do buffer do GitHub
+          buildozer android debug > build.log 2>&1 || {
+            echo "=== ÚLTIMAS 300 LINHAS DO LOG ==="
+            tail -300 build.log
+            exit 1
+          }
+          echo "✓ APK compilado com sucesso"
+
+      - name: Upload log de build
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: TraveteFocus-APK
           path: bin/*.apk
+          if-no-files-found: error
