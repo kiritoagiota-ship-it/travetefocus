@@ -25,7 +25,7 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Instala dependências
+      - name: Instala dependencias do sistema
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y \
@@ -44,47 +44,39 @@ jobs:
         id: cache-sdk
         with:
           path: ~/.buildozer
-          key: android-sdk-ndk-v7-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          key: sdk-ndk-v8-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
           restore-keys: |
-            android-sdk-ndk-v7-${{ runner.os }}-
+            sdk-ndk-v8-${{ runner.os }}-
 
       - name: Instala Android SDK
         if: steps.cache-sdk.outputs.cache-hit != 'true'
         run: |
           SDK=$HOME/.buildozer/android/platform/android-sdk
           mkdir -p $SDK/cmdline-tools $SDK/tools/bin
-
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O /tmp/ct.zip
           unzip -q /tmp/ct.zip -d /tmp/ct
           mv /tmp/ct/cmdline-tools $SDK/cmdline-tools/latest
           chmod +x $SDK/cmdline-tools/latest/bin/sdkmanager
-
-          # Symlink que o buildozer espera
           ln -sf $SDK/cmdline-tools/latest/bin/sdkmanager $SDK/tools/bin/sdkmanager
-
-          # Aceita licenças sem broken pipe
           yes 2>/dev/null | $SDK/cmdline-tools/latest/bin/sdkmanager \
             --sdk_root=$SDK --licenses || true
-
-          # Instala plataforma e ferramentas
           $SDK/cmdline-tools/latest/bin/sdkmanager \
             --sdk_root=$SDK \
             "platforms;android-33" \
             "build-tools;33.0.2" \
             "platform-tools"
-
-          echo "✓ SDK instalado"
+          echo "SDK instalado"
 
       - name: Instala Android NDK 23b
         if: steps.cache-sdk.outputs.cache-hit != 'true'
         run: |
-          NDK_DIR=$HOME/.buildozer/android/platform
-          mkdir -p $NDK_DIR
+          NDK=$HOME/.buildozer/android/platform
+          mkdir -p $NDK
           wget -q https://dl.google.com/android/repository/android-ndk-r23b-linux.zip -O /tmp/ndk.zip
-          unzip -q /tmp/ndk.zip -d $NDK_DIR
-          echo "✓ NDK instalado"
+          unzip -q /tmp/ndk.zip -d $NDK
+          echo "NDK instalado"
 
-      - name: Configura variáveis de ambiente
+      - name: Configura ambiente
         run: |
           SDK=$HOME/.buildozer/android/platform/android-sdk
           NDK=$HOME/.buildozer/android/platform/android-ndk-r23b
@@ -97,15 +89,13 @@ jobs:
 
       - name: Compila APK
         run: |
-          # Redireciona log para arquivo — evita estouro do buffer do GitHub
-          buildozer android debug > build.log 2>&1 || {
-            echo "=== ÚLTIMAS 300 LINHAS DO LOG ==="
-            tail -300 build.log
-            exit 1
-          }
-          echo "✓ APK compilado com sucesso"
+          buildozer android debug > build.log 2>&1
+          BUILD_CODE=$?
+          echo "--- Ultimas 150 linhas ---"
+          tail -150 build.log
+          exit $BUILD_CODE
 
-      - name: Upload log de build
+      - name: Upload log
         if: always()
         uses: actions/upload-artifact@v4
         with:
