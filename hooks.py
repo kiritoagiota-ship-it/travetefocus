@@ -1,60 +1,55 @@
 """
 hooks.py — TraveteFocus
-Executado pelo python-for-android antes de empacotar o APK.
-Remove arquivos desnecessários do Kivy para reduzir tamanho e tempo de build.
+Remove arquivos de teste do Kivy antes de empacotar o APK.
+Usa busca recursiva em múltiplos caminhos para garantir que funcione.
 """
 import shutil
 import os
+import glob
 
 
 def before_apk_build(toolchain):
-    """Remove testes e arquivos desnecessários do Kivy antes de gerar o APK."""
-    ctx = toolchain.ctx
+    """Chamado pelo p4a antes de gerar o APK."""
 
-    try:
-        site_packages = ctx.get_site_packages_dir()
-    except Exception:
-        print("[HOOK] Não foi possível obter site-packages, pulando limpeza.")
-        return
-
-    dirs_para_remover = [
-        os.path.join(site_packages, 'kivy', 'tests'),
-        os.path.join(site_packages, 'kivy', 'tools'),
-        os.path.join(site_packages, 'kivy', 'data', 'tests'),
-        os.path.join(site_packages, 'kivy', 'data', 'glsl_fragments'),
-        os.path.join(site_packages, 'PIL', 'tests'),
-        os.path.join(site_packages, 'pip'),
-        os.path.join(site_packages, 'setuptools'),
-        os.path.join(site_packages, 'pkg_resources'),
+    # Caminhos possíveis onde os testes podem estar
+    bases = [
+        os.path.expanduser('~/.buildozer/android/platform'),
+        os.path.expanduser('~/.buildozer'),
     ]
 
-    padroes_para_remover = ['test_*.py', '*_test.py', '*.pyc', '*.pyo']
+    # Tenta também o site-packages diretamente
+    try:
+        site = toolchain.ctx.get_site_packages_dir()
+        if site and os.path.exists(site):
+            bases.insert(0, site)
+    except Exception:
+        pass
 
-    total_removido = 0
-    for d in dirs_para_remover:
-        if os.path.exists(d):
-            try:
-                tamanho = sum(
-                    os.path.getsize(os.path.join(dp, f))
-                    for dp, dn, fns in os.walk(d)
-                    for f in fns
-                )
-                shutil.rmtree(d)
-                total_removido += tamanho
-                print(f"[HOOK] Removido: {d} ({tamanho // 1024}KB)")
-            except Exception as e:
-                print(f"[HOOK] Erro ao remover {d}: {e}")
+    removidos = 0
 
-    # Remove arquivos de teste soltos
-    if os.path.exists(site_packages):
-        for root, dirs, files in os.walk(site_packages):
-            for f in files:
-                if f.startswith('test_') and f.endswith('.py'):
+    for base in bases:
+        if not os.path.exists(base):
+            continue
+
+        # Remove pastas de testes do Kivy e PIL
+        for padrao in ['**/kivy/tests', '**/kivy/tools', '**/PIL/tests']:
+            for caminho in glob.glob(os.path.join(base, padrao), recursive=True):
+                if os.path.isdir(caminho):
                     try:
-                        caminho = os.path.join(root, f)
-                        os.remove(caminho)
-                        total_removido += 1024
+                        shutil.rmtree(caminho, ignore_errors=True)
+                        removidos += 1
+                        print(f'[HOOK] Removido: {caminho}')
+                    except Exception as e:
+                        print(f'[HOOK] Erro: {caminho} — {e}')
+
+        # Remove arquivos test_*.py soltos
+        for padrao in ['**/test_*.py', '**/*_test.py']:
+            for arquivo in glob.glob(os.path.join(base, padrao), recursive=True):
+                if os.path.isfile(arquivo):
+                    try:
+                        os.remove(arquivo)
+                        removidos += 1
                     except Exception:
                         pass
 
-    print(f"[HOOK] Limpeza concluída — {total_removido // (1024*1024)}MB removidos")
+    print(f'[HOOK] Concluído — {removidos} itens removidos')
