@@ -8,7 +8,7 @@ source.include_exts = py,kv,ttf,json
 source.include_patterns = orbitron.ttf,rajdhani.ttf,telas/__init__.py,telas/loading.py,telas/registro.py,telas/memorias.py,telas/progresso.py,telas/ganhos.py,telas/calculadora.py
 
 source.exclude_dirs = tests,__pycache__,.git,.buildozer,bin
-source.exclude_patterns = test_*.py,*_test.py,*.pyc,*.pyo,*.pyx
+source.exclude_patterns = test_*.py,*_test.py,*.pyc,*.pyo
 
 version = 1.0
 
