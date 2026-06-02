@@ -2,110 +2,103 @@ name: Build TraveteFocus APK
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:
+    branches: [main, master]
+  workflow_dispatch:          # permite disparar manualmente pela UI do GitHub
 
 jobs:
-  build:
+  build-apk:
+    name: Build Android Debug APK
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
+    timeout-minutes: 90       # garante que um build travado não consuma minutos indefinidamente
 
     steps:
-      - name: Checkout
+
+      # ── 1. CÓDIGO FONTE ────────────────────────────────────────────────────
+      - name: Checkout do repositório
         uses: actions/checkout@v4
 
-      - name: Setup Python 3.10
+      # ── 2. JAVA ────────────────────────────────────────────────────────────
+      - name: Configurar Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # ── 3. PYTHON ──────────────────────────────────────────────────────────
+      - name: Configurar Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Instala dependencias do sistema
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            git zip unzip wget \
-            autoconf libtool pkg-config \
-            zlib1g-dev libncurses5-dev libncursesw5-dev \
-            cmake libffi-dev libssl-dev \
-            libltdl-dev libsqlite3-dev ccache \
-            python3-dev libpython3-dev
-          pip install --upgrade pip setuptools wheel
-          pip install cython==0.29.36
-          pip install buildozer==1.5.0
-
-      - name: Cache Android SDK e NDK
+      # ── 4. CACHE — evita baixar p4a/kivy do zero em cada push ─────────────
+      - name: Cache Buildozer (~/.buildozer)
         uses: actions/cache@v4
-        id: cache-sdk
         with:
           path: ~/.buildozer
-          key: sdk-ndk-v8-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
           restore-keys: |
-            sdk-ndk-v8-${{ runner.os }}-
+            ${{ runner.os }}-buildozer-
 
-      - name: Instala Android SDK
-        if: steps.cache-sdk.outputs.cache-hit != 'true'
+      # ── 5. DEPENDÊNCIAS DO SISTEMA ─────────────────────────────────────────
+      - name: Instalar dependências do sistema
         run: |
-          SDK=$HOME/.buildozer/android/platform/android-sdk
-          mkdir -p $SDK/cmdline-tools $SDK/tools/bin
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O /tmp/ct.zip
-          unzip -q /tmp/ct.zip -d /tmp/ct
-          mv /tmp/ct/cmdline-tools $SDK/cmdline-tools/latest
-          chmod +x $SDK/cmdline-tools/latest/bin/sdkmanager
-          ln -sf $SDK/cmdline-tools/latest/bin/sdkmanager $SDK/tools/bin/sdkmanager
-          yes 2>/dev/null | $SDK/cmdline-tools/latest/bin/sdkmanager \
-            --sdk_root=$SDK --licenses || true
-          $SDK/cmdline-tools/latest/bin/sdkmanager \
-            --sdk_root=$SDK \
-            "platforms;android-33" \
-            "build-tools;33.0.2" \
-            "platform-tools"
-          echo "SDK instalado"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            git zip unzip \
+            autoconf libtool pkg-config \
+            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 \
+            cmake libffi-dev libssl-dev \
+            build-essential ccache
 
-      - name: Instala Android NDK 23b
-        if: steps.cache-sdk.outputs.cache-hit != 'true'
+      # ── 6. FERRAMENTAS PYTHON ──────────────────────────────────────────────
+      - name: Instalar Cython 0.29.36 e Buildozer 1.5.0
         run: |
-          NDK=$HOME/.buildozer/android/platform
-          mkdir -p $NDK
-          wget -q https://dl.google.com/android/repository/android-ndk-r23b-linux.zip -O /tmp/ndk.zip
-          unzip -q /tmp/ndk.zip -d $NDK
-          echo "NDK instalado"
+          pip install --upgrade pip wheel
+          pip install Cython==0.29.36
+          pip install buildozer==1.5.0
 
-      - name: Configura ambiente
+      # ── 7. VARIÁVEIS ANDROID — aponta para SDK/NDK já instalados no runner ─
+      - name: Exportar variáveis de ambiente Android SDK/NDK
         run: |
-          SDK=$HOME/.buildozer/android/platform/android-sdk
-          NDK=$HOME/.buildozer/android/platform/android-ndk-r23b
-          echo "ANDROID_SDK_ROOT=$SDK" >> $GITHUB_ENV
-          echo "ANDROID_HOME=$SDK" >> $GITHUB_ENV
-          echo "ANDROID_NDK_HOME=$NDK" >> $GITHUB_ENV
-          echo "$SDK/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$SDK/platform-tools" >> $GITHUB_PATH
-          echo "$SDK/tools/bin" >> $GITHUB_PATH
+          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk"                   >> $GITHUB_ENV
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk"                       >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/27.3.13750724" >> $GITHUB_ENV
 
-      - name: Compila APK
+      # ── 8. LICENÇAS SDK ────────────────────────────────────────────────────
+      - name: Aceitar licenças do Android SDK
         run: |
-          buildozer android debug > build.log 2>&1
-          BUILD_CODE=$?
-          echo "--- Ultimas 150 linhas ---"
-          tail -150 build.log
-          exit $BUILD_CODE
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager \
+            --licenses 2>/dev/null || true
 
-      - name: Upload log
+      # ── 9. BUILD ───────────────────────────────────────────────────────────
+      # set -o pipefail: faz o step falhar se buildozer falhar (mesmo dentro do pipe)
+      # tee build.log:  grava o log em arquivo E exibe no console ao mesmo tempo
+      # log_level=1 no buildozer.spec já reduz verbosidade — arquivo completo fica
+      # disponível como artefato mesmo se o console truncar.
+      - name: Build APK (debug)
+        run: |
+          set -o pipefail
+          buildozer android debug 2>&1 | tee build.log
+        timeout-minutes: 75
+
+      # ── 10. DIAGNÓSTICO — últimas linhas sempre visíveis no painel ─────────
+      - name: Exibir últimas 300 linhas do log
+        if: always()
+        run: tail -n 300 build.log || true
+
+      # ── 11. UPLOAD DO APK ──────────────────────────────────────────────────
+      - name: Upload APK gerado
+        uses: actions/upload-artifact@v4
+        with:
+          name: travetefocus-debug-apk
+          path: bin/*.apk
+          if-no-files-found: error    # falha explicitamente se o APK não existir
+
+      # ── 12. UPLOAD DO LOG COMPLETO ─────────────────────────────────────────
+      - name: Upload do log completo de build
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
           path: build.log
           if-no-files-found: ignore
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: TraveteFocus-APK
-          path: bin/*.apk
-          if-no-files-found: error
