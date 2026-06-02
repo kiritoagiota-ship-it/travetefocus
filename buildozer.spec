@@ -38,7 +38,7 @@ fullscreen  = 0
 android.permissions = WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE
 
 # ── APIs ANDROID ─────────────────────────────────────────────────────────────
-android.api    = 33
+android.api    = 34
 android.minapi = 21
 
 # ── NDK — usa o NDK 27 já instalado no runner do GitHub Actions ───────────────
@@ -72,6 +72,6 @@ p4a.hook = hooks.py
 [buildozer]
 
 # 1 = info (equilibrado para CI — não estoura o buffer do GitHub Actions)
-log_level = 2
+log_level = 1
 
 warn_on_root = 1
