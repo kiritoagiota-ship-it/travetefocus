@@ -72,6 +72,6 @@ p4a.hook = hooks.py
 [buildozer]
 
 # 1 = info (equilibrado para CI — não estoura o buffer do GitHub Actions)
-log_level = 1
+log_level = 2
 
 warn_on_root = 1
