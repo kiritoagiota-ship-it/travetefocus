@@ -3,13 +3,13 @@ name: Build TraveteFocus APK
 on:
   push:
     branches: [main, master]
-  workflow_dispatch:          # permite disparar manualmente pela UI do GitHub
+  workflow_dispatch:
 
 jobs:
   build-apk:
     name: Build Android Debug APK
     runs-on: ubuntu-22.04
-    timeout-minutes: 90       # garante que um build travado não consuma minutos indefinidamente
+    timeout-minutes: 90
 
     steps:
 
@@ -30,7 +30,7 @@ jobs:
         with:
           python-version: '3.10'
 
-      # ── 4. CACHE — evita baixar p4a/kivy do zero em cada push ─────────────
+      # ── 4. CACHE ───────────────────────────────────────────────────────────
       - name: Cache Buildozer (~/.buildozer)
         uses: actions/cache@v4
         with:
@@ -57,44 +57,54 @@ jobs:
           pip install Cython==0.29.36
           pip install buildozer==1.5.0
 
-      # ── 7. VARIÁVEIS ANDROID — aponta para SDK/NDK já instalados no runner ─
+      # ── 7. VARIÁVEIS ANDROID ───────────────────────────────────────────────
       - name: Exportar variáveis de ambiente Android SDK/NDK
         run: |
           echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk"                   >> $GITHUB_ENV
           echo "ANDROID_HOME=/usr/local/lib/android/sdk"                       >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/27.3.13750724" >> $GITHUB_ENV
 
-      # ── 8. LICENÇAS SDK ────────────────────────────────────────────────────
+      # ── 8. SYMLINK sdkmanager ──────────────────────────────────────────────
+      # CORREÇÃO DO ERRO: buildozer 1.5.0 procura o sdkmanager no caminho antigo
+      # tools/bin/sdkmanager, mas o runner do GitHub só tem o caminho moderno
+      # cmdline-tools/latest/bin/sdkmanager. Este passo cria um atalho (symlink)
+      # do caminho antigo apontando para o novo — o buildozer encontra o que precisa.
+      - name: Criar symlink sdkmanager (compatibilidade buildozer 1.5.0)
+        run: |
+          mkdir -p /usr/local/lib/android/sdk/tools/bin
+          ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager \
+                  /usr/local/lib/android/sdk/tools/bin/sdkmanager
+          ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/avdmanager \
+                  /usr/local/lib/android/sdk/tools/bin/avdmanager
+          echo "Symlinks verificados:"
+          ls -la /usr/local/lib/android/sdk/tools/bin/
+
+      # ── 9. LICENÇAS SDK ────────────────────────────────────────────────────
       - name: Aceitar licenças do Android SDK
         run: |
           yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager \
             --licenses 2>/dev/null || true
 
-      # ── 9. BUILD ───────────────────────────────────────────────────────────
-      # set -o pipefail: faz o step falhar se buildozer falhar (mesmo dentro do pipe)
-      # tee build.log:  grava o log em arquivo E exibe no console ao mesmo tempo
-      # log_level=1 no buildozer.spec já reduz verbosidade — arquivo completo fica
-      # disponível como artefato mesmo se o console truncar.
+      # ── 10. BUILD ──────────────────────────────────────────────────────────
       - name: Build APK (debug)
         run: |
           set -o pipefail
           buildozer android debug 2>&1 | tee build.log
         timeout-minutes: 75
 
-      # ── 10. DIAGNÓSTICO — últimas linhas sempre visíveis no painel ─────────
+      # ── 11. DIAGNÓSTICO ────────────────────────────────────────────────────
       - name: Exibir últimas 300 linhas do log
         if: always()
         run: tail -n 300 build.log || true
 
-      # ── 11. UPLOAD DO APK ──────────────────────────────────────────────────
+      # ── 12. ARTEFATOS ──────────────────────────────────────────────────────
       - name: Upload APK gerado
         uses: actions/upload-artifact@v4
         with:
           name: travetefocus-debug-apk
           path: bin/*.apk
-          if-no-files-found: error    # falha explicitamente se o APK não existir
+          if-no-files-found: error
 
-      # ── 12. UPLOAD DO LOG COMPLETO ─────────────────────────────────────────
       - name: Upload do log completo de build
         if: always()
         uses: actions/upload-artifact@v4
