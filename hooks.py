@@ -1,55 +1,48 @@
 """
-hooks.py — TraveteFocus
-Remove arquivos de teste do Kivy antes de empacotar o APK.
-Usa busca recursiva em múltiplos caminhos para garantir que funcione.
+hooks.py — Hook customizado para o python-for-android (p4a)
+Referenciado em buildozer.spec como:  p4a.hook = hooks.py
+
+A função before_apk_build() é chamada automaticamente pelo p4a
+logo antes de empacotar o APK.  Aqui ela varre a pasta de build
+e remove todos os diretórios kivy/tests encontrados, evitando:
+  - Inchaço desnecessário no APK
+  - Falhas de empacotamento causadas pelos fixtures de teste do Kivy
 """
-import shutil
+
 import os
-import glob
+import shutil
 
 
-def before_apk_build(toolchain):
-    """Chamado pelo p4a antes de gerar o APK."""
+def before_apk_build(*args, **kwargs):
+    """Remove os diretórios de testes do Kivy antes de gerar o APK."""
 
-    # Caminhos possíveis onde os testes podem estar
-    bases = [
-        os.path.expanduser('~/.buildozer/android/platform'),
-        os.path.expanduser('~/.buildozer'),
-    ]
+    print("[hooks.py] ── Iniciando limpeza de testes do Kivy ──")
 
-    # Tenta também o site-packages diretamente
-    try:
-        site = toolchain.ctx.get_site_packages_dir()
-        if site and os.path.exists(site):
-            bases.insert(0, site)
-    except Exception:
-        pass
+    # Raiz onde o buildozer armazena os builds intermediários
+    build_base = os.path.join(".buildozer", "android", "platform")
 
-    removidos = 0
+    if not os.path.isdir(build_base):
+        print(f"[hooks.py] Diretório '{build_base}' não encontrado — nada a fazer.")
+        return
 
-    for base in bases:
-        if not os.path.exists(base):
-            continue
+    removed_count = 0
 
-        # Remove pastas de testes do Kivy e PIL
-        for padrao in ['**/kivy/tests', '**/kivy/tools', '**/PIL/tests']:
-            for caminho in glob.glob(os.path.join(base, padrao), recursive=True):
-                if os.path.isdir(caminho):
-                    try:
-                        shutil.rmtree(caminho, ignore_errors=True)
-                        removidos += 1
-                        print(f'[HOOK] Removido: {caminho}')
-                    except Exception as e:
-                        print(f'[HOOK] Erro: {caminho} — {e}')
+    for dirpath, dirnames, _ in os.walk(build_base, topdown=True):
+        # Itera sobre uma cópia para poder modificar a lista durante o loop
+        for dirname in list(dirnames):
+            if dirname == "tests" and "kivy" in dirpath.lower():
+                full_path = os.path.join(dirpath, dirname)
+                try:
+                    shutil.rmtree(full_path)
+                    dirnames.remove(dirname)   # impede os.walk de descer na pasta removida
+                    print(f"[hooks.py] Removido: {full_path}")
+                    removed_count += 1
+                except OSError as exc:
+                    print(f"[hooks.py] AVISO — não foi possível remover '{full_path}': {exc}")
 
-        # Remove arquivos test_*.py soltos
-        for padrao in ['**/test_*.py', '**/*_test.py']:
-            for arquivo in glob.glob(os.path.join(base, padrao), recursive=True):
-                if os.path.isfile(arquivo):
-                    try:
-                        os.remove(arquivo)
-                        removidos += 1
-                    except Exception:
-                        pass
+    if removed_count == 0:
+        print("[hooks.py] Nenhum diretório kivy/tests encontrado.")
+    else:
+        print(f"[hooks.py] ✓ {removed_count} diretório(s) de testes removido(s).")
 
-    print(f'[HOOK] Concluído — {removidos} itens removidos')
+    print("[hooks.py] ── Limpeza concluída ──")
