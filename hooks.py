@@ -12,14 +12,15 @@ e remove todos os diretórios kivy/tests encontrados, evitando:
 import os
 import shutil
 
-
 def before_apk_build(*args, **kwargs):
     """Remove os diretórios de testes do Kivy antes de gerar o APK."""
 
     print("[hooks.py] ── Iniciando limpeza de testes do Kivy ──")
 
-    # Raiz onde o buildozer armazena os builds intermediários
-    build_base = os.path.join(".buildozer", "android", "platform")
+    # hooks.py fica na raiz do projeto; __file__ resolve o caminho absoluto
+    # independente de qual diretório o p4a usar como working directory.
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    build_base   = os.path.join(project_root, ".buildozer", "android", "platform")
 
     if not os.path.isdir(build_base):
         print(f"[hooks.py] Diretório '{build_base}' não encontrado — nada a fazer.")
@@ -28,13 +29,12 @@ def before_apk_build(*args, **kwargs):
     removed_count = 0
 
     for dirpath, dirnames, _ in os.walk(build_base, topdown=True):
-        # Itera sobre uma cópia para poder modificar a lista durante o loop
         for dirname in list(dirnames):
             if dirname == "tests" and "kivy" in dirpath.lower():
                 full_path = os.path.join(dirpath, dirname)
                 try:
                     shutil.rmtree(full_path)
-                    dirnames.remove(dirname)   # impede os.walk de descer na pasta removida
+                    dirnames.remove(dirname)
                     print(f"[hooks.py] Removido: {full_path}")
                     removed_count += 1
                 except OSError as exc:
