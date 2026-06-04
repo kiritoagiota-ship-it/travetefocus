@@ -39,7 +39,7 @@ android.permissions = WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE
 
 # ── APIs ANDROID ─────────────────────────────────────────────────────────────
 android.api    = 34
-android.minapi = 21
+android.minapi = 27
 
 # ── NDK — usa o NDK 27 já instalado no runner do GitHub Actions ───────────────
 android.ndk         = 27.3.13750724
