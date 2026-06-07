@@ -75,12 +75,27 @@ def inicializar():
             pass
     try:
         from kivy.core.audio import SoundLoader
+        from kivy.utils import platform
+
+        # No Android, /tmp pode ser inacessível ao MediaPlayer do sistema.
+        # user_data_dir aponta para o diretório privado do app, sempre gravável.
+        if platform == 'android':
+            try:
+                from kivy.app import App
+                _app = App.get_running_app()
+                base_dir = _app.user_data_dir if _app else tempfile.gettempdir()
+            except Exception:
+                base_dir = tempfile.gettempdir()
+        else:
+            base_dir = tempfile.gettempdir()
+
         for nome, notas in _RECEITAS.items():
-            wav = _wav(notas)
-            tmp = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
-            tmp.write(wav); tmp.close()
-            _tmp_files.append(tmp.name)
-            s = SoundLoader.load(tmp.name)
+            wav  = _wav(notas)
+            path = os.path.join(base_dir, f'tf_{nome}.wav')
+            with open(path, 'wb') as f:
+                f.write(wav)
+            _tmp_files.append(path)
+            s = SoundLoader.load(path)
             if s:
                 s.volume = 0.60
                 _sons[nome] = s
