@@ -14,6 +14,8 @@ from kivy.uix.floatlayout import FloatLayout
 from kivy.core.window import Window
 from kivy.properties import NumericProperty, ListProperty, StringProperty
 from kivy.metrics import dp
+from kivy.utils import platform          # detecção de plataforma confiável
+from kivy.resources import resource_add_path
 
 import som
 from efeitos import *
@@ -42,8 +44,9 @@ class Gerenciador(ScreenManager):
 # ═══════════════════════════════════════════════════════════
 
 def _configurar_janela():
-    is_mobile = any(p in sys.platform for p in ('android', 'ios'))
-    if not is_mobile:
+    # kivy.utils.platform retorna 'android', 'ios', 'win', 'linux', 'macosx'
+    # sys.platform em Android retorna 'linux', não 'android'
+    if platform not in ('android', 'ios'):
         Window.size = (420, 780)
         try:
             Window.left = 100
@@ -79,9 +82,16 @@ class TraveteApp(App):
 
     def build(self):
         Window.softinput_mode = 'below_target'
+
+        # No Android, garante que .kv e .ttf são encontrados pelo Kivy
+        # independente do diretório de trabalho definido pelo p4a
+        if platform == 'android':
+            resource_add_path(os.path.dirname(os.path.abspath(__file__)))
+
         som.inicializar()
         self.carregar_dados()
-        return Builder.load_file("interface.kv")
+        kv = resource_find("interface.kv") or "interface.kv"
+        return Builder.load_file(kv)
 
     def on_stop(self):
         self.salvar_dados()
@@ -116,32 +126,37 @@ class TraveteApp(App):
             "periodos_ganhos": list(self.periodos_ganhos),
             "config_ganhos":   dict(self.config_ganhos),
         }
+        data_dir = self.user_data_dir          # obtido na thread principal
         threading.Thread(
-            target=self._salvar_bg, args=(snapshot,), daemon=True
+            target=self._salvar_bg, args=(snapshot, data_dir), daemon=True
         ).start()
 
-    def _salvar_bg(self, dados):
+    def _salvar_bg(self, dados, data_dir):
         try:
-            tmp = "dados.json.tmp"
+            tmp  = os.path.join(data_dir, "dados.json.tmp")
+            dest = os.path.join(data_dir, "dados.json")
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(dados, f, ensure_ascii=False, indent=2)
-            os.replace(tmp, "dados.json")
+            os.replace(tmp, dest)
             # Backup rotativo — mantém últimas 3 versões
             import shutil
             for i in range(2, 0, -1):
-                src = f"dados.backup{i}.json"
-                dst = f"dados.backup{i+1}.json"
-                if os.path.exists(src):
-                    shutil.copy2(src, dst)
-            if os.path.exists("dados.json"):
-                shutil.copy2("dados.json", "dados.backup1.json")
+                bsrc = os.path.join(data_dir, f"dados.backup{i}.json")
+                bdst = os.path.join(data_dir, f"dados.backup{i+1}.json")
+                if os.path.exists(bsrc):
+                    shutil.copy2(bsrc, bdst)
+            if os.path.exists(dest):
+                shutil.copy2(dest, os.path.join(data_dir, "dados.backup1.json"))
         except Exception as e:
             print(f"[ERRO] _salvar_bg: {e}")
 
     def carregar_dados(self):
         """Carrega dados com fallback para backups se arquivo principal estiver corrompido."""
-        candidatos = ["dados.json", "dados.backup1.json",
-                      "dados.backup2.json", "dados.backup3.json"]
+        d = self.user_data_dir
+        candidatos = [os.path.join(d, "dados.json"),
+                      os.path.join(d, "dados.backup1.json"),
+                      os.path.join(d, "dados.backup2.json"),
+                      os.path.join(d, "dados.backup3.json")]
         for arquivo in candidatos:
             if not os.path.exists(arquivo):
                 continue
