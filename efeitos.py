@@ -111,7 +111,14 @@ class ReatorArcShader(Widget):
     _shader_ok     = False
 
     def __init__(self, **kwargs):
-        # Tenta criar RenderContext — pode falhar em OpenGL ES antigo
+        # REGRA CRÍTICA: super().__init__() DEVE vir PRIMEIRO.
+        # Widget.__init__ executa self.canvas = Canvas() internamente.
+        # Se o RenderContext for criado ANTES, ele é sobrescrito pelo Canvas
+        # padrão, _shader_ok fica True com o canvas errado, e _tick() passa
+        # a falhar 60×/segundo — o Android mata o processo em segundos.
+        super().__init__(**kwargs)
+
+        # Só DEPOIS do super() tentamos substituir o canvas pelo RenderContext
         try:
             rc = RenderContext(use_parent_projection=True,
                                use_parent_modelview=True,
@@ -119,10 +126,10 @@ class ReatorArcShader(Widget):
             rc.shader.fs = _SHADER_FS
             self.canvas  = rc
             self._shader_ok = True
-        except Exception:
-            self._shader_ok = False   # usa canvas padrão (fallback)
+        except Exception as e:
+            print(f"[SHADER] Fallback sem shader: {e}")
+            self._shader_ok = False
 
-        super().__init__(**kwargs)
         with self.canvas:
             self.rect = Rectangle(pos=self.pos, size=self.size)
         self.bind(pos=self._upd, size=self._upd)
@@ -145,14 +152,19 @@ class ReatorArcShader(Widget):
     def _tick(self, dt):
         if not self._shader_ok:
             return
-        self.time += dt
-        self.canvas['time']           = self.time
-        self.canvas['resolution']     = (float(self.width), float(self.height))
-        px, py = self.to_window(self.x, self.y)
-        self.canvas['offset']         = (float(px), float(py))
-        self.canvas['build_progress'] = float(self.build_progress)
-        self.canvas['core_color']     = tuple(float(c) for c in self.core_color[:3])
-        self.canvas.ask_update()
+        try:
+            self.time += dt
+            self.canvas['time']           = self.time
+            self.canvas['resolution']     = (float(self.width), float(self.height))
+            px, py = self.to_window(self.x, self.y)
+            self.canvas['offset']         = (float(px), float(py))
+            self.canvas['build_progress'] = float(self.build_progress)
+            self.canvas['core_color']     = tuple(float(c) for c in self.core_color[:3])
+            self.canvas.ask_update()
+        except (TypeError, AttributeError) as e:
+            # Canvas não é mais um RenderContext — desabilita para não gerar flood de erros
+            print(f"[SHADER] _tick desabilitado: {e}")
+            self._shader_ok = False
 
 
 # ═══════════════════════════════════════════════════════════
@@ -572,16 +584,19 @@ class GraficoBarras(Widget):
 # ═══════════════════════════════════════════════════════════
 
 def tremer_tela(intensidade=20):
-    app = App.get_running_app()
-    if not app or not app.root:
-        return
-    sm = app.root.ids.sm
-    ox, oy = sm.pos
-    (Animation(x=ox + intensidade,   y=oy - intensidade,   duration=0.025) +
-     Animation(x=ox - intensidade,   y=oy + intensidade,   duration=0.025) +
-     Animation(x=ox + intensidade / 2, y=oy - intensidade / 2, duration=0.025) +
-     Animation(x=ox,                 y=oy,                 duration=0.025)
-     ).start(sm)
+    try:
+        app = App.get_running_app()
+        if not app or not app.root:
+            return
+        sm = app.root.ids.sm
+        ox, oy = sm.pos
+        (Animation(x=ox + intensidade,   y=oy - intensidade,   duration=0.025) +
+         Animation(x=ox - intensidade,   y=oy + intensidade,   duration=0.025) +
+         Animation(x=ox + intensidade / 2, y=oy - intensidade / 2, duration=0.025) +
+         Animation(x=ox,                 y=oy,                 duration=0.025)
+         ).start(sm)
+    except Exception as e:
+        print(f"[tremer_tela] ignorado: {e}")
 
 
 # ═══════════════════════════════════════════════════════════
