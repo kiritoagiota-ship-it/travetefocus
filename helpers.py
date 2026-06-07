@@ -89,32 +89,42 @@ def aplicar_fundo_holografico(widget, cor_borda=None):
 
 
 def transicao_tela(app, destino):
-    sm = app.root.ids.sm
-    overlay = Widget(size=Window.size, opacity=0)
-    with overlay.canvas:
-        Color(0, 0, 0, 1)
-        Rectangle(pos=(0, 0), size=Window.size)
+    try:
+        sm = app.root.ids.sm
+        overlay = Widget(size=Window.size, opacity=0)
+        with overlay.canvas:
+            Color(0, 0, 0, 1)
+            Rectangle(pos=(0, 0), size=Window.size)
 
-    scan = Widget(size=(Window.width, 2), pos=(0, Window.height))
-    with scan.canvas:
-        Color(0, 0.9, 1, 0.55)
-        scan_rect = Rectangle(pos=scan.pos, size=scan.size)
-    scan.bind(pos=lambda i, v: setattr(scan_rect, 'pos', v))
+        scan = Widget(size=(Window.width, 2), pos=(0, Window.height))
+        with scan.canvas:
+            Color(0, 0.9, 1, 0.55)
+            scan_rect = Rectangle(pos=scan.pos, size=scan.size)
+        scan.bind(pos=lambda i, v: setattr(scan_rect, 'pos', v))
 
-    overlay.add_widget(scan)
-    Window.add_widget(overlay)
+        overlay.add_widget(scan)
+        Window.add_widget(overlay)
 
-    def _fade_out(anim, widget):
-        sm.current = destino
-        anim_out = Animation(opacity=0, duration=0.16, transition='out_quad')
-        anim_out.bind(on_complete=lambda a, w: Window.remove_widget(overlay))
-        anim_out.start(overlay)
+        def _fade_out(anim, widget):
+            try:
+                sm.current = destino
+            except Exception as e:
+                print(f"[transicao] sm.current={destino} falhou: {e}")
+            anim_out = Animation(opacity=0, duration=0.16, transition='out_quad')
+            anim_out.bind(on_complete=lambda a, w: Window.remove_widget(overlay))
+            anim_out.start(overlay)
 
-    anim_in = Animation(opacity=0.92, duration=0.12, transition='out_quad')
-    anim_in.bind(on_complete=lambda a, w: Clock.schedule_once(
-        lambda dt: _fade_out(a, w), 0.02))
-    anim_in.start(overlay)
-    Animation(y=-4, duration=0.24, transition='out_quad').start(scan)
+        anim_in = Animation(opacity=0.92, duration=0.12, transition='out_quad')
+        anim_in.bind(on_complete=lambda a, w: Clock.schedule_once(
+            lambda dt: _fade_out(a, w), 0.02))
+        anim_in.start(overlay)
+        Animation(y=-4, duration=0.24, transition='out_quad').start(scan)
+    except Exception as e:
+        print(f"[transicao_tela] erro: {e} — mudando tela diretamente")
+        try:
+            app.root.ids.sm.current = destino
+        except Exception:
+            pass
 
 
 def animar_ganho_xp(quantidade):
