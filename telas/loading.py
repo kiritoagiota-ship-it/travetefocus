@@ -15,6 +15,25 @@ from efeitos import tremer_tela
 from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup
 
 
+def _safe_treme(intensidade):
+    """Wrapper seguro para tremer_tela — nunca deixa exceção vazar."""
+    try:
+        from efeitos import tremer_tela
+        tremer_tela(intensidade)
+    except Exception as e:
+        print(f"[loading] tremer_tela ignorado: {e}")
+
+
+def _safe_mudar_tela(destino):
+    """Wrapper seguro para mudar_tela — nunca deixa exceção vazar."""
+    try:
+        app = App.get_running_app()
+        if app:
+            app.mudar_tela(destino)
+    except Exception as e:
+        print(f"[loading] mudar_tela({destino}) ignorado: {e}")
+
+
 class TelaLoading(Screen):
 
     def __init__(self, **kwargs):
@@ -44,7 +63,7 @@ class TelaLoading(Screen):
         except Exception as e:
             print(f"[LOADING] ids não prontos: {e}")
             Clock.schedule_once(
-                lambda _: App.get_running_app().mudar_tela("menu"), 0.5)
+                lambda _: _safe_mudar_tela("menu"), 0.5)
 
     def printar_texto(self, texto, callback, vel=0.025):
         # vel padrão reduzido de 0.03 → 0.025
@@ -96,7 +115,7 @@ class TelaLoading(Screen):
         self.ids.barra_loading.cor_linha = [1, 0, 0.2, 1]
         self.reator.core_color           = [1, 0, 0.2]
         Animation.cancel_all(self.reator)
-        tremer_tela(15)
+        _safe_treme(15)
 
     def _popup_quem_e(self, dt):
         if not self._typing_ativo:
@@ -199,7 +218,7 @@ class TelaLoading(Screen):
                 sep._r = Rectangle(pos=sep.pos, size=sep.size)
             lbl_welcome.text = "[color=#ffffff][b]BEM-VINDO, SENHOR.[/b][/color]"
             Animation(opacity=1, duration=0.4, transition='out_quad').start(lbl_welcome)
-            tremer_tela(10)
+            _safe_treme(10)
 
             def _fechar(dt):
                 anim_out = Animation(opacity=0, duration=0.35, transition='in_quad')
@@ -243,7 +262,7 @@ class TelaLoading(Screen):
         a.start(self.ids.barra_loading)
 
     def ignicao(self, *_):
-        tremer_tela(30)
+        _safe_treme(30)
         self.ids.flash_overlay.opacity = 1
         Animation(opacity=0, duration=0.8).start(self.ids.flash_overlay)  # 1.2s → 0.8s
         self.ids.terminal_box.opacity  = 0
@@ -276,7 +295,7 @@ class TelaLoading(Screen):
             self._parar_particulas_dados()
             # 3.0s → 1.5s
             Clock.schedule_once(
-                lambda _: App.get_running_app().mudar_tela("menu"), 1.5)
+                lambda _: _safe_mudar_tela("menu"), 1.5)
 
         Clock.schedule_once(finish, 1.2)  # 1.5s → 1.2s
 
