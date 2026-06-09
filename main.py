@@ -6,6 +6,7 @@ Toda a lógica de telas está em telas/*.py
 import json
 import os
 import threading
+import shutil
 import sys
 from kivy.app import App
 from kivy.lang import Builder
@@ -139,7 +140,6 @@ class TraveteApp(App):
                 json.dump(dados, f, ensure_ascii=False, indent=2)
             os.replace(tmp, dest)
             # Backup rotativo — mantém últimas 3 versões
-            import shutil
             for i in range(2, 0, -1):
                 bsrc = os.path.join(data_dir, f"dados.backup{i}.json")
                 bdst = os.path.join(data_dir, f"dados.backup{i+1}.json")
