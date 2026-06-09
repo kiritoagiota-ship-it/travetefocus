@@ -105,56 +105,108 @@ void main(void){
 
 
 class ReatorArcShader(Widget):
+    """
+    Desktop : usa RenderContext + GLSL (canvas definido ANTES do super(),
+              conforme o padrão oficial dos exemplos do Kivy — o Widget
+              respeita um canvas já definido e não o sobrescreve).
+    Android : usa Canvas puro com arcos animados via Clock — zero risco
+              de crash por driver OpenGL ES.
+    """
     time           = NumericProperty(0.0)
     build_progress = NumericProperty(0.0)
     core_color     = ListProperty([0.0, 0.89, 1.0])
     _shader_ok     = False
+    _is_android    = False
 
     def __init__(self, **kwargs):
-        # REGRA CRÍTICA: super().__init__() DEVE vir PRIMEIRO.
-        # Widget.__init__ executa self.canvas = Canvas() internamente.
-        # Se o RenderContext for criado ANTES, ele é sobrescrito pelo Canvas
-        # padrão, _shader_ok fica True com o canvas errado, e _tick() passa
-        # a falhar 60×/segundo — o Android mata o processo em segundos.
+        from kivy.utils import platform as _plat
+        self._is_android = (_plat == 'android')
+        self._anim_t     = 0.0
+
+        if not self._is_android:
+            # ── Desktop: RenderContext ANTES do super() (padrão Kivy) ──────
+            try:
+                self.canvas = RenderContext(
+                    use_parent_projection=True,
+                    use_parent_modelview=True,
+                    use_parent_frag_modelview=True)
+            except TypeError:
+                try:
+                    self.canvas = RenderContext(
+                        use_parent_projection=True,
+                        use_parent_modelview=True)
+                except Exception:
+                    pass
+
         super().__init__(**kwargs)
 
-        # Só DEPOIS do super() tentamos substituir o canvas pelo RenderContext
-        try:
-            rc = RenderContext(use_parent_projection=True,
-                               use_parent_modelview=True,
-                               use_parent_frag_modelview=True)
-            rc.shader.fs = _SHADER_FS
-            self.canvas  = rc
-            self._shader_ok = True
-        except Exception as e:
-            print(f"[SHADER] Fallback sem shader: {e}")
-            self._shader_ok = False
+        if not self._is_android:
+            try:
+                self.canvas.shader.fs = _SHADER_FS
+                self._shader_ok = True
+            except Exception as e:
+                print(f"[SHADER] GLSL indisponível: {e}")
 
+        # ── Instruções de canvas ──────────────────────────────────────────
         with self.canvas:
-            self.rect = Rectangle(pos=self.pos, size=self.size)
+            if self._is_android:
+                # Três arcos rotativos — sem GLSL, sem risco de crash
+                self._fb_c1   = Color(0, 0.89, 1, 0.55)
+                self._fb_a1   = Line(width=2.5)
+                self._fb_c2   = Color(0, 0.89, 1, 0.30)
+                self._fb_a2   = Line(width=1.5)
+                self._fb_c3   = Color(0, 0.89, 1, 0.15)
+                self._fb_a3   = Line(width=1.0)
+            else:
+                self.rect = Rectangle(pos=self.pos, size=self.size)
+
         self.bind(pos=self._upd, size=self._upd)
         self._clock_ev = None
 
     def on_parent(self, inst, parent):
         if parent is not None:
             if self._clock_ev is None:
-                fps = 60 if self._shader_ok else 30
-                self._clock_ev = Clock.schedule_interval(self._tick, 1.0 / fps)
+                self._clock_ev = Clock.schedule_interval(self._tick, 1.0 / 60)
         else:
             if self._clock_ev is not None:
                 self._clock_ev.cancel()
                 self._clock_ev = None
 
     def _upd(self, *_):
-        self.rect.pos  = self.pos
-        self.rect.size = self.size
+        if not self._is_android and hasattr(self, 'rect'):
+            self.rect.pos  = self.pos
+            self.rect.size = self.size
 
     def _tick(self, dt):
+        self._anim_t += dt
+        t = self._anim_t
+
+        if self._is_android:
+            # ── Animação Canvas pura para Android ────────────────────────
+            import math
+            cx, cy = self.center
+            r  = min(self.width, self.height) * 0.38
+            cc = self.core_color[:3] if len(self.core_color) >= 3 else [0, 0.89, 1]
+
+            a1 = (t * 100) % 360
+            a2 = (-t * 70 + 180) % 360
+            a3 = (t * 140 + 60) % 360
+
+            self._fb_c1.rgba  = (*cc, 0.55)
+            self._fb_a1.circle = (cx, cy, r, a1, a1 + 270)
+
+            self._fb_c2.rgba  = (*cc, 0.30)
+            self._fb_a2.circle = (cx, cy, r * 0.65, a2, a2 + 190)
+
+            self._fb_c3.rgba  = (*cc, 0.18)
+            self._fb_a3.circle = (cx, cy, r * 0.35, a3, a3 + 130)
+            return
+
+        # ── GLSL (Desktop) ────────────────────────────────────────────────
         if not self._shader_ok:
             return
         try:
-            self.time += dt
-            self.canvas['time']           = self.time
+            self.canvas['time']           = t
             self.canvas['resolution']     = (float(self.width), float(self.height))
             px, py = self.to_window(self.x, self.y)
             self.canvas['offset']         = (float(px), float(py))
@@ -162,14 +214,9 @@ class ReatorArcShader(Widget):
             self.canvas['core_color']     = tuple(float(c) for c in self.core_color[:3])
             self.canvas.ask_update()
         except (TypeError, AttributeError) as e:
-            # Canvas não é mais um RenderContext — desabilita para não gerar flood de erros
             print(f"[SHADER] _tick desabilitado: {e}")
             self._shader_ok = False
 
-
-# ═══════════════════════════════════════════════════════════
-#  INPUT HOLOGRÁFICO — NENHUM override de buffer
-# ═══════════════════════════════════════════════════════════
 
 class InputHolografico(TextInput):
     """
