@@ -20,6 +20,9 @@ requirements = python3,kivy,sqlite3
 orientation = portrait
 fullscreen   = 0
 
+# Ícone do app — coloque icon.png na raiz do repositório (512×512 px ideal)
+icon.filename = %(source.dir)s/icon.png
+
 # ── PERMISSÕES ───────────────────────────────────────────────────────────────
 android.permissions = WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE
 
