@@ -75,11 +75,9 @@ def inicializar():
             pass
     try:
         from kivy.core.audio import SoundLoader
-        from kivy.utils import platform
+        from kivy.utils import platform as _plat
 
-        # No Android, /tmp pode ser inacessível ao MediaPlayer do sistema.
-        # user_data_dir aponta para o diretório privado do app, sempre gravável.
-        if platform == 'android':
+        if _plat == 'android':
             try:
                 from kivy.app import App
                 _app = App.get_running_app()
