@@ -16,7 +16,7 @@ from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup
 
 
 def _safe_treme(intensidade):
-    """Wrapper seguro para tremer_tela — nunca deixa exceção vazar."""
+    """Wrapper seguro — tremer_tela nunca vaza exceção para o Clock."""
     try:
         from efeitos import tremer_tela
         tremer_tela(intensidade)
@@ -25,8 +25,9 @@ def _safe_treme(intensidade):
 
 
 def _safe_mudar_tela(destino):
-    """Wrapper seguro para mudar_tela — nunca deixa exceção vazar."""
+    """Wrapper seguro — mudar_tela nunca fecha o app por exceção."""
     try:
+        from kivy.app import App
         app = App.get_running_app()
         if app:
             app.mudar_tela(destino)
