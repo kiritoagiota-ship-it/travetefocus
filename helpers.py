@@ -120,7 +120,7 @@ def transicao_tela(app, destino):
         anim_in.start(overlay)
         Animation(y=-4, duration=0.24, transition='out_quad').start(scan)
     except Exception as e:
-        print(f"[transicao_tela] erro: {e} — mudando tela diretamente")
+        print(f"[transicao_tela] erro: {e}")
         try:
             app.root.ids.sm.current = destino
         except Exception:
