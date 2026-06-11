@@ -15,8 +15,8 @@ from kivy.uix.floatlayout import FloatLayout
 from kivy.core.window import Window
 from kivy.properties import NumericProperty, ListProperty, StringProperty
 from kivy.metrics import dp
-from kivy.utils import platform          # detecção de plataforma confiável
-from kivy.resources import resource_add_path
+from kivy.utils import platform
+from kivy.resources import resource_add_path, resource_find
 
 import som
 from efeitos import *
@@ -45,8 +45,6 @@ class Gerenciador(ScreenManager):
 # ═══════════════════════════════════════════════════════════
 
 def _configurar_janela():
-    # kivy.utils.platform retorna 'android', 'ios', 'win', 'linux', 'macosx'
-    # sys.platform em Android retorna 'linux', não 'android'
     if platform not in ('android', 'ios'):
         Window.size = (420, 780)
         try:
@@ -83,12 +81,8 @@ class TraveteApp(App):
 
     def build(self):
         Window.softinput_mode = 'below_target'
-
-        # No Android, garante que .kv e .ttf são encontrados pelo Kivy
-        # independente do diretório de trabalho definido pelo p4a
         if platform == 'android':
             resource_add_path(os.path.dirname(os.path.abspath(__file__)))
-
         som.inicializar()
         self.carregar_dados()
         kv = resource_find("interface.kv") or "interface.kv"
@@ -127,7 +121,7 @@ class TraveteApp(App):
             "periodos_ganhos": list(self.periodos_ganhos),
             "config_ganhos":   dict(self.config_ganhos),
         }
-        data_dir = self.user_data_dir          # obtido na thread principal
+        data_dir = self.user_data_dir
         threading.Thread(
             target=self._salvar_bg, args=(snapshot, data_dir), daemon=True
         ).start()
@@ -153,10 +147,12 @@ class TraveteApp(App):
     def carregar_dados(self):
         """Carrega dados com fallback para backups se arquivo principal estiver corrompido."""
         d = self.user_data_dir
-        candidatos = [os.path.join(d, "dados.json"),
-                      os.path.join(d, "dados.backup1.json"),
-                      os.path.join(d, "dados.backup2.json"),
-                      os.path.join(d, "dados.backup3.json")]
+        candidatos = [
+            os.path.join(d, "dados.json"),
+            os.path.join(d, "dados.backup1.json"),
+            os.path.join(d, "dados.backup2.json"),
+            os.path.join(d, "dados.backup3.json"),
+        ]
         for arquivo in candidatos:
             if not os.path.exists(arquivo):
                 continue
