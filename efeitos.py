@@ -106,11 +106,8 @@ void main(void){
 
 class ReatorArcShader(Widget):
     """
-    Desktop : usa RenderContext + GLSL (canvas definido ANTES do super(),
-              conforme o padrão oficial dos exemplos do Kivy — o Widget
-              respeita um canvas já definido e não o sobrescreve).
-    Android : usa Canvas puro com arcos animados via Clock — zero risco
-              de crash por driver OpenGL ES.
+    Desktop : RenderContext + GLSL (canvas antes do super() — padrão Kivy).
+    Android : Canvas puro com arcos animados — zero risco de crash de driver.
     """
     time           = NumericProperty(0.0)
     build_progress = NumericProperty(0.0)
@@ -124,7 +121,6 @@ class ReatorArcShader(Widget):
         self._anim_t     = 0.0
 
         if not self._is_android:
-            # ── Desktop: RenderContext ANTES do super() (padrão Kivy) ──────
             try:
                 self.canvas = RenderContext(
                     use_parent_projection=True,
@@ -147,16 +143,14 @@ class ReatorArcShader(Widget):
             except Exception as e:
                 print(f"[SHADER] GLSL indisponível: {e}")
 
-        # ── Instruções de canvas ──────────────────────────────────────────
         with self.canvas:
             if self._is_android:
-                # Três arcos rotativos — sem GLSL, sem risco de crash
-                self._fb_c1   = Color(0, 0.89, 1, 0.55)
-                self._fb_a1   = Line(width=2.5)
-                self._fb_c2   = Color(0, 0.89, 1, 0.30)
-                self._fb_a2   = Line(width=1.5)
-                self._fb_c3   = Color(0, 0.89, 1, 0.15)
-                self._fb_a3   = Line(width=1.0)
+                self._fb_c1 = Color(0, 0.89, 1, 0.55)
+                self._fb_a1 = Line(width=2.5)
+                self._fb_c2 = Color(0, 0.89, 1, 0.30)
+                self._fb_a2 = Line(width=1.5)
+                self._fb_c3 = Color(0, 0.89, 1, 0.15)
+                self._fb_a3 = Line(width=1.0)
             else:
                 self.rect = Rectangle(pos=self.pos, size=self.size)
 
@@ -182,27 +176,21 @@ class ReatorArcShader(Widget):
         t = self._anim_t
 
         if self._is_android:
-            # ── Animação Canvas pura para Android ────────────────────────
             import math
             cx, cy = self.center
             r  = min(self.width, self.height) * 0.38
             cc = self.core_color[:3] if len(self.core_color) >= 3 else [0, 0.89, 1]
-
             a1 = (t * 100) % 360
             a2 = (-t * 70 + 180) % 360
             a3 = (t * 140 + 60) % 360
-
-            self._fb_c1.rgba  = (*cc, 0.55)
+            self._fb_c1.rgba   = (*cc, 0.55)
             self._fb_a1.circle = (cx, cy, r, a1, a1 + 270)
-
-            self._fb_c2.rgba  = (*cc, 0.30)
+            self._fb_c2.rgba   = (*cc, 0.30)
             self._fb_a2.circle = (cx, cy, r * 0.65, a2, a2 + 190)
-
-            self._fb_c3.rgba  = (*cc, 0.18)
+            self._fb_c3.rgba   = (*cc, 0.18)
             self._fb_a3.circle = (cx, cy, r * 0.35, a3, a3 + 130)
             return
 
-        # ── GLSL (Desktop) ────────────────────────────────────────────────
         if not self._shader_ok:
             return
         try:
