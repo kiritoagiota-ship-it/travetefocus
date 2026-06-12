@@ -57,9 +57,9 @@ class TelaMemorias(Screen):
         cont = self.ids.memorias_container
         if cont.children:
             for child in list(cont.children):
-                Animation(opacity=0, duration=0.15,
+                Animation(opacity=0, duration=0.10,
                           transition='out_quad').start(child)
-            Clock.schedule_once(lambda dt: self.atualizar_lista(), 0.17)
+            Clock.schedule_once(lambda dt: self.atualizar_lista(), 0.12)
         else:
             self.atualizar_lista()
 
@@ -81,7 +81,7 @@ class TelaMemorias(Screen):
 
         if not mems:
             vazio = Label(
-                text="[ SEM REGISTROS ]\n\nFinalize um turno para\npopular o banco de memórias.",
+                text="[ SEM REGISTROS ]\n\nFinalize um turno para\npopular o banco de memorias.",
                 font_name="orbitron.ttf", font_size="12sp",
                 color=(0, 0.9, 1, 0), halign="center", valign="middle",
                 size_hint_y=None, height=160)
@@ -97,16 +97,20 @@ class TelaMemorias(Screen):
             crown  = "★ " if is_rec else ""
             btn    = ListaItem(
                 text=f"  {crown}{m['data']}   ·   {m['total']} un.   ·   +{m.get('xp', 0)} XP")
+            # Altura compacta e texto centralizado verticalmente
+            btn.height = dp(52)
+            btn.valign = 'middle'
             if is_rec:
-                btn.cor_borda = btn.cor_borda_kv = [1.0, 0.82, 0.0, 1.0]
-                btn.cor_fundo = [0.10, 0.08, 0.0, 0.92]
-                btn.cor_texto = [1.0, 0.88, 0.1, 1.0]
+                btn.cor_borda    = [1.0, 0.82, 0.0, 1.0]
+                btn.cor_borda_kv = [1.0, 0.82, 0.0, 1.0]
+                btn.cor_fundo    = [0.10, 0.08, 0.0, 0.92]
+                btn.cor_texto    = [1.0, 0.88, 0.1, 1.0]
             btn.bind(on_release=lambda x, mem=m: self.abrir_detalhes_memoria(mem))
             btn.opacity = 0
             cont.add_widget(btn)
             Clock.schedule_once(
-                lambda dt, b=btn: Animation(opacity=1, duration=0.22).start(b),
-                i * 0.05)
+                lambda dt, b=btn: Animation(opacity=1, duration=0.18).start(b),
+                i * 0.04)
 
     def _atualizar_grafico(self):
         app      = App.get_running_app()
@@ -129,54 +133,73 @@ class TelaMemorias(Screen):
 
     def abrir_detalhes_memoria(self, memoria):
         pop, layout = _make_popup()
-        h = min(460, int(Window.height * 0.78))
-        caixa = BoxLayout(orientation='vertical', padding=[22, 18, 22, 18],
-                          spacing=10, size_hint=(0.92, None), height=h)
+        h = min(int(Window.height * 0.80), 520)
+        caixa = BoxLayout(orientation='vertical', padding=[dp(20), dp(16), dp(20), dp(16)],
+                          spacing=dp(8), size_hint=(0.93, None), height=h)
         aplicar_fundo_holografico(caixa, (0.5, 0.05, 0.9, 0.9))
 
-        header = BoxLayout(size_hint_y=None, height=dp(54), spacing=8)
+        # ── Header: resumo + edição de data ─────────────────────────────
+        header = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
         lbl_info = Label(
-            text=(f"[color=#8a2be2]▸ TOTAL:[/color] "
+            text=(f"[color=#8a2be2]TOTAL:[/color] "
                   f"[color=#00e5ff]{memoria['total']} un.[/color]   "
                   f"[color=#8a2be2]XP:[/color] "
                   f"[color=#00ff88]+{memoria.get('xp', 0)}[/color]"),
             markup=True, font_name="orbitron.ttf", font_size="11sp",
-            halign="left", valign="middle", size_hint_x=0.6)
-        lbl_info.text_size = (lbl_info.width, None)
-        lbl_info.bind(width=lambda i, v: setattr(i, 'text_size', (v, None)))
+            halign="left", valign="middle", size_hint_x=0.58)
+        lbl_info.bind(size=lambda i, v: setattr(i, 'text_size', (v[0], None)))
 
         data_atual = memoria['data'].strip().split()[0]
         inp_data = InputHolografico(
-            text=data_atual, font_name="orbitron.ttf", font_size="15sp",
+            text=data_atual, font_name="orbitron.ttf", font_size="14sp",
             foreground_color=(0, 0.9, 1, 1), cursor_color=(0, 0.9, 1, 1),
-            halign="center", size_hint_x=0.4)
+            halign="center", size_hint_x=0.42)
         header.add_widget(lbl_info)
         header.add_widget(inp_data)
         caixa.add_widget(header)
 
         btn_salvar_data = BotaoAngular(
-            text="💾  SALVAR DATA", size_hint_y=None, height=dp(42),
-            font_size="12sp", cor_borda=[0, 0.9, 1, 0.9],
-            cor_borda_kv=[0, 0.9, 1, 0.9], cor_texto=[0, 0.9, 1, 1])
+            text="SALVAR DATA", size_hint_y=None, height=dp(40),
+            font_size="12sp")
         caixa.add_widget(btn_salvar_data)
 
-        scroll = ScrollView(size_hint=(1, 1))
-        texto  = "[color=#00e5ff]══ ITENS DO TURNO ══[/color]\n\n"
-        for item in memoria['itens']:
-            texto += (f"  [color=#ffffff]▸ [b]{item[0]}[/b][/color]"
-                      f"   {item[1]} un.   "
-                      f"[color=#00ff88]+{item[2]} XP[/color]\n\n")
-        lbl = Label(text=texto, markup=True, halign="left", valign="top",
-                    font_name="rajdhani.ttf", font_size="15sp", size_hint_y=None)
-        lbl.bind(texture_size=lbl.setter('size'))
-        scroll.add_widget(lbl)
+        # ── ScrollView com itens do turno ────────────────────────────────
+        scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
 
-        botoes = BoxLayout(size_hint_y=None, height=dp(52), spacing=14)
-        btn_f  = BotaoAngular(text="FECHAR",  size_hint_x=0.6)
-        btn_a  = BotaoAngularAlerta(text="APAGAR", size_hint_x=0.4)
-        botoes.add_widget(btn_f); botoes.add_widget(btn_a)
+        itens = memoria.get('itens', [])
+        if itens:
+            texto = "[color=#00e5ff]ITENS DO TURNO[/color]\n\n"
+            for item in itens:
+                nome_item = item[0] if len(item) > 0 else "?"
+                qtd_item  = item[1] if len(item) > 1 else 0
+                xp_item   = item[2] if len(item) > 2 else 0
+                texto += (f"  [color=#ffffff]  [b]{nome_item}[/b][/color]"
+                          f"   {qtd_item} un."
+                          f"   [color=#00ff88]+{xp_item} XP[/color]\n\n")
+        else:
+            texto = "[color=#555555]Nenhum item registrado neste turno.[/color]"
+
+        # text_size com largura fixa — garante quebra de linha e altura correta
+        content_w = Window.width * 0.88
+        lbl = Label(
+            text=texto, markup=True,
+            halign="left", valign="top",
+            font_name="rajdhani.ttf", font_size="16sp",
+            size_hint_y=None,
+            text_size=(content_w, None))
+        # Apenas altura é ligada ao texture_size (não a largura)
+        lbl.bind(texture_size=lambda inst, val: setattr(inst, 'height', val[1]))
+        scroll.add_widget(lbl)
         caixa.add_widget(scroll)
+
+        # ── Botões de ação ───────────────────────────────────────────────
+        botoes = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(12))
+        btn_f  = BotaoAngular(text="FECHAR",  size_hint_x=0.55)
+        btn_a  = BotaoAngularAlerta(text="APAGAR", size_hint_x=0.45)
+        botoes.add_widget(btn_f)
+        botoes.add_widget(btn_a)
         caixa.add_widget(botoes)
+
         layout.add_widget(caixa)
         caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
 
@@ -189,15 +212,13 @@ class TelaMemorias(Screen):
                 memoria['data'] = f"{d.strftime('%d/%m/%Y')}  {hora}"
                 som.tocar_salvar()
                 App.get_running_app().salvar_dados()
-                btn_salvar_data.cor_borda = btn_salvar_data.cor_borda_kv = [0, 1, 0.53, 1]
-                from kivy.animation import Animation as A
-                A(cor_borda=[0, 0.9, 1, 0.9], duration=0.8).start(btn_salvar_data)
-                self.atualizar_lista(); self._atualizar_grafico()
+                self.atualizar_lista()
+                self._atualizar_grafico()
             except ValueError:
-                from kivy.animation import Animation as A
-                A.cancel_all(inp_data, 'borda_color')
-                (A(borda_color=[1, 0.1, 0.2, 1], duration=0.08) +
-                 A(borda_color=[0.55, 0.05, 0.95, 1], duration=0.35)).start(inp_data)
+                Animation.cancel_all(inp_data, 'borda_color')
+                (Animation(borda_color=[1, 0.1, 0.2, 1], duration=0.08) +
+                 Animation(borda_color=[0.55, 0.05, 0.95, 1], duration=0.35)
+                 ).start(inp_data)
 
         def _executar_delete():
             app = App.get_running_app()
@@ -205,7 +226,8 @@ class TelaMemorias(Screen):
                 app.memorias.remove(memoria)
                 app.recalcular_totais()
                 app.salvar_dados()
-            self.atualizar_lista(); self._atualizar_grafico()
+            self.atualizar_lista()
+            self._atualizar_grafico()
             pop.dismiss()
 
         def _deletar(*_):
@@ -220,31 +242,36 @@ class TelaMemorias(Screen):
 
     def confirmar_wipe(self):
         pop, layout = _make_popup()
-        caixa = BoxLayout(orientation='vertical', padding=[26, 22, 26, 22],
-                          spacing=16, size_hint=(0.84, None), height=210)
+        caixa = BoxLayout(orientation='vertical', padding=[dp(26), dp(22), dp(26), dp(22)],
+                          spacing=dp(16), size_hint=(0.84, None), height=dp(210))
         aplicar_fundo_holografico(caixa, (1.0, 0.08, 0.22, 0.9))
         caixa.add_widget(Label(
-            text=("[color=#ff2244]⚠  WIPE TOTAL[/color]\n"
-                  "[color=#cccccc]Apagar TODAS as memórias e XP?\nSem volta.[/color]"),
+            text=("[color=#ff2244]  WIPE TOTAL[/color]\n"
+                  "[color=#cccccc]Apagar TODAS as memorias e XP?\nSem volta.[/color]"),
             markup=True, font_name="orbitron.ttf", font_size="13sp",
-            halign="center", size_hint_y=None, height=82))
-        botoes = BoxLayout(size_hint_y=None, height=50, spacing=14)
+            halign="center", size_hint_y=None, height=dp(82)))
+        botoes = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(14))
         btn_s  = BotaoAngularAlerta(text="FORMATAR TUDO")
         btn_n  = BotaoAngular(text="CANCELAR")
-        botoes.add_widget(btn_s); botoes.add_widget(btn_n)
+        botoes.add_widget(btn_s)
+        botoes.add_widget(btn_n)
         caixa.add_widget(botoes)
         layout.add_widget(caixa)
         caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
 
         def _confirmar(*_):
             app = App.get_running_app()
-            app.memorias.clear(); app.registros.clear()
+            app.memorias.clear()
+            app.registros.clear()
             app.recalcular_totais()
-            app.streak = 0; app.ultima_data = ""
+            app.streak = 0
+            app.ultima_data = ""
             app.salvar_dados()
-            self.atualizar_lista(); self._atualizar_grafico()
+            self.atualizar_lista()
+            self._atualizar_grafico()
             som.tocar_wipe()
-            som.tocar_wipe(); tremer_tela(25); pop.dismiss()
+            tremer_tela(25)
+            pop.dismiss()
 
         btn_s.bind(on_release=_confirmar)
         btn_n.bind(on_release=lambda *_: pop.dismiss())
