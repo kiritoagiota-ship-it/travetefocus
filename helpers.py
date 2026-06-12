@@ -110,15 +110,15 @@ def transicao_tela(app, destino):
                 sm.current = destino
             except Exception as e:
                 print(f"[transicao] sm.current={destino} falhou: {e}")
-            anim_out = Animation(opacity=0, duration=0.16, transition='out_quad')
+            anim_out = Animation(opacity=0, duration=0.08, transition='out_quad')
             anim_out.bind(on_complete=lambda a, w: Window.remove_widget(overlay))
             anim_out.start(overlay)
 
-        anim_in = Animation(opacity=0.92, duration=0.12, transition='out_quad')
+        anim_in = Animation(opacity=0.92, duration=0.06, transition='out_quad')
         anim_in.bind(on_complete=lambda a, w: Clock.schedule_once(
-            lambda dt: _fade_out(a, w), 0.02))
+            lambda dt: _fade_out(a, w), 0.01))
         anim_in.start(overlay)
-        Animation(y=-4, duration=0.24, transition='out_quad').start(scan)
+        Animation(y=-4, duration=0.12, transition='out_quad').start(scan)
     except Exception as e:
         print(f"[transicao_tela] erro: {e}")
         try:
