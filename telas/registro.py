@@ -3,6 +3,7 @@ from kivy.uix.screenmanager import Screen
 from kivy.app import App
 from kivy.animation import Animation
 from kivy.clock import Clock
+from kivy.metrics import dp
 from efeitos import ListaItem, explodir_estilhacos, tremer_tela
 from helpers import popup_pedir_xp, popup_delete_engracado, popup_resumo_dia, animar_ganho_xp
 from datetime import datetime
@@ -27,6 +28,13 @@ class TelaRegistro(Screen):
         except Exception:
             pass
 
+    def _make_item(self, text):
+        """Cria ListaItem com altura e alinhamento corretos."""
+        btn = ListaItem(text=text)
+        btn.height  = dp(52)   # mais compacto que dp(68)
+        btn.valign  = 'middle' # texto centralizado verticalmente
+        return btn
+
     def atualizar(self):
         self.ids.lista_container.clear_widgets()
         registros = App.get_running_app().registros
@@ -44,14 +52,14 @@ class TelaRegistro(Screen):
 
         for i, r in enumerate(registros):
             nome = r[0][:18] + "…" if len(r[0]) > 18 else r[0]
-            btn  = ListaItem(text=f"  {nome}   ·   {r[1]} un.   ·   +{r[2]} XP")
+            btn  = self._make_item(f"  {nome}   ·   {r[1]} un.   ·   +{r[2]} XP")
             btn.bind(on_release=lambda x, dado=r, w=btn: self.confirmar_delete(dado, w))
             btn.opacity = 0
             self.ids.lista_container.add_widget(btn)
             Clock.schedule_once(
                 lambda dt, b=btn: Animation(
                     opacity=1, duration=0.25, transition='out_quad').start(b),
-                i * 0.07)
+                i * 0.06)
 
     def adicionar_item(self):
         n = self.ids.nome_input.text.strip()
@@ -61,7 +69,7 @@ class TelaRegistro(Screen):
         if not q or not q.isdigit() or int(q) <= 0:
             self._shake_input(self.ids.qtd_input)
         if not (n and q and q.isdigit() and int(q) > 0):
-            som.tocar_erro()   # ← som de erro
+            som.tocar_erro()
             return
         popup_pedir_xp(n, int(q), lambda xp: self.salvar(n, q, xp))
 
@@ -80,13 +88,13 @@ class TelaRegistro(Screen):
         app.salvar_dados()
         self.ids.nome_input.text = ""
         self.ids.qtd_input.text  = ""
-        som.tocar_add()        # ← som de lote adicionado
+        som.tocar_add()
         animar_ganho_xp(xp_total)
         self.ids.empty_state.opacity = 0
         self.ids.empty_state.height  = 0
         dado = app.registros[-1]
         nome_curto = n[:18] + "…" if len(n) > 18 else n
-        btn  = ListaItem(text=f"  {nome_curto}   ·   {q} un.   ·   +{xp_total} XP")
+        btn = self._make_item(f"  {nome_curto}   ·   {q} un.   ·   +{xp_total} XP")
         btn.bind(on_release=lambda x, d=dado, w=btn: self.confirmar_delete(d, w))
         btn.opacity = 0
         self.ids.lista_container.add_widget(btn)
@@ -95,7 +103,7 @@ class TelaRegistro(Screen):
 
     def confirmar_delete(self, dado, btn):
         def _fazer():
-            som.tocar_delete()   # ← som de desintegração
+            som.tocar_delete()
             explodir_estilhacos(btn, lambda: self.deletar(dado))
         popup_delete_engracado(_fazer)
 
@@ -112,7 +120,7 @@ class TelaRegistro(Screen):
     def finalizar_dia(self):
         app = App.get_running_app()
         if not app.registros:
-            som.tocar_erro()   # ← sem registros = erro
+            som.tocar_erro()
             return
         tot_pecas = sum(int(x[1]) for x in app.registros)
         tot_xp    = sum(int(x[2]) for x in app.registros)
@@ -142,7 +150,7 @@ class TelaRegistro(Screen):
             app.ultima_data = hoje_str
             app.registros.clear()
             app.salvar_dados()
-            som.tocar_finalizar()   # ← som de finalização de turno
+            som.tocar_finalizar()
             tremer_tela(12)
             self.atualizar()
 
