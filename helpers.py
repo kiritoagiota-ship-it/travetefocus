@@ -23,6 +23,35 @@ from efeitos import (
     ListaItem, tremer_tela, explodir_estilhacos
 )
 
+# ─── Vibração Android ────────────────────────────────────────────────────────
+def vibrar(duracao_ms=80):
+    """Vibra o celular no Android. No-op em outras plataformas."""
+    try:
+        from kivy.utils import platform as _plat
+        if _plat == 'android':
+            from plyer import vibrator
+            vibrator.vibrate(duracao_ms / 1000.0)
+    except Exception:
+        pass  # plyer não disponível ou permissão negada
+
+
+def _bind_teclado(caixa, pop):
+    """
+    Move o modal para cima quando o teclado Android aparecer,
+    evitando que ele cubra o botão de confirmar.
+    """
+    def _on_kb(window, kb_height):
+        if kb_height > 0:
+            offset = kb_height + dp(12)
+            cy = min((offset + caixa.height / 2) / Window.height, 0.94)
+            caixa.pos_hint = {'center_x': 0.5, 'center_y': cy}
+        else:
+            caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+    Window.bind(keyboard_height=_on_kb)
+    pop.bind(on_dismiss=lambda *_: Window.unbind(keyboard_height=_on_kb))
+
+
+
 # ═══════════════════════════════════════════════════════════
 #  SISTEMA DE LEVEL
 # ═══════════════════════════════════════════════════════════
@@ -190,7 +219,7 @@ def popup_pedir_xp(nome: str, quantidade: int, on_save):
     aplicar_fundo_holografico(caixa, (0.55, 0.05, 0.95, 0.9))
 
     lbl_info = Label(
-        text=(f"[color=#8a2be2]▸ LOTE DETECTADO[/color]\n"
+        text=(f"[color=#8a2be2]>> LOTE DETECTADO[/color]\n"
               f"[color=#00e5ff][b]{nome}[/b][/color]   "
               f"[color=#555555]× {quantidade} un.[/color]\n"
               f"[color=#444444]Valor de XP por peça:[/color]"),
@@ -216,7 +245,7 @@ def popup_pedir_xp(nome: str, quantidade: int, on_save):
         lbl_preview.text = f"TOTAL DO LOTE:  [color=#00ff88][b]{xp_un * quantidade} XP[/b][/color]"
 
     inp.bind(text=_preview)
-    btn = BotaoAngular(text="✦  CONFIRMAR  ✦", size_hint_y=None, height=dp(52))
+    btn = BotaoAngular(text=">>  CONFIRMAR  <<", size_hint_y=None, height=dp(52))
 
     for w in [lbl_info, inp, lbl_preview, btn]:
         caixa.add_widget(w)
@@ -231,6 +260,7 @@ def popup_pedir_xp(nome: str, quantidade: int, on_save):
     btn.bind(on_release=_confirmar)
     inp.bind(on_text_validate=_confirmar)
     _abrir_popup(caixa, pop)
+    _bind_teclado(caixa, pop)
     Clock.schedule_once(lambda _: setattr(inp, 'focus', True), 0.40)
 
 
@@ -243,7 +273,7 @@ def popup_delete_engracado(on_confirm):
     aplicar_fundo_holografico(caixa, (1.0, 0.08, 0.22, 0.9))
 
     caixa.add_widget(Label(
-        text=("[color=#ff2244]⚠  ATENÇÃO[/color]\n"
+        text=("[color=#ff2244]!!  ATENCAO[/color]\n"
               "[color=#cccccc]Desintegrar este registro?\n"
               "Esta ação é irreversível.[/color]"),
         markup=True, font_name="orbitron.ttf", font_size="13sp",
@@ -328,4 +358,5 @@ def popup_resumo_dia(tot_pecas, tot_xp, on_confirm):
     btn.bind(on_release=_confirmar)
     inp_data.bind(on_text_validate=_confirmar)
     _abrir_popup(caixa, pop)
+    _bind_teclado(caixa, pop)
     Clock.schedule_once(lambda _: setattr(inp_data, 'focus', True), 0.35)
