@@ -15,7 +15,7 @@ from datetime import datetime
 from efeitos import (BotaoAngular, BotaoAngularAlerta, ListaItem,
                      InputHolografico, tremer_tela, explodir_estilhacos)
 import som
-from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup
+from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, _bind_teclado
 
 
 class TelaMemorias(Screen):
@@ -93,7 +93,7 @@ class TelaMemorias(Screen):
 
         for i, m in enumerate(reversed(mems)):
             is_rec = m['total'] == max_t and max_t > 0
-            crown  = "★ " if is_rec else ""
+            crown  = "[REC] " if is_rec else ""
             btn    = ListaItem(
                 text=f"  {crown}{m['data']}   ·   {m['total']} un.   ·   +{m.get('xp', 0)} XP")
             btn.height = dp(52)
@@ -168,7 +168,7 @@ class TelaMemorias(Screen):
         caixa.add_widget(header)
 
         btn_salvar_data = BotaoAngular(
-            text="SALVAR DATA",
+            text=">>  SALVAR DATA",
             size_hint_y=None, height=dp(38),
             font_size="12sp")
         caixa.add_widget(btn_salvar_data)
@@ -233,7 +233,7 @@ class TelaMemorias(Screen):
 
         # ── Botões ───────────────────────────────────────────────────────
         botoes = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(10))
-        btn_f  = BotaoAngular(text="FECHAR",  size_hint_x=0.55)
+        btn_f  = BotaoAngular(text=">>  FECHAR",  size_hint_x=0.55)
         btn_a  = BotaoAngularAlerta(text="APAGAR", size_hint_x=0.45)
         botoes.add_widget(btn_f)
         botoes.add_widget(btn_a)
@@ -275,6 +275,7 @@ class TelaMemorias(Screen):
             tremer_tela(10)
             explodir_estilhacos(btn_a, _executar_delete)
 
+        _bind_teclado(inp_data, pop)
         btn_salvar_data.bind(on_release=_salvar_data)
         btn_f.bind(on_release=lambda *_: pop.dismiss())
         btn_a.bind(on_release=_deletar)
@@ -313,6 +314,7 @@ class TelaMemorias(Screen):
             self.atualizar_lista()
             self._atualizar_grafico()
             som.tocar_wipe()
+            vibrar(300)
             tremer_tela(25)
             pop.dismiss()
 
