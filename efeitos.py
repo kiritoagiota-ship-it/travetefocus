@@ -105,10 +105,6 @@ void main(void){
 
 
 class ReatorArcShader(Widget):
-    """
-    Desktop : RenderContext + GLSL (canvas antes do super() — padrão Kivy).
-    Android : Canvas puro com arcos animados — zero risco de crash de driver.
-    """
     time           = NumericProperty(0.0)
     build_progress = NumericProperty(0.0)
     core_color     = ListProperty([0.0, 0.89, 1.0])
@@ -118,31 +114,22 @@ class ReatorArcShader(Widget):
     def __init__(self, **kwargs):
         from kivy.utils import platform as _plat
         self._is_android = (_plat == 'android')
-        self._anim_t     = 0.0
-
+        self._anim_t = 0.0
         if not self._is_android:
             try:
                 self.canvas = RenderContext(
                     use_parent_projection=True,
                     use_parent_modelview=True,
                     use_parent_frag_modelview=True)
-            except TypeError:
-                try:
-                    self.canvas = RenderContext(
-                        use_parent_projection=True,
-                        use_parent_modelview=True)
-                except Exception:
-                    pass
-
+            except Exception:
+                pass
         super().__init__(**kwargs)
-
         if not self._is_android:
             try:
                 self.canvas.shader.fs = _SHADER_FS
                 self._shader_ok = True
             except Exception as e:
-                print(f"[SHADER] GLSL indisponível: {e}")
-
+                print(f"[SHADER] indisponivel: {e}")
         with self.canvas:
             if self._is_android:
                 self._fb_c1 = Color(0, 0.89, 1, 0.55)
@@ -153,14 +140,13 @@ class ReatorArcShader(Widget):
                 self._fb_a3 = Line(width=1.0)
             else:
                 self.rect = Rectangle(pos=self.pos, size=self.size)
-
         self.bind(pos=self._upd, size=self._upd)
         self._clock_ev = None
 
     def on_parent(self, inst, parent):
         if parent is not None:
             if self._clock_ev is None:
-                self._clock_ev = Clock.schedule_interval(self._tick, 1.0 / 60)
+                self._clock_ev = Clock.schedule_interval(self._tick, 1/60)
         else:
             if self._clock_ev is not None:
                 self._clock_ev.cancel()
@@ -174,9 +160,7 @@ class ReatorArcShader(Widget):
     def _tick(self, dt):
         self._anim_t += dt
         t = self._anim_t
-
         if self._is_android:
-            import math
             cx, cy = self.center
             r  = min(self.width, self.height) * 0.38
             cc = self.core_color[:3] if len(self.core_color) >= 3 else [0, 0.89, 1]
@@ -190,7 +174,6 @@ class ReatorArcShader(Widget):
             self._fb_c3.rgba   = (*cc, 0.18)
             self._fb_a3.circle = (cx, cy, r * 0.35, a3, a3 + 130)
             return
-
         if not self._shader_ok:
             return
         try:
@@ -202,7 +185,7 @@ class ReatorArcShader(Widget):
             self.canvas['core_color']     = tuple(float(c) for c in self.core_color[:3])
             self.canvas.ask_update()
         except (TypeError, AttributeError) as e:
-            print(f"[SHADER] _tick desabilitado: {e}")
+            print(f"[SHADER] desabilitado: {e}")
             self._shader_ok = False
 
 
@@ -608,7 +591,7 @@ class GraficoBarras(Widget):
                 if val > 0:
                     self._txt(str(val), cx, by + alt + 3, (1, 1, 1, 0.9), 10)
                 if item.get('record'):
-                    self._txt('★', cx, by + alt + 14, (1, 0.88, 0, 1), 11)
+                    self._txt('*', cx, by + alt + 14, (1, 0.88, 0, 1), 11)
                 lbl = item.get('label', '')
                 if lbl:
                     self._txt(lbl, cx, self.y + 5, (0.5, 0.5, 0.78, 0.88), 9)
@@ -627,11 +610,12 @@ def tremer_tela(intensidade=20):
         ox, oy = sm.pos
         (Animation(x=ox + intensidade,   y=oy - intensidade,   duration=0.025) +
          Animation(x=ox - intensidade,   y=oy + intensidade,   duration=0.025) +
-         Animation(x=ox + intensidade / 2, y=oy - intensidade / 2, duration=0.025) +
-         Animation(x=ox,                 y=oy,                 duration=0.025)
+         Animation(x=ox + intensidade/2, y=oy - intensidade/2, duration=0.025) +
+         Animation(x=ox,                y=oy,                  duration=0.025)
          ).start(sm)
     except Exception as e:
         print(f"[tremer_tela] ignorado: {e}")
+
 
 
 # ═══════════════════════════════════════════════════════════
@@ -639,33 +623,42 @@ def tremer_tela(intensidade=20):
 # ═══════════════════════════════════════════════════════════
 
 class ParticulaFundo(Widget):
+    """
+    Partícula circular com glow suave.
+    Glow é centralizado em relação ao core — sem artefato de quadradinho.
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.size_hint = (None, None)
-        t = random.randint(2, 5)
+        t = random.randint(2, 4)          # menor: 2-4px (era 2-5px)
         self.size    = (t, t)
         self.pos     = (random.randint(0, Window.width), random.randint(0, Window.height))
         self.opacity = 0
-        # Cor aleatória entre ciano e roxo para variedade
         if random.random() > 0.5:
-            r, g, b = 0.0, 0.88, 1.0   # ciano
+            r, g, b = 0.0, 0.88, 1.0    # ciano
         else:
             r, g, b = 0.55, 0.10, 0.95  # roxo
+        self._r = r; self._g = g; self._b = b; self._t = t
         with self.canvas:
-            # Glow externo
+            # Glow: elipse grande, opacidade baixa, corretamente centrada
             self._cg = Color(r, g, b, 0)
-            self._gl = Ellipse(pos=(self.x - t*2, self.y - t*2), size=(t * 5, t * 5))
-            # Core
-            self._cc = Color(r + 0.2, g + 0.1, b, 0)
+            gw = t * 6
+            self._gl = Ellipse(
+                pos=(self.x - gw/2 + t/2, self.y - gw/2 + t/2),
+                size=(gw, gw))
+            # Core: ponto sólido
+            self._cc = Color(min(r + 0.2, 1), min(g + 0.1, 1), b, 0)
             self._cr = Ellipse(pos=self.pos, size=self.size)
         self.bind(pos=self._upd, opacity=self._upd)
 
     def _upd(self, *_):
-        t = self.size[0]
-        self._gl.pos = (self.x - t*2, self.y - t*2)
-        self._cr.pos = self.pos
-        self._cg.a   = self.opacity * 0.35   # glow mais visível
-        self._cc.a   = self.opacity
+        t  = self._t
+        gw = t * 6
+        # Glow centrado no mesmo ponto que o core
+        self._gl.pos  = (self.x - gw/2 + t/2, self.y - gw/2 + t/2)
+        self._cr.pos  = self.pos
+        self._cg.a    = self.opacity * 0.20   # glow mais sutil
+        self._cc.a    = self.opacity
 
 
 class FundoAnimado(FloatLayout):
@@ -675,7 +668,7 @@ class FundoAnimado(FloatLayout):
 
     def _init(self, dt):
         # 40 partículas ao invés de 25
-        for _ in range(40):
+        for _ in range(22):    # 40 → 22: menos carga no Android
             p = ParticulaFundo()
             self.add_widget(p)
             self._anim(p)
