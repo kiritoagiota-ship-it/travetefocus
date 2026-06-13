@@ -1,5 +1,5 @@
-import som
 """telas/memorias.py — TelaMemorias"""
+import som
 from kivy.uix.screenmanager import Screen
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
@@ -32,7 +32,7 @@ class TelaMemorias(Screen):
         cont.clear_widgets()
 
         btn_todos = BotaoAngular(text="TODOS",
-                                  size_hint=(None, None), size=(90, 38),
+                                  size_hint=(None, None), size=(dp(80), dp(36)),
                                   font_size="12sp")
         btn_todos.bind(on_release=lambda *_: self._filtrar("TODOS"))
         cont.add_widget(btn_todos)
@@ -48,7 +48,7 @@ class TelaMemorias(Screen):
             if mk not in vistos:
                 vistos.add(mk)
                 b = BotaoAngular(text=mk, size_hint=(None, None),
-                                  size=(110, 38), font_size="11sp")
+                                  size=(dp(100), dp(36)), font_size="11sp")
                 b.bind(on_release=lambda x, k=mk: self._filtrar(k))
                 cont.add_widget(b)
 
@@ -84,8 +84,7 @@ class TelaMemorias(Screen):
                 text="[ SEM REGISTROS ]\n\nFinalize um turno para\npopular o banco de memorias.",
                 font_name="orbitron.ttf", font_size="12sp",
                 color=(0, 0.9, 1, 0), halign="center", valign="middle",
-                size_hint_y=None, height=160)
-            vazio.text_size = (vazio.width, None)
+                size_hint_y=None, height=dp(160))
             vazio.bind(width=lambda i, v: setattr(i, 'text_size', (v, None)))
             cont.add_widget(vazio)
             Animation(color=(0, 0.9, 1, 0.28), duration=0.45,
@@ -97,7 +96,6 @@ class TelaMemorias(Screen):
             crown  = "★ " if is_rec else ""
             btn    = ListaItem(
                 text=f"  {crown}{m['data']}   ·   {m['total']} un.   ·   +{m.get('xp', 0)} XP")
-            # Altura compacta e texto centralizado verticalmente
             btn.height = dp(52)
             btn.valign = 'middle'
             if is_rec:
@@ -133,67 +131,108 @@ class TelaMemorias(Screen):
 
     def abrir_detalhes_memoria(self, memoria):
         pop, layout = _make_popup()
-        h = min(int(Window.height * 0.80), 520)
-        caixa = BoxLayout(orientation='vertical', padding=[dp(20), dp(16), dp(20), dp(16)],
-                          spacing=dp(8), size_hint=(0.93, None), height=h)
+
+        # Altura baseada em dp() — funciona em qualquer densidade de tela
+        alt = min(int(dp(500)), int(Window.height * 0.82))
+        caixa = BoxLayout(
+            orientation='vertical',
+            padding=[dp(18), dp(14), dp(18), dp(14)],
+            spacing=dp(8),
+            size_hint=(0.93, None), height=alt)
         aplicar_fundo_holografico(caixa, (0.5, 0.05, 0.9, 0.9))
 
         # ── Header: resumo + edição de data ─────────────────────────────
-        header = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
+        header = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
+
         lbl_info = Label(
             text=(f"[color=#8a2be2]TOTAL:[/color] "
-                  f"[color=#00e5ff]{memoria['total']} un.[/color]   "
+                  f"[color=#00e5ff][b]{memoria['total']}[/b] un.[/color]\n"
                   f"[color=#8a2be2]XP:[/color] "
-                  f"[color=#00ff88]+{memoria.get('xp', 0)}[/color]"),
+                  f"[color=#00ff88][b]+{memoria.get('xp', 0)}[/b][/color]"),
             markup=True, font_name="orbitron.ttf", font_size="11sp",
-            halign="left", valign="middle", size_hint_x=0.58)
+            halign="left", valign="middle",
+            size_hint_x=0.50)
         lbl_info.bind(size=lambda i, v: setattr(i, 'text_size', (v[0], None)))
 
         data_atual = memoria['data'].strip().split()[0]
         inp_data = InputHolografico(
-            text=data_atual, font_name="orbitron.ttf", font_size="14sp",
-            foreground_color=(0, 0.9, 1, 1), cursor_color=(0, 0.9, 1, 1),
-            halign="center", size_hint_x=0.42)
+            text=data_atual,
+            font_name="orbitron.ttf", font_size="13sp",
+            foreground_color=(0, 0.9, 1, 1),
+            cursor_color=(0, 0.9, 1, 1),
+            halign="center",
+            size_hint_x=0.50)          # mais largo para caber a data completa
+
         header.add_widget(lbl_info)
         header.add_widget(inp_data)
         caixa.add_widget(header)
 
         btn_salvar_data = BotaoAngular(
-            text="SALVAR DATA", size_hint_y=None, height=dp(40),
+            text="SALVAR DATA",
+            size_hint_y=None, height=dp(38),
             font_size="12sp")
         caixa.add_widget(btn_salvar_data)
 
-        # ── ScrollView com itens do turno ────────────────────────────────
+        # Separador visual
+        from kivy.uix.widget import Widget
+        from kivy.graphics import Color, Rectangle
+        sep = Widget(size_hint_y=None, height=dp(1))
+        with sep.canvas:
+            Color(0.5, 0.05, 0.9, 0.5)
+            sep._r = Rectangle(pos=sep.pos, size=sep.size)
+        sep.bind(pos=lambda i, v: setattr(i._r, 'pos', v),
+                 size=lambda i, v: setattr(i._r, 'size', v))
+        caixa.add_widget(sep)
+
+        # ── Lista de itens com BoxLayout — padrão Kivy para scroll ──────
+        # Usando BoxLayout + minimum_height em vez de Label + texture_size
+        # pois o texture_size binding é assíncrono e não funciona bem no Android
         scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
+        items_box = BoxLayout(
+            orientation='vertical',
+            size_hint_y=None,
+            spacing=dp(2),
+            padding=[0, dp(4), 0, dp(4)])
+        items_box.bind(minimum_height=items_box.setter('height'))
 
         itens = memoria.get('itens', [])
+
+        titulo = Label(
+            text="[color=#00e5ff]ITENS DO TURNO[/color]",
+            markup=True, font_name="orbitron.ttf", font_size="11sp",
+            size_hint_y=None, height=dp(28),
+            halign="left", valign="middle")
+        titulo.bind(width=lambda i, v: setattr(i, 'text_size', (v, None)))
+        items_box.add_widget(titulo)
+
         if itens:
-            texto = "[color=#00e5ff]ITENS DO TURNO[/color]\n\n"
             for item in itens:
-                nome_item = item[0] if len(item) > 0 else "?"
+                nome_item = str(item[0]) if len(item) > 0 else "?"
                 qtd_item  = item[1] if len(item) > 1 else 0
                 xp_item   = item[2] if len(item) > 2 else 0
-                texto += (f"  [color=#ffffff]  [b]{nome_item}[/b][/color]"
+                row = Label(
+                    text=(f"  [b]{nome_item}[/b]"
                           f"   {qtd_item} un."
-                          f"   [color=#00ff88]+{xp_item} XP[/color]\n\n")
+                          f"   [color=#00ff88]+{xp_item} XP[/color]"),
+                    markup=True,
+                    font_name="rajdhani.ttf", font_size="15sp",
+                    size_hint_y=None, height=dp(34),
+                    halign="left", valign="middle")
+                row.bind(width=lambda i, v: setattr(i, 'text_size', (v, None)))
+                items_box.add_widget(row)
         else:
-            texto = "[color=#555555]Nenhum item registrado neste turno.[/color]"
+            sem = Label(
+                text="[color=#555555]Nenhum item detalhado disponivel.[/color]",
+                markup=True, font_name="rajdhani.ttf", font_size="14sp",
+                size_hint_y=None, height=dp(40),
+                halign="center", valign="middle")
+            items_box.add_widget(sem)
 
-        # text_size com largura fixa — garante quebra de linha e altura correta
-        content_w = Window.width * 0.88
-        lbl = Label(
-            text=texto, markup=True,
-            halign="left", valign="top",
-            font_name="rajdhani.ttf", font_size="16sp",
-            size_hint_y=None,
-            text_size=(content_w, None))
-        # Apenas altura é ligada ao texture_size (não a largura)
-        lbl.bind(texture_size=lambda inst, val: setattr(inst, 'height', val[1]))
-        scroll.add_widget(lbl)
+        scroll.add_widget(items_box)
         caixa.add_widget(scroll)
 
-        # ── Botões de ação ───────────────────────────────────────────────
-        botoes = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(12))
+        # ── Botões ───────────────────────────────────────────────────────
+        botoes = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(10))
         btn_f  = BotaoAngular(text="FECHAR",  size_hint_x=0.55)
         btn_a  = BotaoAngularAlerta(text="APAGAR", size_hint_x=0.45)
         botoes.add_widget(btn_f)
@@ -203,6 +242,7 @@ class TelaMemorias(Screen):
         layout.add_widget(caixa)
         caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
 
+        # ── Handlers ─────────────────────────────────────────────────────
         def _salvar_data(*_):
             raw = inp_data.text.strip()
             try:
@@ -242,15 +282,18 @@ class TelaMemorias(Screen):
 
     def confirmar_wipe(self):
         pop, layout = _make_popup()
-        caixa = BoxLayout(orientation='vertical', padding=[dp(26), dp(22), dp(26), dp(22)],
-                          spacing=dp(16), size_hint=(0.84, None), height=dp(210))
+        caixa = BoxLayout(
+            orientation='vertical',
+            padding=[dp(26), dp(22), dp(26), dp(22)],
+            spacing=dp(16),
+            size_hint=(0.84, None), height=dp(220))
         aplicar_fundo_holografico(caixa, (1.0, 0.08, 0.22, 0.9))
         caixa.add_widget(Label(
             text=("[color=#ff2244]  WIPE TOTAL[/color]\n"
                   "[color=#cccccc]Apagar TODAS as memorias e XP?\nSem volta.[/color]"),
             markup=True, font_name="orbitron.ttf", font_size="13sp",
-            halign="center", size_hint_y=None, height=dp(82)))
-        botoes = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(14))
+            halign="center", size_hint_y=None, height=dp(84)))
+        botoes = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(14))
         btn_s  = BotaoAngularAlerta(text="FORMATAR TUDO")
         btn_n  = BotaoAngular(text="CANCELAR")
         botoes.add_widget(btn_s)
