@@ -5,7 +5,7 @@ from kivy.animation import Animation
 from kivy.clock import Clock
 from kivy.metrics import dp
 from efeitos import ListaItem, explodir_estilhacos, tremer_tela
-from helpers import popup_pedir_xp, popup_delete_engracado, popup_resumo_dia, animar_ganho_xp
+from helpers import popup_pedir_xp, popup_delete_engracado, popup_resumo_dia, animar_ganho_xp, vibrar
 from datetime import datetime
 import som
 
@@ -89,6 +89,7 @@ class TelaRegistro(Screen):
         self.ids.nome_input.text = ""
         self.ids.qtd_input.text  = ""
         som.tocar_add()
+        vibrar(50)
         animar_ganho_xp(xp_total)
         self.ids.empty_state.opacity = 0
         self.ids.empty_state.height  = 0
@@ -104,6 +105,7 @@ class TelaRegistro(Screen):
     def confirmar_delete(self, dado, btn):
         def _fazer():
             som.tocar_delete()
+            vibrar(80)
             explodir_estilhacos(btn, lambda: self.deletar(dado))
         popup_delete_engracado(_fazer)
 
@@ -151,6 +153,7 @@ class TelaRegistro(Screen):
             app.registros.clear()
             app.salvar_dados()
             som.tocar_finalizar()
+            vibrar(200)
             tremer_tela(12)
             self.atualizar()
 
