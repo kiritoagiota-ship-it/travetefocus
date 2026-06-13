@@ -131,7 +131,7 @@ class TelaLoading(Screen):
         aplicar_fundo_holografico(caixa, (1.0, 0.08, 0.22, 0.9))
 
         lbl_titulo = Label(
-            text="[b][color=#ff2244]⚠  ACESSO BLOQUEADO  ⚠[/color][/b]",
+            text="[b][color=#ff2244]!!  ACESSO BLOQUEADO  !![/color][/b]",
             markup=True, font_name="orbitron.ttf", font_size="13sp",
             size_hint_y=None, height=dp(28), halign="center", valign="middle")
         lbl_titulo.text_size = (Window.width * 0.82, None)
@@ -203,7 +203,7 @@ class TelaLoading(Screen):
             else:
                 _animar_barra(1.0)
                 lbl_nome.text = "[color=#00ff88][b]> KIRITO[/b][/color]"
-                lbl_scan.text = "[color=#00ff88]▸ IDENTIDADE CONFIRMADA[/color]"
+                lbl_scan.text = "[color=#00ff88]>> IDENTIDADE CONFIRMADA[/color]"
                 _scan_color.rgb = (0, 1, 0.55)
                 Clock.schedule_once(_aprovado, 0.4)  # 0.6s → 0.4s
 
@@ -211,8 +211,8 @@ class TelaLoading(Screen):
             if not self._typing_ativo:
                 pop.dismiss(); return
             aplicar_fundo_holografico(caixa, (0, 1, 0.55, 0.9))
-            lbl_titulo.text = "[b][color=#00ff88]◈  ACESSO CONCEDIDO  ◈[/color][/b]"
-            lbl_status.text = "[color=#00e5ff]▸ SISTEMA DESBLOQUEADO[/color]"
+            lbl_titulo.text = "[b][color=#00ff88]>>  ACESSO CONCEDIDO  <<[/color][/b]"
+            lbl_status.text = "[color=#00e5ff]>> SISTEMA DESBLOQUEADO[/color]"
             sep.canvas.before.clear()
             with sep.canvas.before:
                 Color(0, 1, 0.55, 0.5)
