@@ -269,13 +269,16 @@ def popup_delete_engracado(on_confirm):
 
 def popup_resumo_dia(tot_pecas, tot_xp, on_confirm):
     pop, layout = _make_popup()
-    h = min(340, int(Window.height * 0.58))
+    # dp() garante tamanho correto em qualquer densidade de tela
+    alt = min(int(dp(400)), int(Window.height * 0.68))
     caixa = BoxLayout(
-        orientation='vertical', padding=[26, 18, 26, 18], spacing=12,
-        size_hint=(0.90, None), height=h)
+        orientation='vertical',
+        padding=[dp(26), dp(16), dp(26), dp(16)],
+        spacing=dp(10),
+        size_hint=(0.90, None), height=alt)
     aplicar_fundo_holografico(caixa, (0, 0.9, 1, 0.9))
 
-    sep = Widget(size_hint_y=None, height=1)
+    sep = Widget(size_hint_y=None, height=dp(1))
     with sep.canvas:
         Color(0, 0.9, 1, 0.22)
         sep._r = Rectangle(pos=sep.pos, size=sep.size)
@@ -284,19 +287,19 @@ def popup_resumo_dia(tot_pecas, tot_xp, on_confirm):
 
     hoje = datetime.now()
     for w in [
-        Label(text="[b][color=#00e5ff]◈  RESUMO DO TURNO  ◈[/color][/b]",
+        Label(text="[b][color=#00e5ff]  RESUMO DO TURNO  [/color][/b]",
               markup=True, font_name="orbitron.ttf", font_size="16sp",
-              size_hint_y=None, height=36, halign="center"),
+              size_hint_y=None, height=dp(38), halign="center"),
         sep,
         Label(text=(f"[color=#888888]Total Produzido[/color]   "
                     f"[color=#00e5ff][b]{tot_pecas} un.[/b][/color]\n\n"
                     f"[color=#888888]Experiência Obtida[/color]   "
                     f"[color=#00ff88][b]+{tot_xp} XP[/b][/color]"),
               markup=True, font_name="rajdhani.ttf", font_size="18sp",
-              halign="center", size_hint_y=None, height=80),
+              halign="center", size_hint_y=None, height=dp(88)),
         Label(text="[color=#555555]Data do turno:[/color]",
               markup=True, font_name="orbitron.ttf", font_size="11sp",
-              halign="center", size_hint_y=None, height=20),
+              halign="center", size_hint_y=None, height=dp(22)),
     ]:
         caixa.add_widget(w)
 
@@ -304,10 +307,10 @@ def popup_resumo_dia(tot_pecas, tot_xp, on_confirm):
         text=hoje.strftime("%d/%m/%Y"),
         font_name="orbitron.ttf", font_size="22sp",
         foreground_color=(0, 0.9, 1, 1), cursor_color=(0, 0.9, 1, 1),
-        halign="center", size_hint_y=None, height=56)
+        halign="center", size_hint_y=None, height=dp(58))
     caixa.add_widget(inp_data)
 
-    btn = BotaoAngular(text="⬡  SALVAR TURNO  ⬡", size_hint_y=None, height=50)
+    btn = BotaoAngular(text="  SALVAR TURNO  ", size_hint_y=None, height=dp(52))
     caixa.add_widget(btn)
     layout.add_widget(caixa)
     caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
