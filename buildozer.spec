@@ -11,10 +11,10 @@ source.include_exts = py,kv,ttf,json,wav,mp3,ogg,png,jpg
 source.exclude_dirs = tests,bin,.buildozer,.git,__pycache__,.github
 
 # ── VERSÃO ───────────────────────────────────────────────────────────────────
-version = 1.0.0
+version = 1.0.1
 
 # ── DEPENDÊNCIAS ─────────────────────────────────────────────────────────────
-requirements = python3,kivy,sqlite3
+requirements = python3,kivy,sqlite3,plyer
 
 # ── INTERFACE ────────────────────────────────────────────────────────────────
 orientation = portrait
@@ -24,7 +24,7 @@ fullscreen   = 0
 icon.filename = %(source.dir)s/icon.png
 
 # ── PERMISSÕES ───────────────────────────────────────────────────────────────
-android.permissions = WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE
+android.permissions = WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, VIBRATE
 
 # ── APIs ANDROID ─────────────────────────────────────────────────────────────
 # android.api     = versão alvo (Play Store exige 34+)
