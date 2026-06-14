@@ -11,7 +11,7 @@ source.include_exts = py,kv,ttf,json,wav,mp3,ogg,png,jpg
 source.exclude_dirs = tests,bin,.buildozer,.git,__pycache__,.github
 
 # ── VERSÃO ───────────────────────────────────────────────────────────────────
-version = 1.0.1
+version = 1.0.2
 
 # ── DEPENDÊNCIAS ─────────────────────────────────────────────────────────────
 requirements = python3,kivy,sqlite3,plyer
