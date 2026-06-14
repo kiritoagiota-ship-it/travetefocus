@@ -70,6 +70,17 @@ jobs:
           pip install Cython==0.29.36
           pip install buildozer==1.5.0
 
+
+      # ── KEYSTORE PERMANENTE ───────────────────────────────────────────────
+      # Restaura o keystore salvo como GitHub Secret (KEYSTORE_BASE64).
+      # Garante que TODOS os builds usam o mesmo certificado → APK sempre
+      # atualiza sem conflito. Sem esse secret, Android rejeita a instalação.
+      - name: Restaurar keystore de assinatura
+        run: |
+          mkdir -p ~/.android
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > ~/.android/debug.keystore
+          echo "[KEYSTORE] Restaurado com $(wc -c < ~/.android/debug.keystore) bytes"
+
       # ── 7. VARIÁVEIS ANDROID ───────────────────────────────────────────────
       - name: Exportar variáveis de ambiente Android SDK/NDK
         run: |
