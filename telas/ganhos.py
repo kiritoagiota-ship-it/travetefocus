@@ -13,7 +13,7 @@ from datetime import datetime
 from efeitos import (BotaoAngular, BotaoAngularAlerta, ListaItem,
                      tremer_tela, explodir_estilhacos)
 import som
-from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup
+from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, em
 
 
 def _data_str_para_obj(data_str):
@@ -54,10 +54,18 @@ class TelaGanhos(Screen):
         return total
 
     def _calcular_ganho(self, total_pecas):
+        """
+        Base R$0.25/peca para todas as pecas.
+        Bonus R$0.30/peca só para as pecas ACIMA da meta.
+        Ex: 3500 pecas, meta=3000 -> 3000x0.25 + 500x0.30 = R$900.
+        """
         cfg = self._cfg()
-        if total_pecas >= cfg['meta_bonus']:
-            return round(total_pecas * cfg['valor_bonus'], 2)
-        return round(total_pecas * cfg['valor_base'], 2)
+        meta  = cfg['meta_bonus']
+        base  = cfg['valor_base']
+        bonus = cfg['valor_bonus']
+        if total_pecas <= meta:
+            return round(total_pecas * base, 2)
+        return round(meta * base + (total_pecas - meta) * bonus, 2)
 
     def _atualizar_config_ui(self):
         cfg = self._cfg()
@@ -72,10 +80,10 @@ class TelaGanhos(Screen):
         aberto   = next((p for p in reversed(periodos) if not p.get('data_fim')), None)
 
         if aberto is None:
-            self.ids.lbl_periodo_status.text = "[color=#444444]── Nenhum período aberto ──[/color]"
+            self.ids.lbl_periodo_status.text = "[color=#444444]--  Nenhum periodo aberto  --[/color]"
             self.ids.lbl_periodo_pecas.text  = ""
             self.ids.lbl_periodo_ganho.text  = ""
-            self.ids.lbl_periodo_bonus.text  = "[color=#333333]Configure abaixo e clique em ABRIR PERÍODO[/color]"
+            self.ids.lbl_periodo_bonus.text  = "[color=#333333]Configure abaixo e clique em ABRIR PERIODO[/color]"
             self.ids.btn_fechar_periodo.opacity  = 0
             self.ids.btn_fechar_periodo.disabled = True
             return
@@ -85,18 +93,18 @@ class TelaGanhos(Screen):
         ganho    = self._calcular_ganho(pecas)
         bonus_ok = pecas >= cfg['meta_bonus']
         faltam   = max(0, int(cfg['meta_bonus']) - pecas)
-        tipo     = aberto.get('tipo', 'período').capitalize()
+        tipo     = aberto.get('tipo', 'periodo').capitalize()
 
         self.ids.lbl_periodo_status.text = (
-            f"[color=#00ff88]● {tipo} aberto desde [b]{aberto['data_inicio']}[/b][/color]")
+            f"[color=#00ff88]{em('●')} {tipo} aberto desde [b]{aberto['data_inicio']}[/b][/color]")
         self.ids.lbl_periodo_pecas.text = (
-            f"[color=#888888]Peças[/color]\n[color=#00e5ff][b]{pecas}[/b][/color]")
+            f"[color=#888888]Pecas[/color]\n[color=#00e5ff][b]{pecas}[/b][/color]")
         self.ids.lbl_periodo_ganho.text = (
-            f"[color=#888888]Projeção[/color]\n[color=#00ff88][b]R$ {ganho:.2f}[/b][/color]")
+            f"[color=#888888]Projecao[/color]\n[color=#00ff88][b]R$ {ganho:.2f}[/b][/color]")
         self.ids.lbl_periodo_bonus.text = (
-            f"[color=#ffcc00]🔥 BÔNUS ATIVO — R${cfg['valor_bonus']:.2f}/peça[/color]"
+            f"[color=#ffcc00]{em('🔥')} BONUS ATIVO — R${cfg['valor_bonus']:.2f}/peca[/color]"
             if bonus_ok else
-            f"[color=#555555]Faltam {faltam} peças para bônus (R${cfg['valor_bonus']:.2f}/peça)[/color]")
+            f"[color=#555555]Faltam {faltam} pecas para bonus (R${cfg['valor_bonus']:.2f}/peca)[/color]")
         self.ids.btn_fechar_periodo.opacity  = 1
         self.ids.btn_fechar_periodo.disabled = False
 
@@ -108,7 +116,7 @@ class TelaGanhos(Screen):
         fechados = [p for p in app.periodos_ganhos if p.get('data_fim')]
         if not fechados:
             vazio = Label(
-                text="[ SEM PERÍODOS FECHADOS ]",
+                text="[ SEM PERIODOS FECHADOS ]",
                 font_name="orbitron.ttf", font_size="11sp",
                 color=(0, 0.9, 1, 0.22), halign="center", valign="middle",
                 size_hint_y=None, height=dp(60))
@@ -118,17 +126,23 @@ class TelaGanhos(Screen):
 
         for i, p in enumerate(reversed(fechados)):
             tipo  = p.get('tipo', '?').capitalize()
-            di    = p['data_inicio']; df = p['data_fim']
+            di    = p['data_inicio']
+            df    = p['data_fim']
             pecas = p.get('total_pecas', 0)
             ganho = p.get('total_ganho', 0.0)
-            bonus = "🔥 " if pecas >= self._cfg()['meta_bonus'] else ""
+            # Usar em() para o emoji de fogo — fica lindo com markup=True no ListaItem
+            bonus_icon = f"{em('🔥')} " if pecas >= self._cfg()['meta_bonus'] else ""
 
             row = BoxLayout(size_hint_y=None, height=dp(68), spacing=dp(6))
             lbl = ListaItem(
-                text=f"  {bonus}{tipo}  {di}→{df}\n  {pecas} un.   [color=#00ff88]R$ {ganho:.2f}[/color]",
+                text=(f"  {bonus_icon}{tipo}  {di} - {df}\n"
+                      f"  {pecas} un.   [color=#00ff88]R$ {ganho:.2f}[/color]"),
                 markup=True, size_hint_x=0.82)
-            btn_del = BotaoAngularAlerta(text="✕", size_hint_x=0.18, font_size="16sp")
-            row.add_widget(lbl); row.add_widget(btn_del)
+            # Botão de deletar com emoji via em()
+            btn_del = BotaoAngularAlerta(
+                text=em('✕'), size_hint_x=0.18, font_size="18sp")
+            row.add_widget(lbl)
+            row.add_widget(btn_del)
             row.opacity = 0
             cont.add_widget(row)
 
@@ -144,24 +158,26 @@ class TelaGanhos(Screen):
 
                 def _confirmar_delete(*_):
                     som.tocar_delete()
+                    vibrar(80)
                     explodir_estilhacos(widget, _executar)
-                    som.tocar_abrir_periodo(); tremer_tela(8)
+                    tremer_tela(8)
 
                 pop2, lay2 = _make_popup()
                 cx2 = BoxLayout(
-                    orientation='vertical', padding=[22, 18, 22, 18],
-                    spacing=12, size_hint=(0.82, None),
-                    height=min(180, int(Window.height * 0.32)))
+                    orientation='vertical', padding=[dp(22), dp(18), dp(22), dp(18)],
+                    spacing=dp(12), size_hint=(0.82, None),
+                    height=min(dp(180), int(Window.height * 0.32)))
                 aplicar_fundo_holografico(cx2, (1.0, 0.08, 0.22, 0.9))
                 cx2.add_widget(Label(
-                    text=f"[color=#ff2244]⚠  APAGAR PERÍODO?[/color]\n"
-                         f"[color=#cccccc]{tipo}  {di} → {df}\nR$ {ganho:.2f}[/color]",
+                    text=(f"[color=#ff2244]!!  APAGAR PERIODO?[/color]\n"
+                          f"[color=#cccccc]{tipo}  {di} - {df}\nR$ {ganho:.2f}[/color]"),
                     markup=True, font_name="orbitron.ttf", font_size="12sp",
-                    halign="center", size_hint_y=None, height=80))
-                bts = BoxLayout(size_hint_y=None, height=dp(48), spacing=12)
+                    halign="center", size_hint_y=None, height=dp(80)))
+                bts = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(12))
                 bs  = BotaoAngularAlerta(text="APAGAR")
                 bn  = BotaoAngular(text="CANCELAR")
-                bts.add_widget(bs); bts.add_widget(bn)
+                bts.add_widget(bs)
+                bts.add_widget(bn)
                 cx2.add_widget(bts)
                 lay2.add_widget(cx2)
                 cx2.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
@@ -207,8 +223,9 @@ class TelaGanhos(Screen):
         app.periodos_ganhos = periodos
         app.salvar_dados()
         som.tocar_abrir_periodo()
+        vibrar(100)
         self._atualizar_periodo_atual()
-        som.tocar_abrir_periodo(); tremer_tela(8)
+        tremer_tela(8)
 
     def fechar_periodo(self):
         app      = App.get_running_app()
@@ -228,38 +245,45 @@ class TelaGanhos(Screen):
         app.periodos_ganhos  = periodos
         app.salvar_dados()
         som.tocar_fechar_periodo()
-        som.tocar_fechar_periodo(); tremer_tela(15)
+        vibrar(200)
+        tremer_tela(15)
         self._atualizar_periodo_atual()
         self._atualizar_historico()
         self._popup_resultado(pecas, ganho, aberto)
 
     def _popup_resultado(self, pecas, ganho, periodo):
         pop, layout = _make_popup()
-        h   = min(dp(300), int(Window.height * 0.52))
+        h   = min(dp(320), int(Window.height * 0.56))
         cfg = self._cfg()
         caixa = BoxLayout(
-            orientation='vertical', padding=[dp(24), dp(18), dp(24), dp(18)],
+            orientation='vertical',
+            padding=[dp(24), dp(18), dp(24), dp(18)],
             spacing=dp(10), size_hint=(0.90, None), height=h)
         aplicar_fundo_holografico(caixa, (0, 0.9, 1, 0.9))
         bonus_ok = pecas >= cfg['meta_bonus']
         taxa     = cfg['valor_bonus'] if bonus_ok else cfg['valor_base']
+
         caixa.add_widget(Label(
-            text="[b][color=#00e5ff]◈  PERÍODO ENCERRADO  ◈[/color][/b]",
+            text="[b][color=#00e5ff]>>  PERIODO ENCERRADO  <<[/color][/b]",
             markup=True, font_name="orbitron.ttf", font_size="15sp",
             size_hint_y=None, height=dp(34), halign="center"))
+
+        bonus_line = (f"[color=#ffcc00]{em('🔥')} BONUS APLICADO R${taxa:.2f}/peca[/color]"
+                      if bonus_ok else
+                      f"[color=#888888]R$ {taxa:.2f}/peca (base)[/color]")
+
         caixa.add_widget(Label(
-            text=(f"[color=#888888]Período[/color]   "
-                  f"[color=#00e5ff]{periodo['data_inicio']} → {periodo['data_fim']}[/color]\n\n"
-                  f"[color=#888888]Total de peças[/color]   "
+            text=(f"[color=#888888]Periodo[/color]   "
+                  f"[color=#00e5ff]{periodo['data_inicio']} - {periodo['data_fim']}[/color]\n\n"
+                  f"[color=#888888]Total de pecas[/color]   "
                   f"[color=#00e5ff][b]{pecas} un.[/b][/color]\n\n"
-                  f"[color=#888888]Taxa aplicada[/color]   "
-                  f"[color=#{'ffcc00' if bonus_ok else '888888'}]"
-                  f"R$ {taxa:.2f}/peça {'🔥' if bonus_ok else ''}[/color]\n\n"
+                  f"{bonus_line}\n\n"
                   f"[color=#888888]Total a receber[/color]   "
                   f"[color=#00ff88][b]R$ {ganho:.2f}[/b][/color]"),
             markup=True, font_name="rajdhani.ttf", font_size="16sp",
-            halign="center", size_hint_y=None, height=dp(140)))
-        btn = BotaoAngular(text="✓  OK", size_hint_y=None, height=dp(50))
+            halign="center", size_hint_y=None, height=dp(160)))
+
+        btn = BotaoAngular(text=">>  OK", size_hint_y=None, height=dp(50))
         btn.bind(on_release=lambda *_: pop.dismiss())
         caixa.add_widget(btn)
         layout.add_widget(caixa)
