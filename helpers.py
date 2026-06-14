@@ -35,6 +35,17 @@ def vibrar(duracao_ms=80):
         pass  # plyer não disponível ou permissão negada
 
 
+# ─── Suporte a Emoji com fonte dedicada ──────────────────────────────────────
+# NotoEmoji-Regular.ttf deve estar na raiz do projeto.
+# Permite usar emojis em qualquer widget com markup=True,
+# mantendo a fonte Orbitron para o resto do texto.
+EMOJI_FONT = "NotoEmoji-Regular.ttf"
+
+def em(emoji_char):
+    """Renderiza um emoji com a fonte NotoEmoji, mantendo Orbitron ao redor."""
+    return f'[font={EMOJI_FONT}]{emoji_char}[/font]'
+
+
 def _bind_teclado(caixa, pop):
     """
     Move o modal para cima quando o teclado Android aparecer,
@@ -261,7 +272,7 @@ def popup_pedir_xp(nome: str, quantidade: int, on_save):
     inp.bind(on_text_validate=_confirmar)
     _abrir_popup(caixa, pop)
     _bind_teclado(caixa, pop)
-    Clock.schedule_once(lambda _: setattr(inp, 'focus', True), 0.40)
+    # auto-focus removido — evita teclado cobrindo botão
 
 
 def popup_delete_engracado(on_confirm):
@@ -338,10 +349,10 @@ def popup_resumo_dia(tot_pecas, tot_xp, on_confirm):
         font_name="orbitron.ttf", font_size="22sp",
         foreground_color=(0, 0.9, 1, 1), cursor_color=(0, 0.9, 1, 1),
         halign="center", size_hint_y=None, height=dp(58))
+    btn = BotaoAngular(text=">>  SALVAR TURNO  <<", size_hint_y=None, height=dp(52))
+    caixa.add_widget(btn)
     caixa.add_widget(inp_data)
 
-    btn = BotaoAngular(text="  SALVAR TURNO  ", size_hint_y=None, height=dp(52))
-    caixa.add_widget(btn)
     layout.add_widget(caixa)
     caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
 
@@ -359,4 +370,4 @@ def popup_resumo_dia(tot_pecas, tot_xp, on_confirm):
     inp_data.bind(on_text_validate=_confirmar)
     _abrir_popup(caixa, pop)
     _bind_teclado(caixa, pop)
-    Clock.schedule_once(lambda _: setattr(inp_data, 'focus', True), 0.35)
+    # auto-focus removido — teclado sobe só quando usuario toca no campo)
