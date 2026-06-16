@@ -42,8 +42,17 @@ def vibrar(duracao_ms=80):
 EMOJI_FONT = "NotoEmoji-Regular.ttf"
 
 def em(emoji_char):
-    """Renderiza um emoji com a fonte NotoEmoji, mantendo Orbitron ao redor."""
-    return f'[font={EMOJI_FONT}]{emoji_char}[/font]'
+    """
+    Renderiza emoji com NotoEmoji se disponivel — fallback seguro.
+    Sem NotoEmoji no APK: retorna o char diretamente, sem crash.
+    """
+    try:
+        from kivy.resources import resource_find as _rf
+        if _rf(EMOJI_FONT):
+            return f'[font={EMOJI_FONT}]{emoji_char}[/font]'
+    except Exception:
+        pass
+    return emoji_char
 
 
 def _bind_teclado(caixa, pop):
