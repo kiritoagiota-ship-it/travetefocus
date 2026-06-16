@@ -96,7 +96,7 @@ class TelaGanhos(Screen):
         tipo     = aberto.get('tipo', 'periodo').capitalize()
 
         self.ids.lbl_periodo_status.text = (
-            f"[color=#00ff88]{em('●')} {tipo} aberto desde [b]{aberto['data_inicio']}[/b][/color]")
+            f"[color=#00ff88]>> {tipo} aberto desde [b]{aberto['data_inicio']}[/b][/color]")
         self.ids.lbl_periodo_pecas.text = (
             f"[color=#888888]Pecas[/color]\n[color=#00e5ff][b]{pecas}[/b][/color]")
         self.ids.lbl_periodo_ganho.text = (
