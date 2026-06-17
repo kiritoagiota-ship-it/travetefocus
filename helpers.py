@@ -221,10 +221,10 @@ def _abrir_popup(caixa, pop):
     caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.44}
 
     def _on_open(*_):
-        Animation(opacity=1, duration=0.22,
-                  transition='out_quad').start(caixa)
+        Animation(opacity=1, duration=0.18,
+                  transition='out_expo').start(caixa)
         Animation(pos_hint={'center_x': 0.5, 'center_y': 0.5},
-                  duration=0.26, transition='out_quad').start(caixa)
+                  duration=0.22, transition='out_expo').start(caixa)
 
     pop.bind(on_open=_on_open)
     pop.open()
