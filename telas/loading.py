@@ -1,73 +1,217 @@
-"""telas/loading.py — TelaLoading otimizada (18s → ~12s)"""
+"""telas/loading.py — TelaLoading com PIN, sessao inteligente e espadas pixel art"""
+import time
+import os
+import random
+
 from kivy.uix.screenmanager import Screen
 from kivy.app import App
 from kivy.animation import Animation
 from kivy.uix.label import Label
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.widget import Widget
-from kivy.graphics import Color, Rectangle, RoundedRectangle
+from kivy.graphics import Color, Rectangle
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.metrics import dp
-import random
 
-from efeitos import tremer_tela
-from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup
+from efeitos import tremer_tela, InputHolografico, BotaoAngular
+from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, _bind_teclado
+
+# ══════════════════════════════════════════════════════════════
+#  CONFIGURACAO — altere aqui sem mexer em mais nada
+# ══════════════════════════════════════════════════════════════
+SESSION_HORAS  = 4
+SESSION_SEG    = SESSION_HORAS * 3600
+PIN_CORRETO    = "2004"
+ARQUIVO_SESSAO = ".tf_session"
+# ══════════════════════════════════════════════════════════════
 
 
 def _safe_treme(intensidade):
-    """Wrapper seguro — tremer_tela nunca vaza exceção para o Clock."""
     try:
-        from efeitos import tremer_tela
         tremer_tela(intensidade)
     except Exception as e:
-        print(f"[loading] tremer_tela ignorado: {e}")
+        print(f"[loading] tremer ignorado: {e}")
 
 
 def _safe_mudar_tela(destino):
-    """Wrapper seguro — mudar_tela nunca fecha o app por exceção."""
     try:
-        from kivy.app import App
         app = App.get_running_app()
         if app:
             app.mudar_tela(destino)
     except Exception as e:
-        print(f"[loading] mudar_tela({destino}) ignorado: {e}")
+        print(f"[loading] mudar_tela ignorado: {e}")
 
 
 class TelaLoading(Screen):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._typing_ativo = False
+        self._typing_ativo   = False
+        self._espadas_widget = None
+
+    # ── Sessao ─────────────────────────────────────────────────────────────
+
+    def _session_path(self):
+        try:
+            return os.path.join(App.get_running_app().user_data_dir, ARQUIVO_SESSAO)
+        except Exception:
+            return ARQUIVO_SESSAO
+
+    def _sessao_valida(self):
+        try:
+            path = self._session_path()
+            if not os.path.exists(path):
+                return False
+            with open(path) as f:
+                last = float(f.read().strip())
+            elapsed = time.time() - last
+            print(f"[SESSAO] {elapsed/3600:.2f}h desde ultima auth (limite: {SESSION_HORAS}h)")
+            return elapsed < SESSION_SEG
+        except Exception:
+            return False
+
+    def _salvar_sessao(self):
+        try:
+            with open(self._session_path(), 'w') as f:
+                f.write(str(time.time()))
+            print("[SESSAO] Sessao salva.")
+        except Exception as e:
+            print(f"[SESSAO] Nao salva: {e}")
+
+    # ── Entrada ────────────────────────────────────────────────────────────
 
     def on_enter(self):
         Clock.schedule_once(self.preparar, 0.1)
 
     def on_leave(self, *_):
         self._typing_ativo = False
+        self._parar_particulas_dados()
 
     def preparar(self, dt):
         self._typing_ativo = True
         try:
             self.ids.terminal_box.opacity    = 0
             self.ids.titulo_label.opacity    = 0
-            self.ids.espada_esq.opacidade    = 0; self.ids.espada_esq.escala = 0
-            self.ids.espada_dir.opacidade    = 0; self.ids.espada_dir.escala = 0
+            self.ids.espada_esq.opacidade    = 0
+            self.ids.espada_esq.escala       = 0
+            self.ids.espada_dir.opacidade    = 0
+            self.ids.espada_dir.escala       = 0
             self.reator                      = self.ids.reator_shader
             self.reator.build_progress       = 0.0
             self.reator.core_color           = [0, 0.89, 1]
             self.ids.barra_loading.progresso = 0
             self.ids.console_text.text       = ""
-            # ↓ Reduzido de 0.3s para 0.1s
-            Clock.schedule_once(self.start_anim, 0.1)
+            self._add_pixel_swords()
+
+            if self._sessao_valida():
+                Clock.schedule_once(self._quick_load, 0.15)
+            else:
+                Clock.schedule_once(self.start_anim, 0.1)
         except Exception as e:
-            print(f"[LOADING] ids não prontos: {e}")
-            Clock.schedule_once(
-                lambda _: _safe_mudar_tela("menu"), 0.5)
+            print(f"[LOADING] ids nao prontos: {e}")
+            Clock.schedule_once(lambda _: _safe_mudar_tela("menu"), 0.5)
+
+    # ── Pixel Art Espadas ──────────────────────────────────────────────────
+
+    def _add_pixel_swords(self):
+        if self._espadas_widget:
+            try:
+                self.remove_widget(self._espadas_widget)
+            except Exception:
+                pass
+
+        w = Widget(size_hint=(None, None), size=(dp(96), dp(96)))
+
+        def _pos(*_):
+            try:
+                w.center = self.ids.reator_shader.center
+            except Exception:
+                pass
+
+        _pos()
+        try:
+            self.ids.reator_shader.bind(center=lambda *_: _pos())
+            self.bind(size=lambda *_: _pos())
+        except Exception:
+            pass
+
+        self._desenhar_espadas(w)
+        self.add_widget(w)
+        self._espadas_widget = w
+
+    def _desenhar_espadas(self, widget):
+        BLADE  = (0.85, 0.92, 0.97, 0.95)
+        GUARD  = (1.00, 0.80, 0.15, 1.00)
+        HANDLE = (0.52, 0.30, 0.10, 0.90)
+        POMMEL = (0.00, 0.88, 1.00, 1.00)
+        GEM    = (0.00, 1.00, 0.88, 1.00)
+
+        pixels = [
+            # Espada 1 lamina superior (diagonal \)
+            (-6, 6, BLADE), (-5, 5, BLADE), (-4, 4, BLADE),
+            (-3, 3, BLADE), (-2, 2, BLADE), (-1, 1, BLADE),
+            # Espada 2 lamina superior (diagonal /)
+            ( 6, 6, BLADE), ( 5, 5, BLADE), ( 4, 4, BLADE),
+            ( 3, 3, BLADE), ( 2, 2, BLADE), ( 1, 1, BLADE),
+            # Guardas em losango ao redor do cruzamento
+            (-2, 0, GUARD), (-1, 1, GUARD), (0, 2, GUARD),
+            ( 2, 0, GUARD), ( 1, 1, GUARD),
+            # Gema central
+            (0, 0, GEM),
+            # Espada 1 lamina inferior
+            ( 1, -1, BLADE), ( 2, -2, BLADE), ( 3, -3, BLADE),
+            # Espada 2 lamina inferior
+            (-1, -1, BLADE), (-2, -2, BLADE), (-3, -3, BLADE),
+            # Cabos
+            ( 4, -4, HANDLE), ( 5, -5, HANDLE),
+            (-4, -4, HANDLE), (-5, -5, HANDLE),
+            # Pommels (gemas nas pontas)
+            ( 6, -6, POMMEL),
+            (-6, -6, POMMEL),
+        ]
+
+        ps = max(2, int(widget.width / 28))
+        cx = widget.center_x
+        cy = widget.center_y
+
+        with widget.canvas:
+            for dx, dy, cor in pixels:
+                Color(*cor)
+                Rectangle(
+                    pos=(cx + dx * ps - ps / 2, cy + dy * ps - ps / 2),
+                    size=(ps, ps))
+
+    # ── Quick Load ─────────────────────────────────────────────────────────
+
+    def _quick_load(self, dt):
+        if not self._typing_ativo:
+            return
+        self.ids.barra_loading.opacity = 1
+        self.reator.core_color = [0, 0.89, 1]
+        Animation(build_progress=1.0, duration=1.0).start(self.reator)
+        Animation(progresso=100, duration=1.0).start(self.ids.barra_loading)
+
+        t     = self.ids.titulo_label
+        t.opacity = 1
+        chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*!"
+        alvo  = "TRAVETE FOCUS"
+        ev = Clock.schedule_interval(
+            lambda dt: setattr(t, 'text',
+                ''.join(random.choice(chars) for _ in range(len(alvo)))),
+            0.04)
+
+        def _finish(dt2):
+            ev.cancel()
+            t.text = alvo
+            self.ids.version_label.opacity = 1
+            Clock.schedule_once(lambda _: _safe_mudar_tela("menu"), 0.5)
+
+        Clock.schedule_once(_finish, 0.8)
+
+    # ── Full Load — texto ──────────────────────────────────────────────────
 
     def printar_texto(self, texto, callback, vel=0.025):
-        # vel padrão reduzido de 0.03 → 0.025
         buf   = self.ids.console_text.text
         c_idx = 0
 
@@ -94,14 +238,12 @@ class TelaLoading(Screen):
         Clock.schedule_once(tick, vel)
 
     def start_anim(self, dt):
-        # Terminal fade: 1.0s → 0.5s
         Animation(opacity=1, duration=0.5).start(self.ids.terminal_box)
         self.ids.barra_loading.opacity = 1
         self.start_text()
 
     def start_text(self):
         def p1():
-            # durations: 1.5s → 1.2s
             Animation(progresso=45, duration=1.2).start(self.ids.barra_loading)
             Animation(build_progress=0.6, duration=1.2).start(self.reator)
             Clock.schedule_once(self.etapa_erro, 1.2)
@@ -111,14 +253,15 @@ class TelaLoading(Screen):
     def etapa_erro(self, dt):
         self.printar_texto(
             "\n[color=#ff0044]>[ERRO] FIREWALL ATIVO! BLOQUEIO.[/color]",
-            # 0.6s → 0.4s
-            lambda: Clock.schedule_once(self._popup_quem_e, 0.4), 0.02)
+            lambda: Clock.schedule_once(self._popup_pin, 0.4), 0.02)
         self.ids.barra_loading.cor_linha = [1, 0, 0.2, 1]
         self.reator.core_color           = [1, 0, 0.2]
         Animation.cancel_all(self.reator)
         _safe_treme(15)
 
-    def _popup_quem_e(self, dt):
+    # ── Popup PIN ──────────────────────────────────────────────────────────
+
+    def _popup_pin(self, dt):
         if not self._typing_ativo:
             return
 
@@ -127,119 +270,109 @@ class TelaLoading(Screen):
             orientation='vertical',
             padding=[dp(24), dp(20), dp(24), dp(20)],
             spacing=dp(10),
-            size_hint=(0.90, None), height=dp(320))
+            size_hint=(0.88, None), height=dp(300))
         aplicar_fundo_holografico(caixa, (1.0, 0.08, 0.22, 0.9))
 
         lbl_titulo = Label(
             text="[b][color=#ff2244]!!  ACESSO BLOQUEADO  !![/color][/b]",
             markup=True, font_name="orbitron.ttf", font_size="13sp",
             size_hint_y=None, height=dp(28), halign="center", valign="middle")
-        lbl_titulo.text_size = (Window.width * 0.82, None)
+        lbl_titulo.text_size = (Window.width * 0.80, None)
 
-        lbl_scan = Label(
-            text="[color=#ff8855]INICIANDO VERIFICAÇÃO BIOMÉTRICA...[/color]",
-            markup=True, font_name="orbitron.ttf", font_size="10sp",
+        lbl_sub = Label(
+            text="[color=#ff8855]VERIFICACAO DE IDENTIDADE NECESSARIA[/color]",
+            markup=True, font_name="orbitron.ttf", font_size="9sp",
             size_hint_y=None, height=dp(20), halign="center", valign="middle")
-        lbl_scan.text_size = (Window.width * 0.82, None)
+        lbl_sub.text_size = (Window.width * 0.80, None)
 
-        barra_scan = Widget(size_hint_y=None, height=dp(6))
-        with barra_scan.canvas:
-            Color(0.2, 0.2, 0.2, 0.6)
-            RoundedRectangle(pos=barra_scan.pos, size=barra_scan.size, radius=[3])
-            _scan_color = Color(1, 0.2, 0.2, 1)
-            _scan_rect  = RoundedRectangle(pos=barra_scan.pos, size=(0, barra_scan.height), radius=[3])
-        barra_scan.bind(pos=lambda i, v: setattr(_scan_rect, 'pos', v))
+        lbl_inst = Label(
+            text="[color=#888888]Insira o codigo de acesso:[/color]",
+            markup=True, font_name="orbitron.ttf", font_size="10sp",
+            size_hint_y=None, height=dp(22), halign="center", valign="middle")
+        lbl_inst.text_size = (Window.width * 0.80, None)
 
-        lbl_nome = Label(
-            text="[color=#ff4444]> ______[/color]",
-            markup=True, font_name="orbitron.ttf", font_size="28sp",
-            size_hint_y=None, height=dp(56), halign="center", valign="middle")
-        lbl_nome.text_size = (Window.width * 0.82, None)
+        # Botao ANTES do input — teclado nao cobre o botao
+        btn = BotaoAngular(
+            text=">>  VERIFICAR  <<",
+            size_hint_y=None, height=dp(50))
+
+        inp_pin = InputHolografico(
+            password=True,
+            input_filter='int',
+            font_name="orbitron.ttf", font_size="32sp",
+            background_color=(0, 0, 0, 0),
+            foreground_color=(1, 0.3, 0.3, 1),
+            cursor_color=(1, 0.3, 0.3, 1),
+            halign="center",
+            size_hint_y=None, height=dp(68))
 
         lbl_status = Label(
-            text="", markup=True, font_name="rajdhani.ttf", font_size="17sp",
-            size_hint_y=None, height=dp(32), halign="center", valign="middle")
-        lbl_status.text_size = (Window.width * 0.82, None)
+            text="",
+            markup=True, font_name="rajdhani.ttf", font_size="14sp",
+            size_hint_y=None, height=dp(24), halign="center", valign="middle")
+        lbl_status.text_size = (Window.width * 0.80, None)
 
-        sep = Widget(size_hint_y=None, height=dp(1))
-        with sep.canvas:
-            Color(1, 0.2, 0.2, 0.4)
-            sep._r = Rectangle(pos=sep.pos, size=sep.size)
-        sep.bind(pos=lambda i, v: setattr(i._r, 'pos', v),
-                 size=lambda i, v: setattr(i._r, 'size', v))
-
-        lbl_welcome = Label(
-            text="", markup=True, font_name="orbitron.ttf", font_size="12sp",
-            size_hint_y=None, height=dp(28), halign="center", valign="middle", opacity=0)
-        lbl_welcome.text_size = (Window.width * 0.82, None)
-
-        for w in [lbl_titulo, lbl_scan, barra_scan, lbl_nome, sep, lbl_status, lbl_welcome]:
+        for w in [lbl_titulo, lbl_sub, lbl_inst, btn, inp_pin, lbl_status]:
             caixa.add_widget(w)
 
         layout.add_widget(caixa)
-        caixa.pos_hint  = {'center_x': 0.5, 'center_y': 0.5}
-        caixa.opacity   = 0
-        caixa.size_hint = (0.01, None)
-        (Animation(opacity=1, duration=0.25, transition='out_quad') &
-         Animation(size_hint_x=0.90, duration=0.30, transition='out_back')).start(caixa)
-        pop.open()
+        caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+        tentativas = [3]
 
-        chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%!?"
-        alvo  = "KIRITO"
-        etapa = [0]
+        def _verificar(*_):
+            pin = inp_pin.text.strip()
+            if pin == PIN_CORRETO:
+                lbl_titulo.text = "[b][color=#00ff88]>>  ACESSO CONCEDIDO  <<[/color][/b]"
+                lbl_sub.text    = "[color=#00ff88]IDENTIDADE CONFIRMADA — BEM-VINDO, KIRITO[/color]"
+                aplicar_fundo_holografico(caixa, (0, 1, 0.55, 0.9))
+                inp_pin.foreground_color = [0, 1, 0.55, 1]
+                inp_pin.text = "****"
+                btn.disabled = True
+                _safe_treme(10)
+                self._salvar_sessao()
 
-        def _animar_barra(prog):
-            _scan_rect.size = (barra_scan.width * prog, barra_scan.height)
+                def _fechar(dt2):
+                    anim = Animation(opacity=0, duration=0.3)
+                    anim.bind(on_complete=lambda *_: (
+                        pop.dismiss(),
+                        Clock.schedule_once(self.etapa_hack, 0.2)))
+                    anim.start(caixa)
 
-        def _scramble(dt):
-            if not self._typing_ativo:
-                pop.dismiss(); return
-            _animar_barra(etapa[0] / 10.0)
-            if etapa[0] < 10:
-                s = "".join(random.choice(chars) for _ in range(len(alvo)))
-                lbl_nome.text = f"[color=#ffaa00]> {s}[/color]"
-                etapa[0] += 1
-                Clock.schedule_once(_scramble, 0.07)
+                Clock.schedule_once(_fechar, 1.1)
             else:
-                _animar_barra(1.0)
-                lbl_nome.text = "[color=#00ff88][b]> KIRITO[/b][/color]"
-                lbl_scan.text = "[color=#00ff88]>> IDENTIDADE CONFIRMADA[/color]"
-                _scan_color.rgb = (0, 1, 0.55)
-                Clock.schedule_once(_aprovado, 0.4)  # 0.6s → 0.4s
+                tentativas[0] -= 1
+                inp_pin.text = ""
+                _safe_treme(12)
+                if tentativas[0] > 0:
+                    lbl_status.text = (
+                        f"[color=#ff4444]CODIGO INVALIDO — "
+                        f"{tentativas[0]} tentativa(s) restante(s).[/color]")
+                    Animation.cancel_all(inp_pin, 'borda_color')
+                    (Animation(borda_color=[1, 0.1, 0.2, 1],      duration=0.07) +
+                     Animation(borda_color=[1, 0.1, 0.2, 0.4],    duration=0.07) +
+                     Animation(borda_color=[1, 0.1, 0.2, 1],      duration=0.07) +
+                     Animation(borda_color=[0.8, 0.05, 0.1, 0.9], duration=0.30)
+                     ).start(inp_pin)
+                else:
+                    lbl_status.text  = "[color=#ff2222]ACESSO NEGADO. BLOQUEIO ATIVADO.[/color]"
+                    btn.disabled     = True
+                    inp_pin.disabled = True
+                    Clock.schedule_once(
+                        lambda _: (pop.dismiss(), _safe_mudar_tela("menu")), 2.5)
 
-        def _aprovado(dt):
-            if not self._typing_ativo:
-                pop.dismiss(); return
-            aplicar_fundo_holografico(caixa, (0, 1, 0.55, 0.9))
-            lbl_titulo.text = "[b][color=#00ff88]>>  ACESSO CONCEDIDO  <<[/color][/b]"
-            lbl_status.text = "[color=#00e5ff]>> SISTEMA DESBLOQUEADO[/color]"
-            sep.canvas.before.clear()
-            with sep.canvas.before:
-                Color(0, 1, 0.55, 0.5)
-                sep._r = Rectangle(pos=sep.pos, size=sep.size)
-            lbl_welcome.text = "[color=#ffffff][b]BEM-VINDO, SENHOR.[/b][/color]"
-            Animation(opacity=1, duration=0.4, transition='out_quad').start(lbl_welcome)
-            _safe_treme(10)
+        btn.bind(on_release=_verificar)
+        inp_pin.bind(on_text_validate=_verificar)
+        _abrir_popup(caixa, pop)
+        _bind_teclado(caixa, pop)
 
-            def _fechar(dt):
-                anim_out = Animation(opacity=0, duration=0.35, transition='in_quad')
-                anim_out.bind(on_complete=lambda *_: (
-                    pop.dismiss(),
-                    Clock.schedule_once(self.etapa_hack, 0.2)
-                ))
-                anim_out.start(caixa)
-
-            # 1.8s → 1.1s
-            Clock.schedule_once(_fechar, 1.1)
-
-        Clock.schedule_once(_scramble, 0.4)  # 0.5s → 0.4s
+    # ── Sequencia pos-PIN ──────────────────────────────────────────────────
 
     def etapa_hack(self, dt):
         if not self._typing_ativo:
             return
         self.printar_texto(
-            "\n>[HACK] Forçando LIMIT BREAK...",
-            lambda: Clock.schedule_once(self.etapa_sucesso, 0.7))  # 1.0s → 0.7s
+            "\n>[HACK] Forcando LIMIT BREAK...",
+            lambda: Clock.schedule_once(self.etapa_sucesso, 0.7))
         self.ids.barra_loading.cor_linha = [0.6, 0.1, 0.9, 1]
         self.reator.core_color           = [0.6, 0.1, 0.9]
         Animation(progresso=85, duration=1.2).start(self.ids.barra_loading)
@@ -265,7 +398,7 @@ class TelaLoading(Screen):
     def ignicao(self, *_):
         _safe_treme(30)
         self.ids.flash_overlay.opacity = 1
-        Animation(opacity=0, duration=0.8).start(self.ids.flash_overlay)  # 1.2s → 0.8s
+        Animation(opacity=0, duration=0.8).start(self.ids.flash_overlay)
         self.ids.terminal_box.opacity  = 0
         self.animar_materializacao()
 
@@ -280,8 +413,6 @@ class TelaLoading(Screen):
         Animation(opacidade=1, escala=1.0, duration=0.6,
                   transition='out_back').start(self.ids.espada_dir)
         t.opacity = 1
-
-        # Partículas de dados flutuando durante o scramble
         self._iniciar_particulas_dados()
 
         ev = Clock.schedule_interval(
@@ -294,44 +425,33 @@ class TelaLoading(Screen):
             t.text    = alvo
             v.opacity = 1
             self._parar_particulas_dados()
-            # 3.0s → 1.5s
-            Clock.schedule_once(
-                lambda _: _safe_mudar_tela("menu"), 1.5)
+            Clock.schedule_once(lambda _: _safe_mudar_tela("menu"), 1.5)
 
-        Clock.schedule_once(finish, 1.2)  # 1.5s → 1.2s
+        Clock.schedule_once(finish, 1.2)
 
-    # ── Partículas de dados flutuantes ─────────────────────
+    # ── Particulas ─────────────────────────────────────────────────────────
+
     def _iniciar_particulas_dados(self):
-        """Exibe strings de dados holográficas flutuando durante o scramble."""
-        self._part_ev  = None
+        self._part_ev   = None
         self._part_lbls = []
         frases = [
-            "01001011 01001001",
-            "LINK_START//",
-            "AINCRAD.SYS",
-            "NRV_GEAR_v6.0",
-            "> CARREGANDO...",
-            "FLOOR_001",
-            "XP::[SYNC]",
+            "01001011 01001001", "LINK_START//",
+            "AINCRAD.SYS",       "NRV_GEAR_v6.0",
+            "> CARREGANDO...",   "FLOOR_001",    "XP::[SYNC]",
         ]
 
-        def _criar_particula(dt):
+        def _criar(dt):
             if not self._typing_ativo:
                 return
             try:
-                from kivy.uix.label import Label as KLabel
                 frase = random.choice(frases)
                 x     = random.uniform(0.05, 0.85) * Window.width
                 y_ini = random.uniform(0.15, 0.45) * Window.height
-                lbl   = KLabel(
+                lbl   = Label(
                     text=f"[color=#00e5ff44]{frase}[/color]",
-                    markup=True,
-                    font_name="orbitron.ttf",
-                    font_size="9sp",
-                    size_hint=(None, None),
-                    size=(200, 20),
-                    pos=(x, y_ini),
-                    opacity=0)
+                    markup=True, font_name="orbitron.ttf", font_size="9sp",
+                    size_hint=(None, None), size=(200, 20),
+                    pos=(x, y_ini), opacity=0)
                 Window.add_widget(lbl)
                 self._part_lbls.append(lbl)
                 (Animation(opacity=1, y=y_ini + 30, duration=0.4, transition='out_quad') +
@@ -341,7 +461,7 @@ class TelaLoading(Screen):
             except Exception:
                 pass
 
-        self._part_ev = Clock.schedule_interval(_criar_particula, 0.25)
+        self._part_ev = Clock.schedule_interval(_criar, 0.25)
 
     def _remover_particula(self, lbl):
         try:
