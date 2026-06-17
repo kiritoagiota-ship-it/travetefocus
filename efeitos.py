@@ -217,13 +217,13 @@ class InputHolografico(TextInput):
     def _ao_digitar(self, inst, valor):
         """
         Efeito hacking/digitalização a cada tecla.
-        — foreground_color: flash branco puro → ciano
-        — borda_color: pulso de alta intensidade → retorna ao estado de foco
+        — foreground_color: flash branco puro -> ciano
+        — borda_color: pulso de alta intensidade -> retorna ao estado de foco
         Tudo via bind passivo, sem tocar no buffer.
         """
         if not valor:
             return
-        # Flash do texto: branco → ciano (sensação de materialização)
+        # Flash do texto: branco -> ciano (sensação de materialização)
         Animation.cancel_all(self, 'foreground_color')
         (Animation(foreground_color=(1.0, 1.0, 1.0, 1.0),
                    duration=0.04, transition='out_quad') +
@@ -410,7 +410,7 @@ class BotaoAngular(Button):
     """
     Botão chanfrado JARVIS/SAO.
     - Scale é APENAS visual (canvas). O touch dispatch usa collide_point normal.
-    - on_press: dispara flash branco → retorna ao ciano (novo requisito v6).
+    - on_press: dispara flash branco -> retorna ao ciano (novo requisito v6).
     """
     escala       = NumericProperty(1.0)
     brilho       = NumericProperty(0.0)
@@ -668,7 +668,7 @@ class FundoAnimado(FloatLayout):
 
     def _init(self, dt):
         # 40 partículas ao invés de 25
-        for _ in range(22):    # 40 → 22: menos carga no Android
+        for _ in range(22):    # 40 -> 22: menos carga no Android
             p = ParticulaFundo()
             self.add_widget(p)
             self._anim(p)
