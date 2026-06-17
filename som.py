@@ -69,7 +69,7 @@ def inicializar():
         try:
             import winsound
             _usa_winsound = True
-            print("[SOM] ✓ winsound (Windows nativo)")
+            print("[SOM] OK winsound (Windows nativo)")
             return
         except ImportError:
             pass
@@ -97,7 +97,7 @@ def inicializar():
             if s:
                 s.volume = 0.60
                 _sons[nome] = s
-        print(f"[SOM] ✓ {len(_sons)} sons carregados")
+        print(f"[SOM] OK {len(_sons)} sons carregados")
     except Exception as e:
         print(f"[SOM] indisponível: {e}")
 
