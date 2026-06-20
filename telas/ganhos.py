@@ -13,7 +13,7 @@ from datetime import datetime
 from efeitos import (BotaoAngular, BotaoAngularAlerta, ListaItem,
                      tremer_tela, explodir_estilhacos)
 import som
-from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, em
+from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, em, anexar_teclado
 
 
 def _data_str_para_obj(data_str):
@@ -30,6 +30,18 @@ class TelaGanhos(Screen):
         self._atualizar_config_ui()
         self._atualizar_periodo_atual()
         self._atualizar_historico()
+        # Teclados customizados SAO nos campos de configuracao
+        from kivy.clock import Clock as _Clk
+        _Clk.schedule_once(self._anexar_teclados_ganhos, 0.4)
+
+    def _anexar_teclados_ganhos(self, dt=None):
+        """Conecta teclado numerico com decimal nos campos de valor."""
+        try:
+            anexar_teclado(self.ids.inp_valor_base,  'numeros', decimal=True)
+            anexar_teclado(self.ids.inp_valor_bonus, 'numeros', decimal=True)
+            anexar_teclado(self.ids.inp_meta_bonus,  'numeros', decimal=False)
+        except Exception as e:
+            print(f"[ganhos] teclado nao anexado: {e}")
 
     def _cfg(self):
         return App.get_running_app().config_ganhos
