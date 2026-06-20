@@ -115,32 +115,45 @@ class TelaLoading(Screen):
     # ── Pixel Art Espadas ──────────────────────────────────────────────────
 
     def _add_pixel_swords(self):
+        """
+        Cria widget das espadas e agenda o draw para APOS o layout.
+        O centro so fica disponivel depois que o widget e adicionado
+        e o Kivy faz o primeiro calculo de layout (~1 frame).
+        """
         if self._espadas_widget:
             try:
                 self.remove_widget(self._espadas_widget)
             except Exception:
                 pass
 
-        w = Widget(size_hint=(None, None), size=(dp(96), dp(96)))
-
-        def _pos(*_):
-            try:
-                w.center = self.ids.reator_shader.center
-            except Exception:
-                pass
-
-        _pos()
-        try:
-            self.ids.reator_shader.bind(center=lambda *_: _pos())
-            self.bind(size=lambda *_: _pos())
-        except Exception:
-            pass
-
-        self._desenhar_espadas(w)
+        w = Widget(size_hint=(None, None), size=(dp(100), dp(100)))
         self.add_widget(w)
         self._espadas_widget = w
 
-    def _desenhar_espadas(self, widget):
+        def _posicionar_e_desenhar(*_):
+            try:
+                reator = self.ids.reator_shader
+                w.center = reator.center
+                self._redesenhar_espadas(w)
+            except Exception as e:
+                print(f"[espadas] posicao nao disponivel: {e}")
+
+        # Bind para acompanhar mudancas de posicao/tamanho
+        try:
+            self.ids.reator_shader.bind(center=_posicionar_e_desenhar)
+            self.bind(size=_posicionar_e_desenhar)
+        except Exception:
+            pass
+
+        # Aguarda 2 frames para o layout calcular as posicoes
+        Clock.schedule_once(lambda dt: _posicionar_e_desenhar(), 0.05)
+        Clock.schedule_once(lambda dt: _posicionar_e_desenhar(), 0.20)
+
+    def _redesenhar_espadas(self, widget):
+        """Limpa e redesenha as espadas usando posicao real do widget."""
+        if not widget.parent or widget.width <= 0:
+            return
+
         BLADE  = (0.85, 0.92, 0.97, 0.95)
         GUARD  = (1.00, 0.80, 0.15, 1.00)
         HANDLE = (0.52, 0.30, 0.10, 0.90)
@@ -148,31 +161,25 @@ class TelaLoading(Screen):
         GEM    = (0.00, 1.00, 0.88, 1.00)
 
         pixels = [
-            # Espada 1 lamina superior (diagonal \)
             (-6, 6, BLADE), (-5, 5, BLADE), (-4, 4, BLADE),
             (-3, 3, BLADE), (-2, 2, BLADE), (-1, 1, BLADE),
-            # Espada 2 lamina superior (diagonal /)
             ( 6, 6, BLADE), ( 5, 5, BLADE), ( 4, 4, BLADE),
             ( 3, 3, BLADE), ( 2, 2, BLADE), ( 1, 1, BLADE),
-            # Guardas em losango ao redor do cruzamento
             (-2, 0, GUARD), (-1, 1, GUARD), (0, 2, GUARD),
             ( 2, 0, GUARD), ( 1, 1, GUARD),
-            # Gema central
             (0, 0, GEM),
-            # Espada 1 lamina inferior
             ( 1, -1, BLADE), ( 2, -2, BLADE), ( 3, -3, BLADE),
-            # Espada 2 lamina inferior
             (-1, -1, BLADE), (-2, -2, BLADE), (-3, -3, BLADE),
-            # Cabos
             ( 4, -4, HANDLE), ( 5, -5, HANDLE),
             (-4, -4, HANDLE), (-5, -5, HANDLE),
-            # Pommels (gemas nas pontas)
             ( 6, -6, POMMEL),
             (-6, -6, POMMEL),
         ]
 
+        # canvas.clear() limpa instrucoes anteriores — evita acumulo
+        widget.canvas.clear()
         ps = max(2, int(widget.width / 28))
-        cx = widget.center_x
+        cx = widget.center_x   # correto apos o layout
         cy = widget.center_y
 
         with widget.canvas:
@@ -364,6 +371,8 @@ class TelaLoading(Screen):
         inp_pin.bind(on_text_validate=_verificar)
         _abrir_popup(caixa, pop)
         _bind_teclado(caixa, pop)
+        from helpers import anexar_teclado
+        Clock.schedule_once(lambda dt: anexar_teclado(inp_pin, 'numeros'), 0.4)
 
     # ── Sequencia pos-PIN ──────────────────────────────────────────────────
 
