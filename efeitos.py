@@ -200,11 +200,23 @@ class InputHolografico(TextInput):
     borda_color = ListProperty([0, 0.9, 1, 0.25])
 
     def __init__(self, **kwargs):
-        # Garante multiline=False por padrão (linha única)
         kwargs.setdefault('multiline', False)
         super().__init__(**kwargs)
-        # bind PASSIVO — apenas observa, nunca interfere
         self.bind(focus=self._ao_focar)
+
+    def _bind_keyboard(self):
+        """
+        No Android: suprime teclado do sistema quando este campo
+        tem teclado customizado anexado (_teclado_custom_ok=True).
+        No desktop: comportamento normal do TextInput.
+        """
+        try:
+            from kivy.utils import platform as _p
+            if _p == 'android' and getattr(self, '_teclado_custom_ok', False):
+                return   # teclado customizado SAO cuida deste campo
+        except Exception:
+            pass
+        super()._bind_keyboard()
         self.bind(text=self._ao_digitar)
 
     def _ao_focar(self, inst, ativo):
