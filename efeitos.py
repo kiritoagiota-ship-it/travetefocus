@@ -763,6 +763,115 @@ class PoeiraDigital(Widget):
             self._rect = Rectangle(pos=self.pos, size=self.size)
         self.bind(pos=lambda i, v: setattr(i._rect, 'pos', v))
 
+# ══════════════════════════════════════════════════════════════════════
+#  TECLADOS CUSTOMIZADOS SAO — substitui teclado Android
+#  TecladoLetras  → campos de texto (nome da peca)
+#  TecladoNumeros → campos numericos (quantidade, valores)
+# ══════════════════════════════════════════════════════════════════════
+
+_LINHAS_LETRAS = ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM']
+
+
+class _TecladoBase(BoxLayout):
+    """Base dos teclados customizados SAO."""
+
+    def __init__(self, target, **kwargs):
+        kwargs.setdefault('orientation', 'vertical')
+        kwargs.setdefault('size_hint', (1, None))
+        super().__init__(**kwargs)
+        self.target  = target
+        self.spacing = dp(3)
+        self.padding = [dp(5), dp(5), dp(5), dp(5)]
+
+        with self.canvas.before:
+            Color(0.02, 0.04, 0.10, 0.97)
+            self._bg = Rectangle(pos=self.pos, size=self.size)
+            Color(0, 0.75, 1, 0.35)
+            self._top = Line(points=[self.x, self.top,
+                                     self.right, self.top], width=1.2)
+        self.bind(pos=self._upd, size=self._upd)
+
+    def _upd(self, *_):
+        self._bg.pos  = self.pos
+        self._bg.size = self.size
+        self._top.points = [self.x, self.top, self.right, self.top]
+
+    def _press(self, char):
+        t = self.target
+        if not t:
+            return
+        if char == 'DEL':
+            if t.text:
+                t.text = t.text[:-1]
+        elif char == 'CLR':
+            t.text = ''
+        elif char == 'OK':
+            t.focus = False
+        else:
+            t.text += char
+
+    def _key(self, char, **kw):
+        btn = BotaoAngular(text=char, size_hint_y=None,
+                           height=dp(42), **kw)
+        btn.bind(on_press=lambda b: self._press(char))
+        return btn
+
+
+class TecladoLetras(_TecladoBase):
+    """Teclado SAO apenas com letras A-Z + espaco + DEL."""
+
+    def __init__(self, target, **kwargs):
+        kwargs['height'] = dp(216)
+        super().__init__(target, **kwargs)
+
+        for linha in _LINHAS_LETRAS:
+            row = BoxLayout(size_hint_y=None, height=dp(43), spacing=dp(3))
+            for c in linha:
+                btn = self._key(c, font_size='13sp')
+                btn.size_hint_x = 1
+                row.add_widget(btn)
+            self.add_widget(row)
+
+        # Linha especial: CLR | ESPACO | DEL | OK
+        spc = BoxLayout(size_hint_y=None, height=dp(43), spacing=dp(4))
+        spc.add_widget(self._key('CLR', size_hint_x=0.18, font_size='10sp'))
+        spc.add_widget(self._key(' ',   size_hint_x=0.44, font_size='10sp'))
+        spc.add_widget(self._key('DEL', size_hint_x=0.18, font_size='10sp'))
+        spc.add_widget(self._key('OK',  size_hint_x=0.20, font_size='11sp'))
+        self.add_widget(spc)
+
+
+class TecladoNumeros(_TecladoBase):
+    """
+    Teclado SAO com numeros 0-9 + DEL.
+    Passe decimal=True para incluir o ponto (campos de valor R$).
+    """
+
+    def __init__(self, target, decimal=False, **kwargs):
+        kwargs['height'] = dp(216)
+        super().__init__(target, **kwargs)
+        self._decimal = decimal
+
+        for linha in [['7', '8', '9'], ['4', '5', '6'], ['1', '2', '3']]:
+            row = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(5))
+            for c in linha:
+                row.add_widget(self._key(c, font_size='22sp'))
+            self.add_widget(row)
+
+        last = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(5))
+        if decimal:
+            last.add_widget(self._key('.',   size_hint_x=0.25, font_size='20sp'))
+            last.add_widget(self._key('0',   size_hint_x=0.25, font_size='22sp'))
+            last.add_widget(self._key('DEL', size_hint_x=0.25, font_size='11sp'))
+            last.add_widget(self._key('CLR', size_hint_x=0.25, font_size='11sp'))
+        else:
+            last.add_widget(self._key('CLR', size_hint_x=0.33, font_size='11sp'))
+            last.add_widget(self._key('0',   size_hint_x=0.34, font_size='22sp'))
+            last.add_widget(self._key('DEL', size_hint_x=0.33, font_size='11sp'))
+        self.add_widget(last)
+
+
+
 
 def explodir_estilhacos(widget_alvo, callback_final):
     """
