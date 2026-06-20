@@ -10,6 +10,7 @@ REGRA DE OURO:
 from kivy.app import App
 from kivy.uix.widget import Widget
 from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.graphics import (
@@ -17,6 +18,7 @@ from kivy.graphics import (
     PushMatrix, PopMatrix, Rotate, Scale, Triangle, RoundedRectangle
 )
 from kivy.properties import NumericProperty, ListProperty
+from kivy.metrics import dp
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.core.text import Label as CoreLabel
