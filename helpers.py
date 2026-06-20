@@ -230,6 +230,61 @@ def _abrir_popup(caixa, pop):
     pop.open()
 
 
+
+# ── Teclado customizado SAO ───────────────────────────────────────────────────
+
+def anexar_teclado(inp, tipo='letras', decimal=False):
+    """
+    Substitui o teclado Android por um teclado SAO customizado.
+    tipo='letras'  -> mostra TecladoLetras (A-Z) para nome da peca
+    tipo='numeros' -> mostra TecladoNumeros (0-9) para quantidades
+    Chama uma unica vez por widget — ignora chamadas duplicadas.
+    """
+    if getattr(inp, '_teclado_custom_ok', False):
+        return
+    inp._teclado_custom_ok = True
+
+    from efeitos import TecladoLetras, TecladoNumeros
+    from kivy.utils import platform as _plat
+    from kivy.animation import Animation as _Anim
+
+    KlsMap = {'letras': TecladoLetras, 'numeros': TecladoNumeros}
+    Kls = KlsMap.get(tipo, TecladoNumeros)
+    ref = [None]
+
+    def _mostrar(inst, focused):
+        if focused:
+            # Impede o teclado do sistema no Android
+            if _plat == 'android':
+                Clock.schedule_once(
+                    lambda dt: Window.release_all_keyboards(), 0.05)
+
+            if ref[0]:
+                return
+            kb = Kls(target=inst, decimal=decimal) if tipo == 'numeros' else Kls(target=inst)
+            kb.pos  = (0, 0)
+            kb.width = Window.width
+            kb.opacity = 0
+            Window.add_widget(kb)
+            ref[0] = kb
+            _Anim(opacity=1, duration=0.15, transition='out_quad').start(kb)
+
+        else:
+            kb = ref[0]
+            if kb:
+                def _rm(*_):
+                    try:
+                        Window.remove_widget(kb)
+                    except Exception:
+                        pass
+                    ref[0] = None
+                anim = _Anim(opacity=0, duration=0.10, transition='in_quad')
+                anim.bind(on_complete=_rm)
+                anim.start(kb)
+
+    inp.bind(focused=_mostrar)
+
+
 def popup_pedir_xp(nome: str, quantidade: int, on_save):
     pop, layout = _make_popup()
     h = min(dp(290), int(Window.height * 0.52))
@@ -279,9 +334,10 @@ def popup_pedir_xp(nome: str, quantidade: int, on_save):
 
     btn.bind(on_release=_confirmar)
     inp.bind(on_text_validate=_confirmar)
+    anexar_teclado(inp, 'numeros')
     _abrir_popup(caixa, pop)
     _bind_teclado(caixa, pop)
-    # auto-focus removido — evita teclado cobrindo botão
+    # teclado customizado SAO — sem teclado Android
 
 
 def popup_delete_engracado(on_confirm):
