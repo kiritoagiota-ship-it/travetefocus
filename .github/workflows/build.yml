@@ -79,7 +79,11 @@ jobs:
         run: |
           mkdir -p ~/.android
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > ~/.android/debug.keystore
-          echo "[KEYSTORE] Restaurado com $(wc -c < ~/.android/debug.keystore) bytes"
+          # Verificar que o keystore tem o alias correto (androiddebugkey, senha android)
+          keytool -list -keystore ~/.android/debug.keystore -storepass android 2>&1 | head -5 || true
+          echo "[KEYSTORE] $(wc -c < ~/.android/debug.keystore) bytes restaurados"
+          # Copiar para locais alternativos que buildozer/p4a podem usar
+          cp ~/.android/debug.keystore ~/.android/release.keystore 2>/dev/null || true
 
       # ── 7. VARIÁVEIS ANDROID ───────────────────────────────────────────────
       - name: Exportar variáveis de ambiente Android SDK/NDK
