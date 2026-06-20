@@ -2,7 +2,7 @@
 from kivy.uix.screenmanager import Screen
 from kivy.app import App
 from kivy.animation import Animation
-from helpers import calcular_level, obter_titulo_level
+from helpers import calcular_level, obter_titulo_level, em
 
 
 class TelaProgresso(Screen):
@@ -21,7 +21,7 @@ class TelaProgresso(Screen):
         self.ids.lbl_titulo.text      = obter_titulo_level(level)
         self.ids.lbl_xp_fracao.text   = f"{xp_atual}  /  {xp_necessario} XP"
         self.ids.lbl_total_xp.text    = f"XP TOTAL\n[color=#00e5ff]{app.total_xp}[/color]"
-        self.ids.lbl_total_pecas.text = f"PEÇAS TOTAL\n[color=#00e5ff]{app.total_geral}[/color]"
+        self.ids.lbl_total_pecas.text = f"PECAS TOTAL\n[color=#00e5ff]{app.total_geral}[/color]"
         self.ids.lbl_melhor_dia.text  = f"MELHOR DIA\n[color=#ffcc00]{app.melhor_dia} un.[/color]"
 
         streak = app.streak
@@ -29,13 +29,14 @@ class TelaProgresso(Screen):
 
         if streak >= 5:
             barra.cor_anel = [1, 0.55, 0, 1]
-            self.ids.lbl_streak.text  = f"🔥  STREAK  {streak}  DIAS"
+            # em() renderiza o emoji com NotoEmoji se disponivel, senao usa texto
+            self.ids.lbl_streak.text  = f"{em('🔥')}  STREAK  {streak}  DIAS"
             self.ids.lbl_streak.color = (1, 0.5, 0, 1)
             fire = (Animation(cor_anel=[1, 0.42, 0, 1], duration=0.7,
                               transition='in_out_sine') +
                     Animation(cor_anel=[1, 0.88, 0.1, 1], duration=0.7,
                               transition='in_out_sine'))
-            fire.repeat     = True
+            fire.repeat       = True
             barra._anim_pulso = fire
             fire.start(barra)
         else:
