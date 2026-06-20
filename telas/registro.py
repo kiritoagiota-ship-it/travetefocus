@@ -5,7 +5,7 @@ from kivy.animation import Animation
 from kivy.clock import Clock
 from kivy.metrics import dp
 from efeitos import ListaItem, explodir_estilhacos, tremer_tela
-from helpers import popup_pedir_xp, popup_delete_engracado, popup_resumo_dia, animar_ganho_xp, vibrar
+from helpers import popup_pedir_xp, popup_delete_engracado, popup_resumo_dia, animar_ganho_xp, vibrar, anexar_teclado
 from datetime import datetime
 import som
 
@@ -14,12 +14,22 @@ class TelaRegistro(Screen):
 
     def on_enter(self):
         self.atualizar()
+        # Anexar teclados customizados SAO (so na primeira vez por widget)
+        Clock.schedule_once(self._anexar_teclados, 0.3)
         self._foco_ev = Clock.schedule_once(self._focar_nome, 0.35)
 
     def on_leave(self, *_):
         if hasattr(self, '_foco_ev') and self._foco_ev:
             self._foco_ev.cancel()
             self._foco_ev = None
+
+    def _anexar_teclados(self, dt=None):
+        """Conecta teclados SAO nos campos de texto e numero."""
+        try:
+            anexar_teclado(self.ids.nome_input, 'letras')
+            anexar_teclado(self.ids.qtd_input,  'numeros')
+        except Exception as e:
+            print(f"[registro] teclado nao anexado: {e}")
 
     def _focar_nome(self, dt=None):
         self._foco_ev = None
