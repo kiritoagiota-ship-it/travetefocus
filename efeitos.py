@@ -777,158 +777,166 @@ class PoeiraDigital(Widget):
             self._rect = Rectangle(pos=self.pos, size=self.size)
         self.bind(pos=lambda i, v: setattr(i._rect, 'pos', v))
 
+
 # ══════════════════════════════════════════════════════════════════════
 #  TECLADOS CUSTOMIZADOS SAO — substitui teclado Android
-#  TecladoLetras  → campos de texto (nome da peca)
-#  TecladoNumeros → campos numericos (quantidade, valores)
 # ══════════════════════════════════════════════════════════════════════
 
 _LINHAS_LETRAS = ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM']
 
 
-class _TecladoBase(BoxLayout):
-    """Base dos teclados customizados SAO."""
+class _BotaoTecla(Button):
+    """Botão compacto para teclado SAO — mais legível que BotaoAngular em espaço pequeno."""
 
-    def __init__(self, target, **kwargs):
-        kwargs.setdefault('orientation', 'vertical')
-        kwargs.setdefault('size_hint', (1, None))
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.target  = target
-        self.spacing = dp(3)
-        self.padding = [dp(5), dp(5), dp(5), dp(5)]
-
+        self.background_normal  = ''
+        self.background_color   = [0, 0, 0, 0]
+        self.color              = [0, 0.9, 1, 1]
+        self.font_name          = 'orbitron.ttf'
+        radius = [dp(5)]
         with self.canvas.before:
-            Color(0.02, 0.04, 0.10, 0.97)
-            self._bg = Rectangle(pos=self.pos, size=self.size)
-            Color(0, 0.75, 1, 0.35)
-            self._top = Line(points=[self.x, self.top,
-                                     self.right, self.top], width=1.2)
+            # RoundedRectangle para fundo + Line para borda
+            # Mais eficiente que Line.rounded_rectangle que recalcula todos os pontos
+            Color(0.04, 0.06, 0.15, 0.96)
+            self._bg = RoundedRectangle(pos=self.pos, size=self.size, radius=radius)
+            Color(0, 0.75, 1, 0.55)
+            self._bd = RoundedRectangle(
+                pos=(self.x+1, self.y+1),
+                size=(self.width-2, self.height-2),
+                radius=radius)
+            Color(0.04, 0.06, 0.15, 0.96)  # inner fill cobre o centro
+            self._bi = RoundedRectangle(
+                pos=(self.x+2, self.y+2),
+                size=(self.width-4, self.height-4),
+                radius=radius)
         self.bind(pos=self._upd, size=self._upd)
 
     def _upd(self, *_):
         self._bg.pos  = self.pos
         self._bg.size = self.size
+        self._bd.pos  = (self.x + 1, self.y + 1)
+        self._bd.size = (self.width - 2, self.height - 2)
+        self._bi.pos  = (self.x + 2, self.y + 2)
+        self._bi.size = (self.width - 4, self.height - 4)
+
+
+class _TecladoBase(BoxLayout):
+    """
+    Base dos teclados SAO.
+    fechar: callable — chamado pelo botao OK e pelo toque fora do teclado.
+    Nao usa t.focus=False para fechar (causa crash Android).
+    """
+
+    def __init__(self, target, fechar=None, **kwargs):
+        kwargs.setdefault('orientation', 'vertical')
+        kwargs.setdefault('size_hint', (1, None))
+        super().__init__(**kwargs)
+        self.target  = target
+        self._fechar = fechar
+        self.spacing = dp(3)
+        self.padding = [dp(5), dp(6), dp(5), dp(5)]
+
+        with self.canvas.before:
+            Color(0.02, 0.04, 0.10, 0.97)
+            self._bg  = Rectangle(pos=self.pos, size=self.size)
+            Color(0, 0.8, 1, 0.45)
+            self._top = Line(points=[self.x, self.top, self.right, self.top], width=1.5)
+        self.bind(pos=self._upd_bg, size=self._upd_bg)
+
+    def _upd_bg(self, *_):
+        self._bg.pos    = self.pos
+        self._bg.size   = self.size
         self._top.points = [self.x, self.top, self.right, self.top]
 
     def _press(self, char):
         t = self.target
         if not t:
             return
+        if char == 'OK':
+            if self._fechar:
+                self._fechar()
+            return
         if char == 'DEL':
             if t.text:
                 t.text = t.text[:-1]
         elif char == 'CLR':
             t.text = ''
-        elif char == 'OK':
-            t.focus = False
+        elif char == ' ':
+            t.text += ' '
         else:
             t.text += char
 
-    def _key(self, char, **kw):
-        btn = BotaoAngular(text=char, size_hint_y=None,
-                           height=dp(42), **kw)
-        btn.bind(on_press=lambda b: self._press(char))
+    def _press_com_feedback(self, btn, char):
+        """Feedback visual ao pressionar tecla — flash cyan rapido."""
+        self._press(char)
+        # Flash na cor do botao: cyan -> escuro -> cyan
+        try:
+            Animation.cancel_all(btn, 'color')
+            (Animation(color=[1, 1, 1, 1], duration=0.06, transition='out_quad') +
+             Animation(color=[0, 0.9, 1, 1], duration=0.12, transition='in_quad')
+             ).start(btn)
+        except Exception:
+            pass
+
+    def _key(self, char, font_size='18sp', **kw):
+        btn = _BotaoTecla(text=char, font_size=font_size, **kw)
+        btn.bind(on_press=lambda b: self._press_com_feedback(b, char))
         return btn
 
 
 class TecladoLetras(_TecladoBase):
-    """Teclado SAO apenas com letras A-Z + espaco + DEL."""
+    """
+    Teclado SAO apenas com letras A-Z.
+    Font 18sp — legivel nos botoes ~36dp da linha QWERTY.
+    """
 
-    def __init__(self, target, **kwargs):
-        kwargs['height'] = dp(216)
-        super().__init__(target, **kwargs)
+    def __init__(self, target, fechar=None, **kwargs):
+        kwargs['height'] = dp(252)
+        super().__init__(target, fechar=fechar, **kwargs)
 
         for linha in _LINHAS_LETRAS:
-            row = BoxLayout(size_hint_y=None, height=dp(43), spacing=dp(3))
+            row = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(3))
             for c in linha:
-                btn = self._key(c, font_size='13sp')
-                btn.size_hint_x = 1
-                row.add_widget(btn)
+                row.add_widget(self._key(c, font_size='18sp'))
             self.add_widget(row)
 
-        # Linha especial: CLR | ESPACO | DEL | OK
-        spc = BoxLayout(size_hint_y=None, height=dp(43), spacing=dp(4))
-        spc.add_widget(self._key('CLR', size_hint_x=0.18, font_size='10sp'))
-        spc.add_widget(self._key(' ',   size_hint_x=0.44, font_size='10sp'))
-        spc.add_widget(self._key('DEL', size_hint_x=0.18, font_size='10sp'))
-        spc.add_widget(self._key('OK',  size_hint_x=0.20, font_size='11sp'))
+        # Linha especial: CLR | espaço | DEL | OK
+        spc = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(5))
+        spc.add_widget(self._key('CLR', font_size='12sp', size_hint_x=0.18))
+        spc.add_widget(self._key(' ',   font_size='12sp', size_hint_x=0.44))
+        spc.add_widget(self._key('DEL', font_size='12sp', size_hint_x=0.18))
+        spc.add_widget(self._key('OK',  font_size='14sp', size_hint_x=0.20))
         self.add_widget(spc)
 
 
 class TecladoNumeros(_TecladoBase):
     """
-    Teclado SAO com numeros 0-9 + DEL.
-    Passe decimal=True para incluir o ponto (campos de valor R$).
+    Teclado SAO apenas com numeros 0-9.
+    decimal=True inclui ponto para campos R$.
+    Font 26sp — confortavel nos botoes maiores.
     """
 
-    def __init__(self, target, decimal=False, **kwargs):
-        kwargs['height'] = dp(216)
-        super().__init__(target, **kwargs)
+    def __init__(self, target, fechar=None, decimal=False, **kwargs):
+        kwargs['height'] = dp(252)
+        super().__init__(target, fechar=fechar, **kwargs)
         self._decimal = decimal
 
         for linha in [['7', '8', '9'], ['4', '5', '6'], ['1', '2', '3']]:
-            row = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(5))
+            row = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(5))
             for c in linha:
-                row.add_widget(self._key(c, font_size='22sp'))
+                row.add_widget(self._key(c, font_size='26sp'))
             self.add_widget(row)
 
-        last = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(5))
+        last = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(5))
         if decimal:
-            last.add_widget(self._key('.',   size_hint_x=0.25, font_size='20sp'))
-            last.add_widget(self._key('0',   size_hint_x=0.25, font_size='22sp'))
-            last.add_widget(self._key('DEL', size_hint_x=0.25, font_size='11sp'))
-            last.add_widget(self._key('CLR', size_hint_x=0.25, font_size='11sp'))
+            last.add_widget(self._key('.',   font_size='22sp', size_hint_x=0.25))
+            last.add_widget(self._key('0',   font_size='26sp', size_hint_x=0.25))
+            last.add_widget(self._key('DEL', font_size='12sp', size_hint_x=0.25))
+            last.add_widget(self._key('OK',  font_size='14sp', size_hint_x=0.25))
         else:
-            last.add_widget(self._key('CLR', size_hint_x=0.33, font_size='11sp'))
-            last.add_widget(self._key('0',   size_hint_x=0.34, font_size='22sp'))
-            last.add_widget(self._key('DEL', size_hint_x=0.33, font_size='11sp'))
+            last.add_widget(self._key('CLR', font_size='12sp', size_hint_x=0.25))
+            last.add_widget(self._key('0',   font_size='26sp', size_hint_x=0.25))
+            last.add_widget(self._key('DEL', font_size='12sp', size_hint_x=0.25))
+            last.add_widget(self._key('OK',  font_size='14sp', size_hint_x=0.25))
         self.add_widget(last)
-
-
-
-
-def explodir_estilhacos(widget_alvo, callback_final):
-    """
-    Explosão SAO com coordenadas globais (Window space).
-    Reduzido para 12 cacos + 8 poeira = 20 widgets totais
-    (vs 50 anterior) — reduz spike de frame em ~60%.
-    """
-    tremer_tela(14)
-
-    if widget_alvo.parent:
-        gx, gy = widget_alvo.parent.to_window(widget_alvo.x, widget_alvo.y)
-    else:
-        gx, gy = widget_alvo.to_window(0, 0)
-    gw, gh = widget_alvo.size
-
-    widget_alvo.opacity = 0
-
-    camada = FloatLayout(size=Window.size)
-    Window.add_widget(camada)
-
-    flash = FlashExplosao((gx, gy), (gw, gh))
-    camada.add_widget(flash)
-    Animation(opacity=0, escala=1.6, duration=0.20).start(flash)
-
-    # 12 cacos (era 28)
-    for _ in range(12):
-        c   = CacoSAO(gx, gy, gw, gh)
-        camada.add_widget(c)
-        nx  = c.x + random.randint(-260, 260)
-        nyp = c.y + random.randint(60, 160)
-        nyc = nyp - random.randint(200, 420)
-        (Animation(x=nx, y=nyp, angulo=random.randint(360, 720),
-                   duration=0.26, transition='out_circ') +
-         Animation(y=nyc, opacity=0, escala=0,
-                   duration=0.55, transition='in_quad')).start(c)
-
-    # 8 pontos de poeira (era 22)
-    for _ in range(8):
-        p = PoeiraDigital(gx, gy, gw, gh)
-        camada.add_widget(p)
-        Animation(x=p.x + random.randint(-160, 160),
-                  y=p.y + random.randint(60, 300),
-                  opacity=0, duration=0.75).start(p)
-
-    Clock.schedule_once(
-        lambda dt: (Window.remove_widget(camada), callback_final()), 0.95)
