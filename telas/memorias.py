@@ -16,6 +16,7 @@ from efeitos import (BotaoAngular, BotaoAngularAlerta, ListaItem,
                      InputHolografico, tremer_tela, explodir_estilhacos)
 import som
 from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, _bind_teclado
+from exportar import exportar_e_compartilhar
 
 
 class TelaMemorias(Screen):
@@ -53,19 +54,28 @@ class TelaMemorias(Screen):
                 cont.add_widget(b)
 
     def _filtrar(self, mes):
+        if mes == self.filtro_mes:
+            return  # debounce: mesmo filtro, nao redesenhar
         self.filtro_mes = mes
+        # Cancelar qualquer update pendente
+        if hasattr(self, '_filtro_ev') and self._filtro_ev:
+            self._filtro_ev.cancel()
         cont = self.ids.memorias_container
         if cont.children:
             for child in list(cont.children):
-                Animation(opacity=0, duration=0.10,
+                Animation.cancel_all(child)
+                Animation(opacity=0, duration=0.08,
                           transition='out_quad').start(child)
-            Clock.schedule_once(lambda dt: self.atualizar_lista(), 0.12)
+            self._filtro_ev = Clock.schedule_once(
+                lambda dt: self.atualizar_lista(), 0.10)
         else:
             self.atualizar_lista()
 
     def atualizar_lista(self):
         app   = App.get_running_app()
         cont  = self.ids.memorias_container
+        for child in list(cont.children):
+            Animation.cancel_all(child)
         cont.clear_widgets()
         max_t = max((m['total'] for m in app.memorias), default=0)
 
@@ -78,6 +88,13 @@ class TelaMemorias(Screen):
         mems = (app.memorias if self.filtro_mes == "TODOS"
                 else [m for m in app.memorias
                       if _mes_de(m.get('data', '')) == self.filtro_mes])
+
+        # Atualizar contador no header
+        try:
+            total_txt = f"TODOS ({len(mems)})" if self.filtro_mes == "TODOS" else f"{self.filtro_mes} ({len(mems)})"
+            self.ids.lbl_filtro_ativo.text = f"[color=#00e5ff]{total_txt}[/color]"
+        except Exception:
+            pass
 
         if not mems:
             vazio = Label(
@@ -114,6 +131,11 @@ class TelaMemorias(Screen):
         app      = App.get_running_app()
         grafico  = self.ids.grafico_barras
         recentes = app.memorias[-8:] if app.memorias else []
+        # Cache: nao redesenhar se dados nao mudaram
+        novo_hash = str([(m.get("data"), m.get("total")) for m in recentes])
+        if getattr(grafico, "_ultimo_hash", None) == novo_hash:
+            return
+        grafico._ultimo_hash = novo_hash
         max_t    = max((m['total'] for m in app.memorias), default=0)
 
         def _label_dia(data_str):
@@ -280,6 +302,54 @@ class TelaMemorias(Screen):
         btn_f.bind(on_release=lambda *_: pop.dismiss())
         btn_a.bind(on_release=_deletar)
         _abrir_popup(caixa, pop)
+
+    def exportar_historico(self):
+        """Exporta o histórico como CSV e compartilha via WhatsApp."""
+        from kivy.app import App
+        app = App.get_running_app()
+
+        if not app.memorias:
+            # Popup informativo
+            pop, layout = _make_popup()
+            from kivy.uix.boxlayout import BoxLayout
+            from kivy.uix.label import Label
+            cx = BoxLayout(orientation='vertical', padding=[dp(24), dp(20), dp(24), dp(20)],
+                          spacing=dp(12), size_hint=(0.84, None), height=dp(160))
+            aplicar_fundo_holografico(cx, (0, 0.9, 1, 0.9))
+            cx.add_widget(Label(
+                text="[color=#00e5ff]Nenhum turno para exportar.[/color]",
+                markup=True, font_name="orbitron.ttf", font_size="13sp",
+                halign="center", size_hint_y=None, height=dp(50)))
+            from efeitos import BotaoAngular
+            btn = BotaoAngular(text=">>  OK", size_hint_y=None, height=dp(48))
+            btn.bind(on_release=lambda *_: pop.dismiss())
+            cx.add_widget(btn)
+            layout.add_widget(cx)
+            cx.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+            _abrir_popup(cx, pop)
+            return
+
+        def _on_erro(msg):
+            pop2, layout2 = _make_popup()
+            from kivy.uix.boxlayout import BoxLayout
+            from kivy.uix.label import Label
+            cx2 = BoxLayout(orientation='vertical', padding=[dp(20), dp(18), dp(20), dp(18)],
+                           spacing=dp(10), size_hint=(0.88, None), height=dp(200))
+            aplicar_fundo_holografico(cx2, (0, 0.9, 1, 0.9))
+            cx2.add_widget(Label(
+                text=f"[color=#00e5ff]{msg}[/color]",
+                markup=True, font_name="rajdhani.ttf", font_size="14sp",
+                halign="center", valign="middle", size_hint_y=None, height=dp(100)))
+            from efeitos import BotaoAngular
+            btn2 = BotaoAngular(text=">>  OK", size_hint_y=None, height=dp(48))
+            btn2.bind(on_release=lambda *_: pop2.dismiss())
+            cx2.add_widget(btn2)
+            layout2.add_widget(cx2)
+            cx2.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+            _abrir_popup(cx2, pop2)
+
+        exportar_e_compartilhar(app.memorias, app.user_data_dir, _on_erro)
+        vibrar(80)
 
     def confirmar_wipe(self):
         pop, layout = _make_popup()
