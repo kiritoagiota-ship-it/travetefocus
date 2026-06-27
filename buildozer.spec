@@ -7,11 +7,11 @@ package.domain = com.travetefocus
 
 # ── CÓDIGO FONTE ─────────────────────────────────────────────────────────────
 source.dir = .
-source.include_exts = py,kv,ttf,json,wav,mp3,ogg,png,jpg
+source.include_exts = py,kv,ttf,json,wav,mp3,ogg,png,jpg,csv
 source.exclude_dirs = tests,bin,.buildozer,.git,__pycache__,.github
 
 # ── VERSÃO ───────────────────────────────────────────────────────────────────
-version = 1.0.2
+version = 1.0.4
 
 # ── DEPENDÊNCIAS ─────────────────────────────────────────────────────────────
 requirements = python3,kivy,sqlite3,plyer
@@ -24,7 +24,7 @@ fullscreen   = 0
 icon.filename = %(source.dir)s/icon.png
 
 # ── PERMISSÕES ───────────────────────────────────────────────────────────────
-android.permissions = WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, VIBRATE
+android.permissions = WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, VIBRATE, POST_NOTIFICATIONS, QUERY_ALL_PACKAGES
 
 # ── APIs ANDROID ─────────────────────────────────────────────────────────────
 # android.api     = versão alvo (Play Store exige 34+)
