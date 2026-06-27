@@ -42,7 +42,7 @@ class TelaRegistro(Screen):
         """Cria ListaItem com altura e alinhamento corretos."""
         btn = ListaItem(text=text)
         btn.height  = dp(52)   # mais compacto que dp(68)
-        btn.valign  = 'middle' # texto centralizado verticalmente
+        btn.valign = 'middle' # texto centralizado verticalmente
         return btn
 
     def atualizar(self):
@@ -56,9 +56,15 @@ class TelaRegistro(Screen):
         else:
             es.height  = 200
             es.opacity = 0
-            Clock.schedule_once(
-                lambda _: Animation(opacity=1, duration=0.4,
-                                    transition='out_quad').start(es), 0.1)
+            def _animar_empty(_):
+                Animation(opacity=1, duration=0.4,
+                          transition='out_quad').start(es)
+                # Pulso suave continuo para nao parecer travado
+                pulse = (Animation(opacity=0.55, duration=1.2, transition='in_out_sine') +
+                         Animation(opacity=1.0,  duration=1.2, transition='in_out_sine'))
+                pulse.repeat = True
+                Clock.schedule_once(lambda _: pulse.start(es), 0.5)
+            Clock.schedule_once(_animar_empty, 0.1)
 
         for i, r in enumerate(registros):
             nome = r[0][:18] + "…" if len(r[0]) > 18 else r[0]
