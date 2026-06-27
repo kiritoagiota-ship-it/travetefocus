@@ -622,16 +622,23 @@
         BoxLayout:
             size_hint_y: None
             height:      dp(58)
-            spacing:     dp(12)
+            spacing:     dp(8)
             BotaoAngular:
                 text:        "<<  Voltar"
-                font_size:   "14sp"
-                size_hint_x: 0.50
+                font_size:   "13sp"
+                size_hint_x: 0.30
                 on_release:  app.mudar_tela("menu")
+            BotaoAngular:
+                text:        ">>  EXPORTAR"
+                font_size:   "13sp"
+                size_hint_x: 0.40
+                cor_borda:   [0, 0.9, 1, 0.9]
+                cor_borda_kv:[0, 0.9, 1, 0.9]
+                on_release:  root.exportar_historico()
             BotaoAngularAlerta:
-                text:        "!!  WIPE DATA"
-                font_size:   "14sp"
-                size_hint_x: 0.50
+                text:        "!!  WIPE"
+                font_size:   "13sp"
+                size_hint_x: 0.30
                 on_release:  root.confirmar_wipe()
 
 # ════════════════════════════════════════════════════════════
@@ -706,6 +713,7 @@
             text:        "STREAK  0  DIAS"
             font_name:   "orbitron.ttf"
             font_size:   "12sp"
+            markup:      True
             color:       rgba("#00e5ff88")
             size_hint_y: None
             height:      dp(22)
