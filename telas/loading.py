@@ -16,6 +16,7 @@ from kivy.metrics import dp
 
 from efeitos import tremer_tela, InputHolografico, BotaoAngular
 from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, _bind_teclado
+from lembrete import verificar_e_notificar
 
 # ══════════════════════════════════════════════════════════════
 #  CONFIGURACAO — altere aqui sem mexer em mais nada
@@ -145,9 +146,15 @@ class TelaLoading(Screen):
         except Exception:
             pass
 
-        # Aguarda 2 frames para o layout calcular as posicoes
+        # Aguarda layout + fade-in suave das espadas
         Clock.schedule_once(lambda dt: _posicionar_e_desenhar(), 0.05)
-        Clock.schedule_once(lambda dt: _posicionar_e_desenhar(), 0.20)
+        def _fade_in_espadas(dt):
+            _posicionar_e_desenhar()
+            if self._espadas_widget:
+                self._espadas_widget.opacity = 0
+                Animation(opacity=1, duration=0.6,
+                          transition='out_quad').start(self._espadas_widget)
+        Clock.schedule_once(_fade_in_espadas, 0.30)
 
     def _redesenhar_espadas(self, widget):
         """Limpa e redesenha as espadas usando posicao real do widget."""
@@ -194,8 +201,9 @@ class TelaLoading(Screen):
     def _quick_load(self, dt):
         if not self._typing_ativo:
             return
-        self.ids.barra_loading.opacity = 1
+        self.ids.barra_loading.opacity = 0
         self.reator.core_color = [0, 0.89, 1]
+        Animation(opacity=1, duration=0.3).start(self.ids.barra_loading)
         Animation(build_progress=1.0, duration=1.0).start(self.reator)
         Animation(progresso=100, duration=1.0).start(self.ids.barra_loading)
 
@@ -211,7 +219,13 @@ class TelaLoading(Screen):
         def _finish(dt2):
             ev.cancel()
             t.text = alvo
-            self.ids.version_label.opacity = 1
+            Animation(opacity=1, duration=0.4).start(self.ids.version_label)
+            # Verificar lembrete diário após carregar dados
+            try:
+                Clock.schedule_once(
+                    lambda _: verificar_e_notificar(App.get_running_app()), 2.0)
+            except Exception:
+                pass
             Clock.schedule_once(lambda _: _safe_mudar_tela("menu"), 0.5)
 
         Clock.schedule_once(_finish, 0.8)
@@ -339,10 +353,11 @@ class TelaLoading(Screen):
                 self._salvar_sessao()
 
                 def _fechar(dt2):
+                    def _apos_fade(*_):
+                        pop.dismiss()
+                        Clock.schedule_once(self.etapa_hack, 0.2)
                     anim = Animation(opacity=0, duration=0.3)
-                    anim.bind(on_complete=lambda *_: (
-                        pop.dismiss(),
-                        Clock.schedule_once(self.etapa_hack, 0.2)))
+                    anim.bind(on_complete=_apos_fade)
                     anim.start(caixa)
 
                 Clock.schedule_once(_fechar, 1.1)
@@ -360,18 +375,24 @@ class TelaLoading(Screen):
                      Animation(borda_color=[1, 0.1, 0.2, 1],      duration=0.07) +
                      Animation(borda_color=[0.8, 0.05, 0.1, 0.9], duration=0.30)
                      ).start(inp_pin)
+                    # Cooldown: desabilita btn por 0.6s após erro
+                    btn.disabled = True
+                    Clock.schedule_once(lambda _: setattr(btn, 'disabled', False), 0.6)
                 else:
                     lbl_status.text  = "[color=#ff2222]ACESSO NEGADO. BLOQUEIO ATIVADO.[/color]"
                     btn.disabled     = True
                     inp_pin.disabled = True
-                    Clock.schedule_once(
-                        lambda _: (pop.dismiss(), _safe_mudar_tela("menu")), 2.5)
+                    def _bloqueado(_dt):
+                        pop.dismiss()
+                        _safe_mudar_tela("menu")
+                    Clock.schedule_once(_bloqueado, 2.5)
 
         btn.bind(on_release=_verificar)
         inp_pin.bind(on_text_validate=_verificar)
         _abrir_popup(caixa, pop)
         _bind_teclado(caixa, pop)
         from helpers import anexar_teclado
+        # teclado numerico com fechar via _verificar (OK no teclado = verificar PIN)
         Clock.schedule_once(lambda dt: anexar_teclado(inp_pin, 'numeros'), 0.4)
 
     # ── Sequencia pos-PIN ──────────────────────────────────────────────────
@@ -409,6 +430,12 @@ class TelaLoading(Screen):
         self.ids.flash_overlay.opacity = 1
         Animation(opacity=0, duration=0.8).start(self.ids.flash_overlay)
         self.ids.terminal_box.opacity  = 0
+        # Verificar lembrete ao entrar via loading completo
+        try:
+            Clock.schedule_once(
+                lambda _: verificar_e_notificar(App.get_running_app()), 3.0)
+        except Exception:
+            pass
         self.animar_materializacao()
 
     def animar_materializacao(self):
