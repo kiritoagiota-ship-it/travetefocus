@@ -236,8 +236,17 @@ class TelaGanhos(Screen):
         app.salvar_dados()
         som.tocar_abrir_periodo()
         vibrar(100)
-        self._atualizar_periodo_atual()
         tremer_tela(8)
+        # Animação de abertura: piscar o status em verde
+        self._atualizar_periodo_atual()
+        try:
+            st = self.ids.lbl_periodo_status
+            (Animation(color=[0, 1, 0.55, 0], duration=0.12) +
+             Animation(color=[0, 1, 0.55, 1], duration=0.12) +
+             Animation(color=[0, 1, 0.55, 0], duration=0.12) +
+             Animation(color=[1, 1, 1, 1],    duration=0.20)).start(st)
+        except Exception:
+            pass
 
     def fechar_periodo(self):
         app      = App.get_running_app()
