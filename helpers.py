@@ -235,52 +235,72 @@ def _abrir_popup(caixa, pop):
 
 def anexar_teclado(inp, tipo='letras', decimal=False):
     """
-    Teclado customizado SAO — substitui teclado Android.
-    tipo='letras'  -> TecladoLetras (A-Z) para nome da peca
-    tipo='numeros' -> TecladoNumeros (0-9) para quantidades
-    decimal=True   -> inclui ponto decimal (campos de valor R$)
-
-    CORRECAO: race condition corrigida — teclado sistema suprimido via _bind_keyboard
-    perda de foco imediata e sumia o teclado antes de aparecer.
-    O teclado do sistema e suprimido diretamente em _bind_keyboard()
-    do InputHolografico quando _teclado_custom_ok=True.
+    Teclado customizado SAO.
+    - Passa 'fechar' callback para _TecladoBase — OK fecha sem crash
+    - Toque fora do teclado tambem fecha
+    - Supressao do teclado Android via _bind_keyboard no InputHolografico
     """
     if getattr(inp, '_teclado_custom_ok', False):
         return
-    inp._teclado_custom_ok = True   # sinaliza para _bind_keyboard suprimir teclado sistema
+    inp._teclado_custom_ok = True
 
     from efeitos import TecladoLetras, TecladoNumeros
     from kivy.animation import Animation as _Anim
 
     Kls = TecladoLetras if tipo == 'letras' else TecladoNumeros
-    ref = [None]
+    ref    = [None]
+    _touch = [None]  # binding de toque fora
+
+    def _esconder():
+        kb = ref[0]
+        if not kb:
+            return
+        # Remover listener de toque fora
+        try:
+            Window.unbind(on_touch_down=_touch[0])
+        except Exception:
+            pass
+        _touch[0] = None
+
+        def _rm(*_):
+            try:
+                Window.remove_widget(kb)
+            except Exception:
+                pass
+            ref[0] = None
+
+        _Anim(opacity=0, duration=0.12, transition='in_quad'
+              ).bind(on_complete=_rm).start(kb)
+
+    def _toque_fora(win, touch):
+        """Fecha o teclado se o toque for acima dele."""
+        kb = ref[0]
+        if kb and not kb.collide_point(*touch.pos):
+            _esconder()
+        return False   # nao consumir o toque
 
     def _mostrar(inst, focused):
         if focused:
             if ref[0]:
                 return
-            # Criar teclado com tamanho EXPLICITO (Window nao respeita size_hint)
-            kb = Kls(target=inst, decimal=decimal) if tipo == 'numeros' else Kls(target=inst)
-            kb.size    = (Window.width, dp(220))
+            kb = (Kls(target=inst, fechar=_esconder, decimal=decimal)
+                  if tipo == 'numeros'
+                  else Kls(target=inst, fechar=_esconder))
+            kb.size    = (Window.width, dp(252))
             kb.pos     = (0, 0)
             kb.opacity = 0
             Window.add_widget(kb)
             ref[0] = kb
             _Anim(opacity=1, duration=0.18, transition='out_quad').start(kb)
+
+            # Registrar listener para fechar ao tocar fora
+            _touch[0] = _toque_fora
+            Window.bind(on_touch_down=_toque_fora)
         else:
-            kb = ref[0]
-            if not kb:
-                return
-            def _rm(*_):
-                try:
-                    Window.remove_widget(kb)
-                except Exception:
-                    pass
-                ref[0] = None
-            _Anim(opacity=0, duration=0.12, transition='in_quad').bind(
-                on_complete=_rm).start(kb)
+            _esconder()
 
     inp.bind(focused=_mostrar)
+
 
 def popup_pedir_xp(nome: str, quantidade: int, on_save):
     pop, layout = _make_popup()
@@ -319,7 +339,7 @@ def popup_pedir_xp(nome: str, quantidade: int, on_save):
     inp.bind(text=_preview)
     btn = BotaoAngular(text=">>  CONFIRMAR  <<", size_hint_y=None, height=dp(52))
 
-    for w in [lbl_info, inp, lbl_preview, btn]:
+    for w in [lbl_info, btn, inp, lbl_preview]:  # btn antes do inp
         caixa.add_widget(w)
     layout.add_widget(caixa)
     caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
