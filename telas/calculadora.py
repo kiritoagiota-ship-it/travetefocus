@@ -6,8 +6,8 @@ from efeitos import tremer_tela
 
 
 class TelaCalculadora(Screen):
-    # Aceita X como multiplicacao e DEL como backspace (botoes do KV)
-    _SAFE = set('0123456789+-*/.() ')
+    _SAFE      = set('0123456789+-*/.() ')
+    _historico = []   # ultimos 3 resultados
 
     def add_texto(self, t):
         lbl = self.ids.calc_display
@@ -58,6 +58,10 @@ class TelaCalculadora(Screen):
             if isinstance(result, float) and result.is_integer():
                 result = int(result)
             lbl.text = str(result)
+            # Guardar no historico (max 3)
+            self._historico.append(str(result))
+            if len(self._historico) > 3:
+                self._historico.pop(0)
             tremer_tela(5)
             (Animation(color=(0, 0.9, 1, 1), duration=0.07) +
              Animation(color=(1, 1, 1, 1),   duration=0.32)).start(lbl)
