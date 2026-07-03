@@ -16,11 +16,19 @@ from efeitos import (BotaoAngular, BotaoAngularAlerta, ListaItem,
                      InputHolografico, tremer_tela, explodir_estilhacos)
 import som
 from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, _bind_teclado
-from exportar import exportar_e_compartilhar
 
 
 class TelaMemorias(Screen):
     filtro_mes = StringProperty("TODOS")
+
+    def on_leave(self, *_):
+        """Cancela updates pendentes ao sair da tela."""
+        try:
+            if hasattr(self, "_filtro_ev") and self._filtro_ev:
+                self._filtro_ev.cancel()
+                self._filtro_ev = None
+        except Exception:
+            pass
 
     def on_enter(self):
         self._atualizar_filtros()
@@ -104,8 +112,8 @@ class TelaMemorias(Screen):
                 size_hint_y=None, height=dp(160))
             vazio.bind(width=lambda i, v: setattr(i, 'text_size', (v, None)))
             cont.add_widget(vazio)
-            Animation(color=(0, 0.9, 1, 0.28), duration=0.45,
-                      transition='out_quad').start(vazio)
+            Animation(color=(0, 0.9, 1, 0.28), duration=0.35,
+                      transition='out_expo').start(vazio)
             return
 
         for i, m in enumerate(reversed(mems)):
@@ -124,8 +132,8 @@ class TelaMemorias(Screen):
             btn.opacity = 0
             cont.add_widget(btn)
             Clock.schedule_once(
-                lambda dt, b=btn: Animation(opacity=1, duration=0.18).start(b),
-                i * 0.04)
+                lambda dt, b=btn: Animation(opacity=1, duration=0.16, transition='out_expo').start(b),
+                i * 0.035)
 
     def _atualizar_grafico(self):
         app      = App.get_running_app()
@@ -348,6 +356,12 @@ class TelaMemorias(Screen):
             cx2.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
             _abrir_popup(cx2, pop2)
 
+        try:
+            from exportar import exportar_e_compartilhar
+        except ImportError:
+            if callback_erro:
+                _on_erro("Modulo exportar.py nao encontrado no repositorio.")
+            return
         exportar_e_compartilhar(app.memorias, app.user_data_dir, _on_erro)
         vibrar(80)
 
