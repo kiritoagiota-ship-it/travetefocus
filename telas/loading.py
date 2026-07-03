@@ -16,7 +16,6 @@ from kivy.metrics import dp
 
 from efeitos import tremer_tela, InputHolografico, BotaoAngular
 from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, _bind_teclado
-from lembrete import verificar_e_notificar
 
 # ══════════════════════════════════════════════════════════════
 #  CONFIGURACAO — altere aqui sem mexer em mais nada
@@ -88,6 +87,13 @@ class TelaLoading(Screen):
     def on_leave(self, *_):
         self._typing_ativo = False
         self._parar_particulas_dados()
+        # Limpar espadas ao sair — evita widget órfão na memória
+        try:
+            if self._espadas_widget and self._espadas_widget.parent:
+                self.remove_widget(self._espadas_widget)
+            self._espadas_widget = None
+        except Exception:
+            pass
 
     def preparar(self, dt):
         self._typing_ativo = True
@@ -203,8 +209,8 @@ class TelaLoading(Screen):
             return
         self.ids.barra_loading.opacity = 0
         self.reator.core_color = [0, 0.89, 1]
-        Animation(opacity=1, duration=0.3).start(self.ids.barra_loading)
-        Animation(build_progress=1.0, duration=1.0).start(self.reator)
+        Animation(opacity=1, duration=0.3, transition='out_expo').start(self.ids.barra_loading)
+        Animation(build_progress=1.0, duration=1.0, transition='out_expo').start(self.reator)
         Animation(progresso=100, duration=1.0).start(self.ids.barra_loading)
 
         t     = self.ids.titulo_label
@@ -219,13 +225,7 @@ class TelaLoading(Screen):
         def _finish(dt2):
             ev.cancel()
             t.text = alvo
-            Animation(opacity=1, duration=0.4).start(self.ids.version_label)
-            # Verificar lembrete diário após carregar dados
-            try:
-                Clock.schedule_once(
-                    lambda _: verificar_e_notificar(App.get_running_app()), 2.0)
-            except Exception:
-                pass
+            Animation(opacity=1, duration=0.4, transition='out_expo').start(self.ids.version_label)
             Clock.schedule_once(lambda _: _safe_mudar_tela("menu"), 0.5)
 
         Clock.schedule_once(_finish, 0.8)
@@ -259,7 +259,7 @@ class TelaLoading(Screen):
         Clock.schedule_once(tick, vel)
 
     def start_anim(self, dt):
-        Animation(opacity=1, duration=0.5).start(self.ids.terminal_box)
+        Animation(opacity=1, duration=0.5, transition='out_expo').start(self.ids.terminal_box)
         self.ids.barra_loading.opacity = 1
         self.start_text()
 
@@ -356,7 +356,7 @@ class TelaLoading(Screen):
                     def _apos_fade(*_):
                         pop.dismiss()
                         Clock.schedule_once(self.etapa_hack, 0.2)
-                    anim = Animation(opacity=0, duration=0.3)
+                    anim = Animation(opacity=0, duration=0.3, transition='in_expo')
                     anim.bind(on_complete=_apos_fade)
                     anim.start(caixa)
 
@@ -420,7 +420,7 @@ class TelaLoading(Screen):
         self.ids.barra_loading.progresso = 0
         self.ids.barra_loading.cor_linha = [0, 0.5, 1, 1]
         self.reator.core_color           = [0, 0.89, 1]
-        Animation(build_progress=1.0, duration=0.8).start(self.reator)
+        Animation(build_progress=1.0, duration=0.8, transition='out_expo').start(self.reator)
         a = Animation(progresso=100, duration=0.8)
         a.bind(on_complete=self.ignicao)
         a.start(self.ids.barra_loading)
@@ -430,7 +430,6 @@ class TelaLoading(Screen):
         self.ids.flash_overlay.opacity = 1
         Animation(opacity=0, duration=0.8).start(self.ids.flash_overlay)
         self.ids.terminal_box.opacity  = 0
-        # Verificar lembrete ao entrar via loading completo
         try:
             Clock.schedule_once(
                 lambda _: verificar_e_notificar(App.get_running_app()), 3.0)
@@ -448,7 +447,7 @@ class TelaLoading(Screen):
                   transition='out_back').start(self.ids.espada_esq)
         Animation(opacidade=1, escala=1.0, duration=0.6,
                   transition='out_back').start(self.ids.espada_dir)
-        t.opacity = 1
+        Animation(opacity=1, duration=0.3, transition='out_expo').start(t)
         self._iniciar_particulas_dados()
 
         ev = Clock.schedule_interval(
