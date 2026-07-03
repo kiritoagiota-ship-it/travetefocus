@@ -163,7 +163,7 @@ def transicao_tela(app, destino):
             anim_out.bind(on_complete=lambda a, w: Window.remove_widget(overlay))
             anim_out.start(overlay)
 
-        anim_in = Animation(opacity=0.92, duration=0.06, transition='out_quad')
+        anim_in = Animation(opacity=0.92, duration=0.06, transition='out_expo')
         anim_in.bind(on_complete=lambda a, w: Clock.schedule_once(
             lambda dt: _fade_out(a, w), 0.01))
         anim_in.start(overlay)
@@ -221,10 +221,10 @@ def _abrir_popup(caixa, pop):
     caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.44}
 
     def _on_open(*_):
-        Animation(opacity=1, duration=0.18,
+        Animation(opacity=1, duration=0.16,
                   transition='out_expo').start(caixa)
         Animation(pos_hint={'center_x': 0.5, 'center_y': 0.5},
-                  duration=0.22, transition='out_expo').start(caixa)
+                  duration=0.20, transition='out_back').start(caixa)
 
     pop.bind(on_open=_on_open)
     pop.open()
@@ -269,7 +269,7 @@ def anexar_teclado(inp, tipo='letras', decimal=False):
                 pass
             ref[0] = None
 
-        _Anim(opacity=0, duration=0.12, transition='in_quad'
+        _Anim(opacity=0, duration=0.10, transition='in_expo'
               ).bind(on_complete=_rm).start(kb)
 
     def _toque_fora(win, touch):
@@ -291,7 +291,7 @@ def anexar_teclado(inp, tipo='letras', decimal=False):
             kb.opacity = 0
             Window.add_widget(kb)
             ref[0] = kb
-            _Anim(opacity=1, duration=0.18, transition='out_quad').start(kb)
+            _Anim(opacity=1, duration=0.14, transition='out_expo').start(kb)
 
             # Registrar listener para fechar ao tocar fora
             _touch[0] = _toque_fora
