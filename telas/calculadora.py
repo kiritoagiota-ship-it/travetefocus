@@ -63,8 +63,9 @@ class TelaCalculadora(Screen):
             if len(self._historico) > 3:
                 self._historico.pop(0)
             tremer_tela(5)
-            (Animation(color=(0, 0.9, 1, 1), duration=0.07) +
-             Animation(color=(1, 1, 1, 1),   duration=0.32)).start(lbl)
+            (Animation(color=(0, 1, 0.8, 1), duration=0.06, transition='out_expo') +
+             Animation(color=(0, 0.9, 1, 1), duration=0.08, transition='out_expo') +
+             Animation(color=(1, 1, 1, 1),   duration=0.28, transition='in_out_expo')).start(lbl)
         except Exception:
             lbl.text = "ERRO"
             self._flash_erro(lbl)
