@@ -873,8 +873,8 @@ class _TecladoBase(BoxLayout):
         # Flash na cor do botao: cyan -> escuro -> cyan
         try:
             Animation.cancel_all(btn, 'color')
-            (Animation(color=[1, 1, 1, 1], duration=0.06, transition='out_quad') +
-             Animation(color=[0, 0.9, 1, 1], duration=0.12, transition='in_quad')
+            (Animation(color=[1, 1, 1, 1], duration=0.04, transition='out_expo') +
+             Animation(color=[0, 0.9, 1, 1], duration=0.10, transition='in_expo')
              ).start(btn)
         except Exception:
             pass
