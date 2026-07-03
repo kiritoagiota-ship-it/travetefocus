@@ -74,8 +74,8 @@ class TelaRegistro(Screen):
             self.ids.lista_container.add_widget(btn)
             Clock.schedule_once(
                 lambda dt, b=btn: Animation(
-                    opacity=1, duration=0.25, transition='out_quad').start(b),
-                i * 0.06)
+                    opacity=1, duration=0.20, transition='out_expo').start(b),
+                i * 0.05)
 
     def adicionar_item(self):
         n = self.ids.nome_input.text.strip()
@@ -115,7 +115,7 @@ class TelaRegistro(Screen):
         btn.bind(on_release=lambda x, d=dado, w=btn: self.confirmar_delete(d, w))
         btn.opacity = 0
         self.ids.lista_container.add_widget(btn)
-        Animation(opacity=1, duration=0.35, transition='out_quad').start(btn)
+        Animation(opacity=1, duration=0.22, transition='out_expo').start(btn)
         Clock.schedule_once(lambda _: self._focar_nome(), 0.15)
 
     def confirmar_delete(self, dado, btn):
