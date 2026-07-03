@@ -241,10 +241,10 @@ class TelaGanhos(Screen):
         self._atualizar_periodo_atual()
         try:
             st = self.ids.lbl_periodo_status
-            (Animation(color=[0, 1, 0.55, 0], duration=0.12) +
-             Animation(color=[0, 1, 0.55, 1], duration=0.12) +
-             Animation(color=[0, 1, 0.55, 0], duration=0.12) +
-             Animation(color=[1, 1, 1, 1],    duration=0.20)).start(st)
+            (Animation(color=[0, 1, 0.55, 0], duration=0.09, transition='out_expo') +
+             Animation(color=[0, 1, 0.55, 1], duration=0.09, transition='out_expo') +
+             Animation(color=[0, 1, 0.55, 0], duration=0.09, transition='out_expo') +
+             Animation(color=[1, 1, 1, 1],    duration=0.18, transition='out_expo')).start(st)
         except Exception:
             pass
 
