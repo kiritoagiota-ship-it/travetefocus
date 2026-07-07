@@ -1,5 +1,6 @@
 """telas/calculadora.py — TelaCalculadora"""
 from kivy.uix.screenmanager import Screen
+import som
 from kivy.animation import Animation
 from kivy.clock import Clock
 from efeitos import tremer_tela
@@ -58,6 +59,8 @@ class TelaCalculadora(Screen):
             if isinstance(result, float) and result.is_integer():
                 result = int(result)
             lbl.text = str(result)
+            try: som.tocar_calc_resultado()
+            except Exception: pass
             # Guardar no historico (max 3)
             self._historico.append(str(result))
             if len(self._historico) > 3:
