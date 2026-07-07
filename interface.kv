@@ -516,6 +516,18 @@
                     pos:  self.pos
                     size: self.size
         Label:
+            id:          lbl_filtro_ativo
+            text:        "[color=#00e5ff]TODOS[/color]"
+            markup:      True
+            font_name:   "orbitron.ttf"
+            font_size:   "11sp"
+            color:       0, 0.9, 1, 0.55
+            halign:      "left"
+            valign:      "middle"
+            size_hint_y: None
+            height:      dp(20)
+            text_size:   self.width, None
+        Label:
             id:          empty_state
             text:        "[ SEM LOTES REGISTRADOS ]\n\nDigite o nome e a quantidade\npara iniciar o turno."
             font_name:   "orbitron.ttf"
