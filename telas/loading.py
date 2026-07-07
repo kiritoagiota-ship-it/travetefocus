@@ -264,6 +264,8 @@ class TelaLoading(Screen):
         self.start_text()
 
     def start_text(self):
+        try: som.tocar_loading_drone()
+        except Exception: pass
         def p1():
             Animation(progresso=45, duration=1.2).start(self.ids.barra_loading)
             Animation(build_progress=0.6, duration=1.2).start(self.reator)
@@ -278,6 +280,8 @@ class TelaLoading(Screen):
         self.ids.barra_loading.cor_linha = [1, 0, 0.2, 1]
         self.reator.core_color           = [1, 0, 0.2]
         Animation.cancel_all(self.reator)
+        try: som.tocar_erro_firewall()
+        except Exception: pass
         _safe_treme(15)
 
     # ── Popup PIN ──────────────────────────────────────────────────────────
@@ -350,6 +354,8 @@ class TelaLoading(Screen):
                 inp_pin.text = "****"
                 btn.disabled = True
                 _safe_treme(10)
+                try: som.tocar_retomada()
+                except Exception: pass
                 self._salvar_sessao()
 
                 def _fechar(dt2):
@@ -364,6 +370,8 @@ class TelaLoading(Screen):
             else:
                 tentativas[0] -= 1
                 inp_pin.text = ""
+                try: som.tocar_pin_erro()
+                except Exception: pass
                 _safe_treme(12)
                 if tentativas[0] > 0:
                     lbl_status.text = (
@@ -389,6 +397,11 @@ class TelaLoading(Screen):
 
         btn.bind(on_release=_verificar)
         inp_pin.bind(on_text_validate=_verificar)
+        # Som de tecla ao digitar o PIN
+        def _pin_tecla(inst, val):
+            try: som.tocar_pin_tecla()
+            except Exception: pass
+        inp_pin.bind(text=_pin_tecla)
         _abrir_popup(caixa, pop)
         _bind_teclado(caixa, pop)
         from helpers import anexar_teclado
