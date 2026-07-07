@@ -144,6 +144,8 @@ class TelaRegistro(Screen):
         tot_xp    = sum(int(x[2]) for x in app.registros)
 
         def _confirmar(data_str):
+            # Guardar XP anterior para animacao de progresso
+            app.xp_anterior = getattr(app, "total_xp", 0)
             app.memorias.append({
                 "data":  data_str, "total": tot_pecas,
                 "xp":    tot_xp,  "itens": list(app.registros)
