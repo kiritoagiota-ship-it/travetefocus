@@ -103,6 +103,26 @@ jobs:
           yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager \
             --licenses 2>/dev/null || true
 
+      # ── 9b. PATCH p4a (bug do venv com 2 arquiteturas) ─────────────────────
+      # O p4a v2026.05.09 roda `python -m venv venv` de novo na 2ª arquitetura
+      # sobre o venv já existente, misturando pip 26 com pip 25.3 (quebrado).
+      # Apagamos o venv antes de recriá-lo e usamos essa cópia via source_dir.
+      - name: Clonar e corrigir python-for-android
+        run: |
+          git clone -q --depth 1 -b v2026.05.09 https://github.com/kivy/python-for-android.git "$GITHUB_WORKSPACE/p4a-src"
+          python - <<'PY'
+          import os
+          p = os.path.join(os.environ["GITHUB_WORKSPACE"], "p4a-src", "pythonforandroid", "build.py")
+          s = open(p, encoding="utf-8").read()
+          old = "        shprint(host_python, '-m', 'venv', 'venv')"
+          assert s.count(old) == 1, "trecho do venv nao encontrado"
+          s = s.replace(old, "        shutil.rmtree('venv', ignore_errors=True)" + chr(10) + old)
+          open(p, "w", encoding="utf-8").write(s)
+          PY
+          sed -i '/^p4a.branch/d' buildozer.spec
+          sed -i "/^p4a.hook/a p4a.source_dir = $GITHUB_WORKSPACE/p4a-src" buildozer.spec
+          grep -n "^p4a" buildozer.spec
+
       # ── 10. BUILD ──────────────────────────────────────────────────────────
       # O flag -v força output verboso sem alterar o buildozer.spec,
       # preservando o cache de pacotes (4a). O tee grava tudo em build.log
