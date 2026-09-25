@@ -369,8 +369,7 @@ class TelaMemorias(Screen):
         try:
             from exportar import exportar_e_compartilhar
         except ImportError:
-            if callback_erro:
-                _on_erro("Modulo exportar.py nao encontrado no repositorio.")
+            _on_erro("Modulo exportar.py nao encontrado no repositorio.")
             return
         exportar_e_compartilhar(app.memorias, app.user_data_dir, _on_erro)
         vibrar(80)

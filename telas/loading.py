@@ -447,11 +447,8 @@ class TelaLoading(Screen):
         self.ids.flash_overlay.opacity = 1
         Animation(opacity=0, duration=0.8).start(self.ids.flash_overlay)
         self.ids.terminal_box.opacity  = 0
-        try:
-            Clock.schedule_once(
-                lambda _: verificar_e_notificar(App.get_running_app()), 3.0)
-        except Exception:
-            pass
+        # (verificar_e_notificar / lembrete.py nao existe mais no projeto: a
+        # chamada agendada aqui dava NameError 3s depois e derrubava o app)
         self.animar_materializacao()
 
     def animar_materializacao(self):

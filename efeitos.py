@@ -778,6 +778,53 @@ class PoeiraDigital(Widget):
         self.bind(pos=lambda i, v: setattr(i._rect, 'pos', v))
 
 
+def explodir_estilhacos(widget_alvo, callback_final):
+    """
+    Explosão SAO com coordenadas globais (Window space).
+    Reduzido para 12 cacos + 8 poeira = 20 widgets totais
+    (vs 50 anterior) — reduz spike de frame em ~60%.
+    """
+    tremer_tela(14)
+
+    if widget_alvo.parent:
+        gx, gy = widget_alvo.parent.to_window(widget_alvo.x, widget_alvo.y)
+    else:
+        gx, gy = widget_alvo.to_window(0, 0)
+    gw, gh = widget_alvo.size
+
+    widget_alvo.opacity = 0
+
+    camada = FloatLayout(size=Window.size)
+    Window.add_widget(camada)
+
+    flash = FlashExplosao((gx, gy), (gw, gh))
+    camada.add_widget(flash)
+    Animation(opacity=0, escala=1.6, duration=0.20).start(flash)
+
+    # 12 cacos (era 28)
+    for _ in range(12):
+        c   = CacoSAO(gx, gy, gw, gh)
+        camada.add_widget(c)
+        nx  = c.x + random.randint(-260, 260)
+        nyp = c.y + random.randint(60, 160)
+        nyc = nyp - random.randint(200, 420)
+        (Animation(x=nx, y=nyp, angulo=random.randint(360, 720),
+                   duration=0.26, transition='out_circ') +
+         Animation(y=nyc, opacity=0, escala=0,
+                   duration=0.55, transition='in_quad')).start(c)
+
+    # 8 pontos de poeira (era 22)
+    for _ in range(8):
+        p = PoeiraDigital(gx, gy, gw, gh)
+        camada.add_widget(p)
+        Animation(x=p.x + random.randint(-160, 160),
+                  y=p.y + random.randint(60, 300),
+                  opacity=0, duration=0.75).start(p)
+
+    Clock.schedule_once(
+        lambda dt: (Window.remove_widget(camada), callback_final()), 0.95)
+
+
 # ══════════════════════════════════════════════════════════════════════
 #  TECLADOS CUSTOMIZADOS SAO — substitui teclado Android
 # ══════════════════════════════════════════════════════════════════════
