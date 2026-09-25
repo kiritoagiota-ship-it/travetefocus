@@ -93,6 +93,11 @@ _RECEITAS = {
 
     # XP ganho (add lote)
     'xp':             [(784, 0.050, 0.30), (988, 0.050, 0.35), (1319, 0.100, 0.40)],
+
+    # Corte de espada — swoosh descendente rapido + ressonancia metalica
+    'corte':          [(2400, 0.018, 0.18), (1800, 0.018, 0.26), (1300, 0.020, 0.30),
+                       (900, 0.024, 0.30), (600, 0.030, 0.26), (380, 0.040, 0.20),
+                       (0, 0.010, 0.00), (3100, 0.070, 0.10)],
 }
 
 def tocar_loading_drone():  tocar('loading_drone')
@@ -103,6 +108,7 @@ def tocar_retomada():       tocar('retomada')
 def tocar_xp_subindo():     tocar('xp_subindo')
 def tocar_level_up():       tocar('level_up')
 def tocar_calc_resultado(): tocar('calc_resultado')
+def tocar_corte():          tocar('corte')
 
 
 _WINSOUND_MAP = {
@@ -124,6 +130,7 @@ _WINSOUND_MAP = {
     'pin_tecla':       [(1200, 30)],
     'pin_erro':        [(100, 80), (80, 120)],
     'wipe':            [(440, 50), (220, 50), (110, 150)],
+    'corte':           [(1800, 20), (900, 25), (400, 40)],
 }
 
 

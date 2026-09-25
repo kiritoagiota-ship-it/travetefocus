@@ -8,6 +8,7 @@ from efeitos import ListaItem, explodir_estilhacos, tremer_tela
 from helpers import popup_pedir_xp, popup_delete_engracado, popup_resumo_dia, animar_ganho_xp, vibrar, anexar_teclado
 from datetime import datetime
 import som
+from animacoes_ui import entrada_cascata
 
 
 class TelaRegistro(Screen):
@@ -67,16 +68,14 @@ class TelaRegistro(Screen):
                 Clock.schedule_once(lambda _: pulse.start(es), 0.5)
             Clock.schedule_once(_animar_empty, 0.1)
 
-        for i, r in enumerate(registros):
+        novos = []
+        for r in registros:
             nome = r[0][:18] + "…" if len(r[0]) > 18 else r[0]
             btn  = self._make_item(f"  {nome}   ·   {r[1]} un.   ·   +{r[2]} XP")
             btn.bind(on_release=lambda x, dado=r, w=btn: self.confirmar_delete(dado, w))
-            btn.opacity = 0
             self.ids.lista_container.add_widget(btn)
-            Clock.schedule_once(
-                lambda dt, b=btn: Animation(
-                    opacity=1, duration=0.20, transition='out_expo').start(b),
-                i * 0.05)
+            novos.append(btn)
+        entrada_cascata(novos)
 
     def adicionar_item(self):
         n = self.ids.nome_input.text.strip()
@@ -117,9 +116,8 @@ class TelaRegistro(Screen):
         nome_curto = n[:18] + "…" if len(n) > 18 else n
         btn = self._make_item(f"  {nome_curto}   ·   {q} un.   ·   +{xp_total} XP")
         btn.bind(on_release=lambda x, d=dado, w=btn: self.confirmar_delete(d, w))
-        btn.opacity = 0
         self.ids.lista_container.add_widget(btn)
-        Animation(opacity=1, duration=0.22, transition='out_expo').start(btn)
+        entrada_cascata([btn], dy=dp(30))
         Clock.schedule_once(lambda _: self._focar_nome(), 0.15)
 
     def confirmar_delete(self, dado, btn):

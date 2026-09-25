@@ -13,6 +13,7 @@ from datetime import datetime
 from efeitos import (BotaoAngular, BotaoAngularAlerta, ListaItem,
                      tremer_tela, explodir_estilhacos)
 import som
+from animacoes_ui import entrada_cascata, contar, fmt_br
 from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, em, anexar_teclado
 
 
@@ -48,10 +49,8 @@ class TelaGanhos(Screen):
 
     def _pecas_no_periodo(self, inicio_str, fim_str=None):
         app    = App.get_running_app()
-        # Cache: chave = inicio+fim+len(memorias) — invalida quando lista muda
-        cache_key = (inicio_str, fim_str, len(app.memorias))
-        if getattr(self, '_cache_pecas_key', None) == cache_key:
-            return self._cache_pecas_val
+        # (sem cache: a chave por len(memorias) ficava velha ao editar a data
+        # de um turno e gravava total/ganho errado ao fechar o periodo)
         inicio = _data_str_para_obj(inicio_str)
         fim    = _data_str_para_obj(fim_str) if fim_str else None
         if inicio is None:
@@ -67,8 +66,6 @@ class TelaGanhos(Screen):
             else:
                 if d >= inicio:
                     total += int(m.get('total', 0))
-        self._cache_pecas_key = cache_key
-        self._cache_pecas_val = total
         return total
 
     def _calcular_ganho(self, total_pecas):
@@ -115,10 +112,11 @@ class TelaGanhos(Screen):
 
         self.ids.lbl_periodo_status.text = (
             f"[color=#00ff88]>> {tipo} aberto desde [b]{aberto['data_inicio']}[/b][/color]")
-        self.ids.lbl_periodo_pecas.text = (
-            f"[color=#888888]Pecas[/color]\n[color=#00e5ff][b]{pecas}[/b][/color]")
-        self.ids.lbl_periodo_ganho.text = (
-            f"[color=#888888]Projecao[/color]\n[color=#00ff88][b]R$ {ganho:.2f}[/b][/color]")
+        contar(self.ids.lbl_periodo_pecas, pecas,
+               lambda v: f"[color=#888888]Pecas[/color]\n[color=#00e5ff][b]{fmt_br(v)}[/b][/color]")
+        contar(self.ids.lbl_periodo_ganho, ganho,
+               lambda v: f"[color=#888888]Projecao[/color]\n[color=#00ff88][b]R$ {fmt_br(v, 2)}[/b][/color]",
+               inteiro=False)
         self.ids.lbl_periodo_bonus.text = (
             f"[color=#ffcc00]{em('🔥')} BONUS ATIVO — R${cfg['valor_bonus']:.2f}/peca[/color]"
             if bonus_ok else
@@ -142,7 +140,8 @@ class TelaGanhos(Screen):
             cont.add_widget(vazio)
             return
 
-        for i, p in enumerate(reversed(fechados)):
+        linhas = []
+        for p in reversed(fechados):
             tipo  = p.get('tipo', '?').capitalize()
             di    = p['data_inicio']
             df    = p['data_fim']
@@ -161,8 +160,8 @@ class TelaGanhos(Screen):
                 text=em('✕'), size_hint_x=0.18, font_size="18sp")
             row.add_widget(lbl)
             row.add_widget(btn_del)
-            row.opacity = 0
             cont.add_widget(row)
+            linhas.append(row)
 
             def _fazer_delete(periodo=p, widget=btn_del, tipo=tipo, di=di, df=df, ganho=ganho):
                 def _executar():
@@ -204,9 +203,7 @@ class TelaGanhos(Screen):
                 _abrir_popup(cx2, pop2)
 
             btn_del.bind(on_release=lambda *_, f=_fazer_delete: f())
-            Clock.schedule_once(
-                lambda dt, r=row: Animation(opacity=1, duration=0.22).start(r),
-                i * 0.06)
+        entrada_cascata(linhas)
 
     def _ciclar_tipo(self):
         tipos  = ["Semanal", "Quinzenal", "Mensal"]

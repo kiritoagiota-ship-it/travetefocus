@@ -1,5 +1,6 @@
 """telas/memorias.py — TelaMemorias"""
 import som
+from animacoes_ui import entrada_cascata
 from kivy.uix.screenmanager import Screen
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
@@ -127,7 +128,8 @@ class TelaMemorias(Screen):
                       transition='out_expo').start(vazio)
             return
 
-        for i, m in enumerate(reversed(mems)):
+        novos = []
+        for m in reversed(mems):
             is_rec = m['total'] == max_t and max_t > 0
             crown  = "[REC] " if is_rec else ""
             btn    = ListaItem(
@@ -140,11 +142,9 @@ class TelaMemorias(Screen):
                 btn.cor_fundo    = [0.10, 0.08, 0.0, 0.92]
                 btn.cor_texto    = [1.0, 0.88, 0.1, 1.0]
             btn.bind(on_release=lambda x, mem=m: self.abrir_detalhes_memoria(mem))
-            btn.opacity = 0
             cont.add_widget(btn)
-            Clock.schedule_once(
-                lambda dt, b=btn: Animation(opacity=1, duration=0.16, transition='out_expo').start(b),
-                i * 0.035)
+            novos.append(btn)
+        entrada_cascata(novos)
 
     def _atualizar_grafico(self):
         app      = App.get_running_app()

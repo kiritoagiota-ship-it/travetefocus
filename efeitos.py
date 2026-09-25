@@ -433,6 +433,15 @@ class BotaoAngular(Button):
     cor_fundo    = ListProperty([0.04, 0.04, 0.15, 0.92])
     cor_texto    = ListProperty([0.0,  0.90, 1.0,  1.0])
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # faixa de luz + pulso no contorno a cada toque (todas as subclasses)
+        try:
+            from animacoes_ui import aplicar_brilho_toque
+            aplicar_brilho_toque(self)
+        except Exception as e:
+            print(f"[BotaoAngular] brilho indisponivel: {e}")
+
     def on_kv_post(self, base_widget):
         # Salva cor original assim que o KV terminar de aplicar valores
         self.cor_borda_kv = list(self.cor_borda)

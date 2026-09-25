@@ -10,7 +10,7 @@ import shutil
 import sys
 from kivy.app import App
 from kivy.lang import Builder
-from kivy.uix.screenmanager import ScreenManager, Screen
+from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
 from kivy.uix.floatlayout import FloatLayout
 from kivy.core.window import Window
 from kivy.properties import NumericProperty, ListProperty, StringProperty
@@ -32,13 +32,49 @@ from telas.calculadora import TelaCalculadora
 # ── Tela de menu (sem lógica, só navegação) ───────────────
 class MenuPrincipal(Screen):
     def on_enter(self):
-        pass
+        # botoes entram em cascata, de cima para baixo
+        try:
+            from animacoes_ui import entrada_cascata
+            botoes = [w for w in self.walk(restrict=True) if isinstance(w, BotaoAngular)]
+            botoes.sort(key=lambda w: -w.to_window(*w.center)[1])
+            entrada_cascata(botoes, atraso=0.07, dy=dp(28))
+        except Exception as e:
+            print(f"[menu] cascata: {e}")
+
+LARGURA_COLUNA = 560     # dp: largura maxima do app em janela larga (PC/tablet)
+
 
 class RootWidget(FloatLayout):
-    pass
+    """Celular: o app ocupa a tela toda. Janela larga: o app fica numa coluna
+    central e um fundo animado (grade + particulas) preenche as laterais."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._fundo_largo = None
+        self.bind(size=self._ajustar_fundo)
+
+    def _ajustar_fundo(self, *_):
+        try:
+            largo = self.width > dp(LARGURA_COLUNA + 80)
+            if largo and self._fundo_largo is None:
+                fundo = FloatLayout(size_hint=(1, 1), pos_hint={'x': 0, 'y': 0})
+                fundo.add_widget(GridHolografico(size_hint=(1, 1), pos_hint={'x': 0, 'y': 0}))
+                fundo.add_widget(FundoAnimado(size_hint=(1, 1), pos_hint={'x': 0, 'y': 0}))
+                self.add_widget(fundo, index=len(self.children))   # atras de tudo
+                self._fundo_largo = fundo
+            elif not largo and self._fundo_largo is not None:
+                self.remove_widget(self._fundo_largo)
+                self._fundo_largo = None
+        except Exception as e:
+            print(f"[root] fundo largo: {e}")
+
 
 class Gerenciador(ScreenManager):
-    pass
+    def __init__(self, **kwargs):
+        # a troca acontece escondida sob o corte de espada (golpe_tela);
+        # um slide por baixo apareceria quando o veu clareia
+        kwargs.setdefault('transition', NoTransition())
+        super().__init__(**kwargs)
 
 # ═══════════════════════════════════════════════════════════
 #  CONFIGURAÇÃO DE JANELA
@@ -47,6 +83,11 @@ class Gerenciador(ScreenManager):
 def _configurar_janela():
     if platform not in ('android', 'ios'):
         Window.size = (420, 780)
+        try:
+            Window.minimum_width  = 320
+            Window.minimum_height = 520
+        except Exception:
+            pass
         try:
             Window.left = 100
             Window.top  = 50

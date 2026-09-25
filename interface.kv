@@ -1,5 +1,6 @@
 #:import rgba kivy.utils.get_color_from_hex
 #:import dp   kivy.metrics.dp
+#:import sp   kivy.metrics.sp
 
 # ── Defaults globais ─────────────────────────────────────────
 <Label>:
@@ -214,10 +215,11 @@
                 pos:  self.pos
                 size: self.size
         BoxLayout:
-            pos_hint:  {"center_x": 0.5, "center_y": 0.72}
-            size_hint: (0.70, 0.32)
-            ReatorArcShader:
+            pos_hint:  {"center_x": 0.5, "center_y": 0.73}
+            size_hint: (0.92, 0.34)
+            InfinitoLoader:
                 id:        reator_shader
+                texto:     "LOADING"
                 size_hint: (1, 1)
         BoxLayout:
             orientation: 'horizontal'
@@ -234,7 +236,7 @@
                 id:        titulo_label
                 text:      ""
                 font_name: "orbitron.ttf"
-                font_size: "34sp"
+                font_size: min(sp(34), self.width / 12.5) if self.width > 10 else sp(34)
                 color:     rgba("#00e5ff")
                 bold:      True
                 halign:    "center"
@@ -332,14 +334,14 @@
                 Label:
                     text:      "TRAVETE FOCUS"
                     font_name: "orbitron.ttf"
-                    font_size: "32sp"
+                    font_size: min(sp(32), self.width / 12.5) if self.width > 10 else sp(32)
                     color:     rgba("#00e5ff")
                     bold:      True
                     halign:    "center"
                     valign:    "middle"
                     text_size: self.size
                 Label:
-                    text:      "NERVEGEAR  ·  AINCRAD EDITION"
+                    text:      "NERVEGEAR  //  AINCRAD EDITION"
                     font_name: "orbitron.ttf"
                     font_size: "10sp"
                     color:     rgba("#8a2be266")
@@ -1200,8 +1202,27 @@
 #  ROOT
 # ════════════════════════════════════════════════════════════
 RootWidget:
+    canvas.before:
+        Color:
+            rgba: 0.008, 0.008, 0.02, 1
+        Rectangle:
+            pos:  self.pos
+            size: self.size
     Gerenciador:
         id: sm
+        size_hint: (None, 1)
+        width: min(root.width, dp(560)) if root.width > dp(640) else root.width
+        pos_hint: {"center_x": 0.5}
+        canvas.after:
+            # bordas neon da coluna (so aparecem em janela larga)
+            Color:
+                rgba: (0, 0.9, 1, 0.22) if root.width > dp(640) else (0, 0, 0, 0)
+            Line:
+                points: [self.x, self.y, self.x, self.top]
+                width: 1.2
+            Line:
+                points: [self.right, self.y, self.right, self.top]
+                width: 1.2
         TelaLoading:
         MenuPrincipal:
         TelaRegistro:

@@ -15,6 +15,8 @@ from kivy.core.window import Window
 from kivy.metrics import dp
 
 from efeitos import tremer_tela, InputHolografico, BotaoAngular
+from infinito import InfinitoLoader  # noqa: F401  (usado no kv: id reator_shader)
+from espadachim import EspadachimPixel
 from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, _bind_teclado
 import som
 
@@ -50,6 +52,7 @@ class TelaLoading(Screen):
         super().__init__(**kwargs)
         self._typing_ativo   = False
         self._espadas_widget = None
+        self._espadachim     = None
 
     # ── Sessao ─────────────────────────────────────────────────────────────
 
@@ -88,6 +91,7 @@ class TelaLoading(Screen):
     def on_leave(self, *_):
         self._typing_ativo = False
         self._parar_particulas_dados()
+        self._remover_espadachim()
         # Limpar espadas ao sair — evita widget órfão na memória
         try:
             if self._espadas_widget and self._espadas_widget.parent:
@@ -110,7 +114,6 @@ class TelaLoading(Screen):
             self.reator.core_color           = [0, 0.89, 1]
             self.ids.barra_loading.progresso = 0
             self.ids.console_text.text       = ""
-            self._add_pixel_swords()
 
             if self._sessao_valida():
                 Clock.schedule_once(self._quick_load, 0.15)
@@ -119,91 +122,6 @@ class TelaLoading(Screen):
         except Exception as e:
             print(f"[LOADING] ids nao prontos: {e}")
             Clock.schedule_once(lambda _: _safe_mudar_tela("menu"), 0.5)
-
-    # ── Pixel Art Espadas ──────────────────────────────────────────────────
-
-    def _add_pixel_swords(self):
-        """
-        Cria widget das espadas e agenda o draw para APOS o layout.
-        O centro so fica disponivel depois que o widget e adicionado
-        e o Kivy faz o primeiro calculo de layout (~1 frame).
-        """
-        if self._espadas_widget:
-            try:
-                self.remove_widget(self._espadas_widget)
-            except Exception:
-                pass
-
-        w = Widget(size_hint=(None, None), size=(dp(100), dp(100)))
-        self.add_widget(w)
-        self._espadas_widget = w
-
-        def _posicionar_e_desenhar(*_):
-            try:
-                reator = self.ids.reator_shader
-                w.center = reator.center
-                self._redesenhar_espadas(w)
-            except Exception as e:
-                print(f"[espadas] posicao nao disponivel: {e}")
-
-        # Bind para acompanhar mudancas de posicao/tamanho
-        try:
-            self.ids.reator_shader.bind(center=_posicionar_e_desenhar)
-            self.bind(size=_posicionar_e_desenhar)
-        except Exception:
-            pass
-
-        # Aguarda layout + fade-in suave das espadas
-        Clock.schedule_once(lambda dt: _posicionar_e_desenhar(), 0.05)
-        def _fade_in_espadas(dt):
-            _posicionar_e_desenhar()
-            if self._espadas_widget:
-                self._espadas_widget.opacity = 0
-                Animation(opacity=1, duration=0.6,
-                          transition='out_quad').start(self._espadas_widget)
-        Clock.schedule_once(_fade_in_espadas, 0.30)
-
-    def _redesenhar_espadas(self, widget):
-        """Limpa e redesenha as espadas usando posicao real do widget."""
-        if not widget.parent or widget.width <= 0:
-            return
-
-        BLADE  = (0.85, 0.92, 0.97, 0.95)
-        GUARD  = (1.00, 0.80, 0.15, 1.00)
-        HANDLE = (0.52, 0.30, 0.10, 0.90)
-        POMMEL = (0.00, 0.88, 1.00, 1.00)
-        GEM    = (0.00, 1.00, 0.88, 1.00)
-
-        pixels = [
-            (-6, 6, BLADE), (-5, 5, BLADE), (-4, 4, BLADE),
-            (-3, 3, BLADE), (-2, 2, BLADE), (-1, 1, BLADE),
-            ( 6, 6, BLADE), ( 5, 5, BLADE), ( 4, 4, BLADE),
-            ( 3, 3, BLADE), ( 2, 2, BLADE), ( 1, 1, BLADE),
-            (-2, 0, GUARD), (-1, 1, GUARD), (0, 2, GUARD),
-            ( 2, 0, GUARD), ( 1, 1, GUARD),
-            (0, 0, GEM),
-            ( 1, -1, BLADE), ( 2, -2, BLADE), ( 3, -3, BLADE),
-            (-1, -1, BLADE), (-2, -2, BLADE), (-3, -3, BLADE),
-            ( 4, -4, HANDLE), ( 5, -5, HANDLE),
-            (-4, -4, HANDLE), (-5, -5, HANDLE),
-            ( 6, -6, POMMEL),
-            (-6, -6, POMMEL),
-        ]
-
-        # InstructionGroup dedicado — nao afeta outros canvas do widget
-        if hasattr(widget, '_espadas_group'):
-            widget.canvas.remove(widget._espadas_group)
-        grp = InstructionGroup()
-        ps  = max(2, int(widget.width / 28))
-        cx  = widget.center_x
-        cy  = widget.center_y
-        for dx, dy, cor in pixels:
-            grp.add(Color(*cor))
-            grp.add(Rectangle(
-                pos=(cx + dx * ps - ps / 2, cy + dy * ps - ps / 2),
-                size=(ps, ps)))
-        widget.canvas.add(grp)
-        widget._espadas_group = grp
 
     # ── Quick Load ─────────────────────────────────────────────────────────
 
@@ -356,6 +274,12 @@ class TelaLoading(Screen):
                 inp_pin.foreground_color = [0, 1, 0.55, 1]
                 inp_pin.text = "****"
                 btn.disabled = True
+                # firewall vencido: o infinito sai do vermelho e volta a ciclar
+                try:
+                    self.reator.core_color = [0, 0.89, 1]
+                    self.ids.barra_loading.cor_linha = [0, 0.9, 1, 1]
+                except Exception:
+                    pass
                 _safe_treme(10)
                 try: som.tocar_retomada()
                 except Exception: pass
@@ -364,7 +288,9 @@ class TelaLoading(Screen):
                 def _fechar(dt2):
                     def _apos_fade(*_):
                         pop.dismiss()
-                        Clock.schedule_once(self.etapa_hack, 0.2)
+                        # espadachim golpeia e so entao o "hack" continua
+                        self._golpe_espadachim(
+                            lambda: Clock.schedule_once(self.etapa_hack, 0.15))
                     anim = Animation(opacity=0, duration=0.3, transition='in_expo')
                     anim.bind(on_complete=_apos_fade)
                     anim.start(caixa)
@@ -411,6 +337,73 @@ class TelaLoading(Screen):
         from helpers import anexar_teclado
         # teclado numerico com fechar via _verificar (OK no teclado = verificar PIN)
         Clock.schedule_once(lambda dt: anexar_teclado(inp_pin, 'numeros'), 0.4)
+
+    # ── Espadachim (senha aceita) ──────────────────────────────────────────
+
+    def _golpe_espadachim(self, continuar):
+        """Espadachim pixel art entra, faz o combo de 2 cortes em meia-lua e
+        sai. Qualquer falha aqui apenas segue a sequencia (nunca trava)."""
+        seguiu = [False]
+
+        def _seguir(*_):
+            if seguiu[0]:
+                return
+            seguiu[0] = True
+            try:
+                continuar()
+            except Exception as e:
+                print(f"[loading] continuar: {e}")
+
+        # rede de seguranca: a historia continua mesmo se algo travar
+        Clock.schedule_once(_seguir, 4.0)
+        if not self._typing_ativo:
+            _seguir()
+            return
+        try:
+            self._remover_espadachim()
+            lado = min(Window.width * 0.86, dp(420))
+            esp = EspadachimPixel(size_hint=(None, None), size=(lado, lado * 0.62),
+                                  pos_hint={'center_x': 0.5, 'center_y': 0.49})
+            esp.opacity = 0
+            self.add_widget(esp)
+            self._espadachim = esp
+            esp.iniciar_idle()
+            Animation(opacity=1, duration=0.25, transition='out_quad').start(esp)
+
+            def _impacto(n):
+                try: som.tocar_corte()
+                except Exception: pass
+                _safe_treme(10 + 6 * n)
+                try:
+                    fl = self.ids.flash_overlay
+                    Animation.cancel_all(fl, 'opacity')
+                    fl.opacity = 0.16
+                    Animation(opacity=0, duration=0.22).start(fl)
+                except Exception:
+                    pass
+
+            def _sair():
+                anim = Animation(opacity=0, duration=0.3, transition='in_quad')
+                anim.bind(on_complete=lambda *_: (self._remover_espadachim(), _seguir()))
+                anim.start(esp)
+
+            Clock.schedule_once(
+                lambda dt: esp.atacar(combo=True, on_impacto=_impacto, on_fim=_sair), 0.45)
+        except Exception as e:
+            print(f"[loading] espadachim ignorado: {e}")
+            self._remover_espadachim()
+            _seguir()
+
+    def _remover_espadachim(self):
+        esp, self._espadachim = self._espadachim, None
+        if esp is None:
+            return
+        try:
+            esp.parar()
+            if esp.parent:
+                esp.parent.remove_widget(esp)
+        except Exception as e:
+            print(f"[loading] remover espadachim: {e}")
 
     # ── Sequencia pos-PIN ──────────────────────────────────────────────────
 

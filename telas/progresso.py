@@ -5,6 +5,7 @@ from kivy.animation import Animation
 from kivy.clock import Clock
 from helpers import calcular_level, obter_titulo_level, em
 import som
+from animacoes_ui import entrada_cascata, contar, fmt_br
 
 
 class TelaProgresso(Screen):
@@ -58,6 +59,21 @@ class TelaProgresso(Screen):
         except Exception:
             pass
 
+    def _cascata_cards(self):
+        cards, vistos = [], set()
+        for nome in ('lbl_level_num', 'lbl_titulo', 'lbl_streak', 'barra_circular',
+                     'lbl_xp_fracao', 'lbl_total_xp', 'lbl_total_pecas', 'lbl_melhor_dia'):
+            w = self.ids.get(nome)
+            if w is None:
+                continue
+            # anima o card (pai) quando o label esta num BoxLayout pequeno proprio
+            alvo = w.parent if (w.parent is not None and w.parent is not self
+                                and len(w.parent.children) <= 3) else w
+            if id(alvo) not in vistos:
+                vistos.add(id(alvo))
+                cards.append(alvo)
+        entrada_cascata(cards, atraso=0.06)
+
     def on_enter(self):
         app   = App.get_running_app()
         level, xp_atual, xp_necessario = calcular_level(app.total_xp)
@@ -71,10 +87,15 @@ class TelaProgresso(Screen):
 
         self.ids.lbl_level_num.text   = f"LVL  {level}"
         self.ids.lbl_titulo.text      = obter_titulo_level(level)
-        self.ids.lbl_xp_fracao.text   = f"{xp_atual}  /  {xp_necessario} XP"
-        self.ids.lbl_total_xp.text    = f"XP TOTAL\n[color=#00e5ff]{app.total_xp}[/color]"
-        self.ids.lbl_total_pecas.text = f"PECAS TOTAL\n[color=#00e5ff]{app.total_geral}[/color]"
-        self.ids.lbl_melhor_dia.text  = f"MELHOR DIA\n[color=#ffcc00]{app.melhor_dia} un.[/color]"
+        contar(self.ids.lbl_xp_fracao, xp_atual,
+               lambda v: f"{fmt_br(v)}  /  {fmt_br(xp_necessario)} XP", duracao=1.2, atraso=0.4)
+        contar(self.ids.lbl_total_xp, app.total_xp,
+               lambda v: f"XP TOTAL\n[color=#00e5ff]{fmt_br(v)}[/color]", atraso=0.15)
+        contar(self.ids.lbl_total_pecas, app.total_geral,
+               lambda v: f"PECAS TOTAL\n[color=#00e5ff]{fmt_br(v)}[/color]", atraso=0.22)
+        contar(self.ids.lbl_melhor_dia, app.melhor_dia,
+               lambda v: f"MELHOR DIA\n[color=#ffcc00]{fmt_br(v)} un.[/color]", atraso=0.29)
+        self._cascata_cards()
 
         streak = app.streak
         barra  = self.ids.barra_circular

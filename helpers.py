@@ -18,6 +18,7 @@ from kivy.metrics import dp
 from datetime import datetime
 import random
 
+import som
 from efeitos import (
     InputHolografico, BotaoAngular, BotaoAngularAlerta,
     ListaItem, tremer_tela, explodir_estilhacos
@@ -52,7 +53,12 @@ def em(emoji_char):
             return f'[font={EMOJI_FONT}]{emoji_char}[/font]'
     except Exception:
         pass
-    return emoji_char
+    # sem a fonte de emoji: orbitron/rajdhani nao tem esses glifos e o
+    # Kivy desenharia um quadradinho; usa um equivalente que as fontes tem
+    return _EMOJI_TEXTO.get(emoji_char, emoji_char)
+
+
+_EMOJI_TEXTO = {'🔥': '>>', '✕': 'X', '✓': 'OK', '★': '*'}
 
 
 def _bind_teclado(caixa, pop):
@@ -140,43 +146,65 @@ def aplicar_fundo_holografico(widget, cor_borda=None):
     widget.bind(pos=_upd, size=_upd)
 
 
+_transicao = {'sentido': 1, 'ativa': False, 'destino': None}
+
+
+def _soltar_foco(tela):
+    """Tira o foco dos campos da tela que esta saindo: fecha o teclado SAO
+    (senao ele fica aberto por cima da proxima tela)."""
+    try:
+        from kivy.uix.textinput import TextInput
+        for w in tela.walk(restrict=True):
+            if isinstance(w, TextInput) and w.focus:
+                w.focus = False
+    except Exception as e:
+        print(f"[transicao] soltar foco: {e}")
+
+
 def transicao_tela(app, destino):
+    """Troca de tela com um corte de espada atravessando a janela
+    (espadachim.golpe_tela). O sentido alterna entre ida e volta."""
     try:
         sm = app.root.ids.sm
-        overlay = Widget(size=Window.size, opacity=0)
-        with overlay.canvas:
-            Color(0, 0, 0, 1)
-            Rectangle(pos=(0, 0), size=Window.size)
-
-        scan = Widget(size=(Window.width, 2), pos=(0, Window.height))
-        with scan.canvas:
-            Color(0, 0.9, 1, 0.55)
-            scan_rect = Rectangle(pos=scan.pos, size=scan.size)
-        scan.bind(pos=lambda i, v: setattr(scan_rect, 'pos', v))
-
-        overlay.add_widget(scan)
-        Window.add_widget(overlay)
-
-        def _fade_out(anim, widget):
-            try:
-                sm.current = destino
-            except Exception as e:
-                print(f"[transicao] sm.current={destino} falhou: {e}")
-            anim_out = Animation(opacity=0, duration=0.08, transition='out_quad')
-            anim_out.bind(on_complete=lambda a, w: Window.remove_widget(overlay))
-            anim_out.start(overlay)
-
-        anim_in = Animation(opacity=0.92, duration=0.06, transition='out_expo')
-        anim_in.bind(on_complete=lambda a, w: Clock.schedule_once(
-            lambda dt: _fade_out(a, w), 0.01))
-        anim_in.start(overlay)
-        Animation(y=-4, duration=0.12, transition='out_quad').start(scan)
     except Exception as e:
-        print(f"[transicao_tela] erro: {e}")
+        print(f"[transicao_tela] sem ScreenManager: {e}")
+        return
+    if _transicao['ativa']:
+        # toque durante o corte: so atualiza o destino (o ultimo pedido vale)
+        _transicao['destino'] = destino
+        return
+    if sm.current == destino:
+        return
+    _transicao['destino'] = destino
+
+    def _trocar():
+        alvo = _transicao['destino']
         try:
-            app.root.ids.sm.current = destino
+            _soltar_foco(sm.current_screen)
+            if alvo and sm.current != alvo:
+                sm.current = alvo
+        except Exception as e:
+            print(f"[transicao] sm.current={alvo} falhou: {e}")
+
+    def _fim():
+        _transicao['ativa'] = False
+        _trocar()          # pedido feito depois do pico do corte
+
+    try:
+        from espadachim import golpe_tela
+        _transicao['ativa'] = True
+        sentido = _transicao['sentido']
+        _transicao['sentido'] = -sentido
+        cor = (0.0, 0.9, 1.0) if sentido > 0 else (0.6, 0.25, 1.0)
+        try:
+            som.tocar_corte()
         except Exception:
             pass
+        golpe_tela(on_meio=_trocar, on_fim=_fim, cor=cor, sentido=sentido)
+    except Exception as e:
+        print(f"[transicao_tela] erro: {e}")
+        _transicao['ativa'] = False
+        _trocar()
 
 
 def animar_ganho_xp(quantidade):
@@ -219,7 +247,20 @@ def _make_popup():
     return pop, layout
 
 
+def largura_coluna():
+    """Largura util do app: tela toda no celular, coluna central no PC."""
+    return min(Window.width, dp(560))
+
+
 def _abrir_popup(caixa, pop):
+    # em janela larga (PC/tablet deitado) o popup nao estica na tela toda
+    try:
+        if caixa.size_hint_x is not None and Window.width > dp(640):
+            frac = caixa.size_hint_x
+            caixa.size_hint_x = None
+            caixa.width = min(Window.width * frac, dp(520))
+    except Exception:
+        pass
     caixa.opacity  = 0
     caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.44}
 
@@ -282,6 +323,11 @@ def anexar_teclado(inp, tipo='letras', decimal=False):
         """Fecha o teclado se o toque for acima dele."""
         kb = ref[0]
         if kb and not kb.collide_point(*touch.pos):
+            try:   # tocar no proprio campo nao fecha o teclado
+                if inp.collide_point(*inp.to_widget(*touch.pos)):
+                    return False
+            except Exception:
+                pass
             _esconder()
         return False   # nao consumir o toque
 
@@ -292,8 +338,9 @@ def anexar_teclado(inp, tipo='letras', decimal=False):
             kb = (Kls(target=inst, fechar=_esconder, decimal=decimal)
                   if tipo == 'numeros'
                   else Kls(target=inst, fechar=_esconder))
-            kb.size    = (Window.width, dp(252))
-            kb.pos     = (0, 0)
+            larg       = largura_coluna()
+            kb.size    = (larg, dp(252))
+            kb.pos     = ((Window.width - larg) / 2.0, 0)
             kb.opacity = 0
             Window.add_widget(kb)
             ref[0] = kb
@@ -306,6 +353,17 @@ def anexar_teclado(inp, tipo='letras', decimal=False):
             _esconder()
 
     inp.bind(focused=_mostrar)
+
+    # OK fecha o teclado mas o campo continua focado: sem isto, tocar de novo
+    # no mesmo campo (ex: 2a tentativa do PIN) nao reabria o teclado
+    def _toque_campo(inst, touch):
+        try:
+            if inst.focus and ref[0] is None and inst.collide_point(*touch.pos):
+                Clock.schedule_once(lambda dt: _mostrar(inst, True), 0)
+        except Exception as e:
+            print(f"[teclado] reabrir: {e}")
+        return False
+    inp.bind(on_touch_down=_toque_campo)
 
 
 def popup_pedir_xp(nome: str, quantidade: int, on_save):
