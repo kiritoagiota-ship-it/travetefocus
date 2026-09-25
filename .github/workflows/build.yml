@@ -36,9 +36,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
-          restore-keys: |
-            ${{ runner.os }}-buildozer-
+          key: ${{ runner.os }}-buildozer-v2-${{ hashFiles('buildozer.spec') }}
 
       # ── 4b. CACHE — compilação do projeto (.buildozer/android) ─────────────
       # NOVO: guarda os binários do Kivy já compilados para Android.
@@ -48,9 +46,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .buildozer/android
-          key: ${{ runner.os }}-p4a-build-${{ hashFiles('buildozer.spec') }}
-          restore-keys: |
-            ${{ runner.os }}-p4a-build-
+          key: ${{ runner.os }}-p4a-build-v2-${{ hashFiles('buildozer.spec') }}
 
       # ── 5. DEPENDÊNCIAS DO SISTEMA ─────────────────────────────────────────
       - name: Instalar dependências do sistema
