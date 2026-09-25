@@ -136,7 +136,13 @@ def exportar_e_compartilhar(memorias, data_dir, callback_erro=None):
             callback_erro("Nenhum turno registrado para exportar.")
         return
 
-    relatorio = gerar_relatorio_whatsapp(memorias)
+    try:
+        relatorio = gerar_relatorio_whatsapp(memorias)
+    except Exception as ex:
+        print(f"[EXPORT] relatorio falhou: {ex}")
+        if callback_erro:
+            callback_erro("Nao foi possivel gerar o relatorio (dados inconsistentes).")
+        return
     caminho   = None
     try:
         caminho = salvar_csv(memorias, data_dir)

@@ -88,8 +88,15 @@ class TraveteApp(App):
         kv = resource_find("interface.kv") or "interface.kv"
         return Builder.load_file(kv)
 
+    def on_pause(self):
+        # No Android o app pode ser morto em segundo plano sem passar pelo
+        # on_stop: grava ja, de forma sincrona
+        self.salvar_dados(sincrono=True)
+        return True
+
     def on_stop(self):
-        self.salvar_dados()
+        # sincrono: numa thread daemon o processo encerra antes de gravar
+        self.salvar_dados(sincrono=True)
         som.limpar()
 
     def mudar_tela(self, destino):
@@ -108,7 +115,7 @@ class TraveteApp(App):
         self.total_xp    = total_x
         self.melhor_dia  = melhor
 
-    def salvar_dados(self):
+    def salvar_dados(self, sincrono=False):
         snapshot = {
             "memorias":        list(self.memorias),
             "total_geral":     self.total_geral,
@@ -122,11 +129,22 @@ class TraveteApp(App):
             "config_ganhos":   dict(self.config_ganhos),
         }
         data_dir = self.user_data_dir
+        if sincrono:
+            self._salvar_bg(snapshot, data_dir)
+            return
         threading.Thread(
             target=self._salvar_bg, args=(snapshot, data_dir), daemon=True
         ).start()
 
+    _lock_salvar = threading.Lock()
+
     def _salvar_bg(self, dados, data_dir):
+        # Serializa gravacoes: duas threads escrevendo o mesmo .tmp ao mesmo
+        # tempo podiam gerar um dados.json corrompido
+        with self._lock_salvar:
+            self._salvar_bg_impl(dados, data_dir)
+
+    def _salvar_bg_impl(self, dados, data_dir):
         try:
             tmp  = os.path.join(data_dir, "dados.json.tmp")
             dest = os.path.join(data_dir, "dados.json")

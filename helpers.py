@@ -272,8 +272,11 @@ def anexar_teclado(inp, tipo='letras', decimal=False):
                 pass
             ref[0] = None
 
-        _Anim(opacity=0, duration=0.10, transition='in_expo'
-              ).bind(on_complete=_rm).start(kb)
+        # bind() devolve None: encadear .bind(...).start(...) derrubava o app
+        # toda vez que o teclado fechava (OK, toque fora, popup fechando)
+        anim = _Anim(opacity=0, duration=0.10, transition='in_expo')
+        anim.bind(on_complete=_rm)
+        anim.start(kb)
 
     def _toque_fora(win, touch):
         """Fecha o teclado se o toque for acima dele."""

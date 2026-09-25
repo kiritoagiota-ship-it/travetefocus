@@ -503,10 +503,11 @@ class TelaLoading(Screen):
                     pos=(x, y_ini), opacity=0)
                 Window.add_widget(lbl)
                 self._part_lbls.append(lbl)
-                (Animation(opacity=1, y=y_ini + 30, duration=0.4, transition='out_quad') +
-                 Animation(duration=0.5) +
-                 Animation(opacity=0, y=y_ini + 70, duration=0.4, transition='in_quad')
-                 ).bind(on_complete=lambda *_: self._remover_particula(lbl)).start(lbl)
+                anim = (Animation(opacity=1, y=y_ini + 30, duration=0.4, transition='out_quad') +
+                        Animation(duration=0.5) +
+                        Animation(opacity=0, y=y_ini + 70, duration=0.4, transition='in_quad'))
+                anim.bind(on_complete=lambda *_: self._remover_particula(lbl))
+                anim.start(lbl)
             except Exception:
                 pass
 

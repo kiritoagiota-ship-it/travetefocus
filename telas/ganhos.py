@@ -164,7 +164,7 @@ class TelaGanhos(Screen):
             row.opacity = 0
             cont.add_widget(row)
 
-            def _fazer_delete(periodo=p, widget=btn_del):
+            def _fazer_delete(periodo=p, widget=btn_del, tipo=tipo, di=di, df=df, ganho=ganho):
                 def _executar():
                     periodos = list(app.periodos_ganhos)
                     if periodo in periodos:

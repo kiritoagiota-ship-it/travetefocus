@@ -31,6 +31,7 @@ class TelaMemorias(Screen):
             pass
 
     def on_enter(self):
+        self.filtro_mes = "TODOS"   # nao herdar filtro de uma visita anterior
         self._atualizar_filtros()
         self.atualizar_lista()
         self._atualizar_grafico()
