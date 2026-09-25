@@ -54,6 +54,7 @@ android.allow_backup    = True
 
 # ── PYTHON-FOR-ANDROID ───────────────────────────────────────────────────────
 p4a.hook = hooks.py
+p4a.branch = v2026.05.09
 
 [buildozer]
 log_level    = 1
