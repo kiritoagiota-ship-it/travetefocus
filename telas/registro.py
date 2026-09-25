@@ -46,6 +46,7 @@ class TelaRegistro(Screen):
         return btn
 
     def atualizar(self):
+        Animation.cancel_all(self.ids.empty_state)  # parar pulse antes de atualizar
         self.ids.lista_container.clear_widgets()
         registros = App.get_running_app().registros
         es = self.ids.empty_state
@@ -98,7 +99,10 @@ class TelaRegistro(Screen):
 
     def salvar(self, n, q, xp):
         app      = App.get_running_app()
-        xp_total = xp * int(q)
+        try:
+            xp_total = xp * int(q)
+        except (ValueError, TypeError):
+            xp_total = 0
         app.registros.append([n, q, xp_total])
         app.total_xp += xp_total
         app.salvar_dados()

@@ -19,7 +19,8 @@ class TelaProgresso(Screen):
             barra.animar_progresso()
             return
 
-        level_ant, _, _ = calcular_level(xp_ant)
+        # Calcular levels de uma vez — evitar chamar calcular_level 2x
+        level_ant, _,       _     = calcular_level(xp_ant)
         level_nov, xp_atual, xp_nec = calcular_level(xp_novo)
         houve_level_up = level_nov > level_ant
 
@@ -43,10 +44,11 @@ class TelaProgresso(Screen):
             (Animation(color=[1, 0.88, 0.1, 1], duration=0.15) +
              Animation(color=[1, 0.88, 0.1, 1], duration=0.40) +
              Animation(color=[0, 0.9, 1,   1], duration=0.35)).start(lbl)
-            tremer = getattr(__import__("efeitos"), "tremer_tela", None)
-            if tremer:
-                try: tremer(20)
-                except Exception: pass
+            try:
+                from efeitos import tremer_tela as _tremer
+                _tremer(20)
+            except Exception:
+                pass
 
         Clock.schedule_once(_start_anim, 0.4)
 

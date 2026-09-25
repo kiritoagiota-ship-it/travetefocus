@@ -128,67 +128,64 @@ _WINSOUND_MAP = {
 
 
 def inicializar():
-    """Inicia carregamento de sons em thread background — nao bloqueia o build()."""
-    import threading
-    t = threading.Thread(target=_inicializar_bg, daemon=True)
-    t.start()
+    """
+    No-op intencional: sons carregam lazy na primeira chamada.
+    SoundLoader.load() DEVE rodar no main thread do Android.
+    Chamar de thread background causa crash nativo silencioso.
+    """
+    pass  # lazy loading via _carregar() em tocar()
 
 
-def _inicializar_bg():
-    """Carrega todos os sons em background. Seguro chamar de qualquer momento."""
-    global _usa_winsound
-    if sys.platform == 'win32':
-        try:
-            import winsound
-            _usa_winsound = True
-            print("[SOM] OK winsound (Windows nativo)")
-            return
-        except ImportError:
-            pass
+def _data_dir():
+    """Retorna diretório para salvar WAV temporários."""
+    try:
+        from kivy.app import App
+        app = App.get_running_app()
+        if app and hasattr(app, 'user_data_dir'):
+            return app.user_data_dir
+    except Exception:
+        pass
+    return tempfile.gettempdir()
+
+
+_falhas = set()  # sons que falharam — nao tentar de novo
+
+
+def _carregar(acao):
+    """
+    Gera WAV em Python puro e carrega com SoundLoader.
+    Chamado no main thread na primeira vez que o som é pedido.
+    """
+    if acao in _falhas:
+        return None
+    notas = _RECEITAS.get(acao)
+    if notas is None:
+        _falhas.add(acao)
+        return None
     try:
         from kivy.core.audio import SoundLoader
-        from kivy.utils import platform as _plat
-
-        if _plat == 'android':
-            try:
-                from kivy.app import App
-                from kivy.clock import Clock
-                # Aguardar App estar pronto (max 5s)
-                import time
-                deadline = time.time() + 5
-                _app = None
-                while time.time() < deadline:
-                    _app = App.get_running_app()
-                    if _app and hasattr(_app, 'user_data_dir'):
-                        break
-                    time.sleep(0.1)
-                base_dir = _app.user_data_dir if _app else tempfile.gettempdir()
-            except Exception:
-                base_dir = tempfile.gettempdir()
-        else:
-            base_dir = tempfile.gettempdir()
-
-        carregados = 0
-        for nome, notas in _RECEITAS.items():
-            try:
-                wav  = _wav(notas)
-                path = os.path.join(base_dir, f'tf_{nome}.wav')
-                with open(path, 'wb') as f:
-                    f.write(wav)
-                _tmp_files.append(path)
-                s = SoundLoader.load(path)
-                if s:
-                    s.volume = 0.60
-                    _sons[nome] = s
-                    carregados += 1
-            except Exception as ex:
-                print(f"[SOM] falha em '{nome}': {ex}")
-        print(f"[SOM] OK {carregados}/{len(_RECEITAS)} sons carregados")
+        wav  = _wav(notas)
+        d    = _data_dir()
+        os.makedirs(d, exist_ok=True)
+        path = os.path.join(d, f'tf_{acao}.wav')
+        with open(path, 'wb') as f:
+            f.write(wav)
+        som = SoundLoader.load(path)
+        if som:
+            som.volume = 0.60
+            _sons[acao]  = som
+            return som
+        _falhas.add(acao)
+        return None
     except Exception as ex:
-        print(f"[SOM] indisponivel: {ex}")
+        print(f"[SOM] falha ao carregar '{acao}': {ex}")
+        _falhas.add(acao)
+        return None
+
 
 
 def tocar(acao: str):
+    """Toca um som. Se ainda nao foi carregado, carrega agora (lazy)."""
     if _usa_winsound:
         seq = _WINSOUND_MAP.get(acao, [(880, 45)])
         def _beep():
@@ -201,10 +198,20 @@ def tocar(acao: str):
                 pass
         threading.Thread(target=_beep, daemon=True).start()
         return
-    s = _sons.get(acao)
-    if s:
-        try: s.stop(); s.play()
-        except Exception: pass
+
+    # Lazy load: carrega no main thread se ainda nao existe
+    som_obj = _sons.get(acao)
+    if som_obj is None and acao not in _falhas:
+        som_obj = _carregar(acao)
+    if som_obj:
+        try:
+            # Verificar estado antes de stop — evita glitch em alguns drivers
+            if som_obj.state == 'play':
+                som_obj.stop()
+            som_obj.play()
+        except Exception:
+            pass
+
 
 
 def tocar_click():         tocar('click')

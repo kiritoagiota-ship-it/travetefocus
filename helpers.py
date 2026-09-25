@@ -57,9 +57,12 @@ def em(emoji_char):
 
 def _bind_teclado(caixa, pop):
     """
-    Move o modal para cima quando o teclado Android aparecer,
-    evitando que ele cubra o botão de confirmar.
+    Move o modal para cima quando o teclado Android aparecer.
+    Guard contra duplicata: se ja foi chamado no mesmo popup, ignora.
     """
+    if getattr(pop, '_bind_teclado_ok', False):
+        return
+    pop._bind_teclado_ok = True
     def _on_kb(window, kb_height):
         if kb_height > 0:
             offset = kb_height + dp(12)

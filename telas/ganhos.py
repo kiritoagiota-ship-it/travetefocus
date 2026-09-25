@@ -48,6 +48,10 @@ class TelaGanhos(Screen):
 
     def _pecas_no_periodo(self, inicio_str, fim_str=None):
         app    = App.get_running_app()
+        # Cache: chave = inicio+fim+len(memorias) — invalida quando lista muda
+        cache_key = (inicio_str, fim_str, len(app.memorias))
+        if getattr(self, '_cache_pecas_key', None) == cache_key:
+            return self._cache_pecas_val
         inicio = _data_str_para_obj(inicio_str)
         fim    = _data_str_para_obj(fim_str) if fim_str else None
         if inicio is None:
@@ -63,6 +67,8 @@ class TelaGanhos(Screen):
             else:
                 if d >= inicio:
                     total += int(m.get('total', 0))
+        self._cache_pecas_key = cache_key
+        self._cache_pecas_val = total
         return total
 
     def _calcular_ganho(self, total_pecas):

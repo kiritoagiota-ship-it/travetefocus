@@ -9,13 +9,14 @@ from kivy.animation import Animation
 from kivy.uix.label import Label
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.widget import Widget
-from kivy.graphics import Color, Rectangle
+from kivy.graphics import Color, Rectangle, InstructionGroup
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.metrics import dp
 
 from efeitos import tremer_tela, InputHolografico, BotaoAngular
 from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, _bind_teclado
+import som
 
 # ══════════════════════════════════════════════════════════════
 #  CONFIGURACAO — altere aqui sem mexer em mais nada
@@ -189,18 +190,20 @@ class TelaLoading(Screen):
             (-6, -6, POMMEL),
         ]
 
-        # canvas.clear() limpa instrucoes anteriores — evita acumulo
-        widget.canvas.clear()
-        ps = max(2, int(widget.width / 28))
-        cx = widget.center_x   # correto apos o layout
-        cy = widget.center_y
-
-        with widget.canvas:
-            for dx, dy, cor in pixels:
-                Color(*cor)
-                Rectangle(
-                    pos=(cx + dx * ps - ps / 2, cy + dy * ps - ps / 2),
-                    size=(ps, ps))
+        # InstructionGroup dedicado — nao afeta outros canvas do widget
+        if hasattr(widget, '_espadas_group'):
+            widget.canvas.remove(widget._espadas_group)
+        grp = InstructionGroup()
+        ps  = max(2, int(widget.width / 28))
+        cx  = widget.center_x
+        cy  = widget.center_y
+        for dx, dy, cor in pixels:
+            grp.add(Color(*cor))
+            grp.add(Rectangle(
+                pos=(cx + dx * ps - ps / 2, cy + dy * ps - ps / 2),
+                size=(ps, ps)))
+        widget.canvas.add(grp)
+        widget._espadas_group = grp
 
     # ── Quick Load ─────────────────────────────────────────────────────────
 
@@ -402,6 +405,7 @@ class TelaLoading(Screen):
             try: som.tocar_pin_tecla()
             except Exception: pass
         inp_pin.bind(text=_pin_tecla)
+        pop.bind(on_dismiss=lambda *_: inp_pin.unbind(text=_pin_tecla))
         _abrir_popup(caixa, pop)
         _bind_teclado(caixa, pop)
         from helpers import anexar_teclado

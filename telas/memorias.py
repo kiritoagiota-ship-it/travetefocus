@@ -80,6 +80,16 @@ class TelaMemorias(Screen):
             self.atualizar_lista()
 
     def atualizar_lista(self):
+        # Guard: evitar re-entrada se chamado em rapida sucessao
+        if getattr(self, '_atualizando', False):
+            return
+        self._atualizando = True
+        try:
+            self._atualizar_lista_impl()
+        finally:
+            self._atualizando = False
+
+    def _atualizar_lista_impl(self):
         app   = App.get_running_app()
         cont  = self.ids.memorias_container
         for child in list(cont.children):
