@@ -1,8 +1,10 @@
 """
 som.py — TraveteFocus
-Sintetizador de efeitos em Python puro (sem arquivos de audio no APK):
-camadas de onda (seno, triangulo, quadrada, serra, sino metalico, ruido) com
-deslize de frequencia, envelope, filtro, vibrato/tremolo e eco.
+Efeitos das espadas do Kirito: gravacoes reais (pasta sons/, CC0 - ver
+sons/CREDITOS.txt). Sons de interface: sintetizador em Python puro com
+camadas de onda (seno, triangulo, quadrada, serra, sino metalico, ruido),
+deslize de frequencia, envelope, filtro, vibrato/tremolo e eco. Se faltar o
+arquivo de um efeito, a receita sintetizada dele e usada no lugar.
 
 - Os WAV sao gerados numa thread em segundo plano e guardados em disco
   (nome com hash da receita): so no 1o uso de cada versao do app.
@@ -29,6 +31,16 @@ _trava = threading.Lock()
 _dir = [None]
 _tmp_files = []
 _MAX_COPIAS = 3
+_PASTA_SONS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sons')
+
+
+def _gravacao(acao):
+    """Caminho do efeito gravado (sons/<acao>.wav), se existir."""
+    try:
+        caminho = os.path.join(_PASTA_SONS, acao + '.wav')
+        return caminho if os.path.isfile(caminho) else None
+    except Exception:
+        return None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -168,10 +180,8 @@ def _de_notas(notas, eco=(0.085, 0.22)):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  RECEITAS
+#  RECEITAS (as do Kirito so tocam se faltar a gravacao em sons/)
 # ═══════════════════════════════════════════════════════════════════
-_NOTAS_TITULO = (659.3, 784.0, 880.0, 987.8, 1174.7)     # pentatonica de mi (sobe)
-
 _RECEITAS = {
     # ── interface ────────────────────────────────────────────────────
     'click':          dict(camadas=[S(1650, 0.035, 0.24, f1=1250, queda=5),
@@ -263,17 +273,9 @@ _RECEITAS = {
     'calc_resultado': [(1047, 0.060, 0.35), (1319, 0.060, 0.38), (1568, 0.180, 0.42)],
     'xp':             [(784, 0.050, 0.30), (988, 0.050, 0.35), (1319, 0.100, 0.40)],
 }
-# uma nota por trecho da frase escrita pelo Kirito (sobe a escala)
-for _i, _f in enumerate(_NOTAS_TITULO):
-    _RECEITAS[f'nota{_i + 1}'] = dict(camadas=[S(_f, 1.1, 0.16, harm=SINO, queda=3.5),
-                                               S(_f * 2, 0.4, 0.04, ini=0.01, queda=5)],
-                                      eco=(0.12, 0.3), ganho=1.9)
-
 # ordem de geracao: o que toca primeiro na abertura vem antes
-_ORDEM = ['click', 'loading_drone', 'erro_firewall', 'pin_tecla', 'pin_erro', 'surge', 'koiguchi',
-          'susto', 'retomada', 'pulo', 'corte', 'nota1', 'sacar', 'corte2', 'nota2',
-          'nota3', 'nota4', 'carga', 'golpe_final', 'nota5', 'embainhar', 'titulo',
-          'pouso', 'transicao']
+_ORDEM = ['click', 'loading_drone', 'erro_firewall', 'pin_tecla', 'pin_erro', 'retomada',
+          'transicao']
 
 
 def _nome_arquivo(acao):
@@ -327,6 +329,8 @@ def _pre_gerar():
             pass
         ordem = _ORDEM + [a for a in _RECEITAS if a not in _ORDEM]
         for acao in ordem:
+            if _gravacao(acao):
+                continue                          # tem a gravacao: nao precisa sintetizar
             try:
                 _gerar(acao, pausa=lambda: time.sleep(0.001))
             except Exception as e:
@@ -347,21 +351,47 @@ def inicializar():
 
 
 def _carregar(acao):
-    """SoundLoader na thread principal (se o WAV ainda nao existe, gera agora)."""
-    if acao in _falhas or acao not in _RECEITAS:
+    """SoundLoader na thread principal: a gravacao (sons/) se houver; senao o
+    WAV sintetizado (gerado agora se ainda nao existir)."""
+    gravado = _gravacao(acao)
+    if acao in _falhas or (gravado is None and acao not in _RECEITAS):
         _falhas.add(acao)
         return None
     try:
         from kivy.core.audio import SoundLoader
-        caminho = _gerar(acao)
+        caminho = gravado or _gerar(acao)
         s = SoundLoader.load(caminho)
         if s:
-            s.volume = 0.7
+            s.volume = 0.8 if gravado else 0.7
             return s
     except Exception as ex:
         print(f"[SOM] falha ao carregar '{acao}': {ex}")
     _falhas.add(acao)
     return None
+
+
+def precarregar(acoes):
+    """Carrega (na thread principal, um por quadro) uma copia de cada som que
+    vai tocar logo em seguida: o primeiro golpe do combo nao engasga."""
+    try:
+        from kivy.clock import Clock
+        fila = [a for a in acoes if not _sons.get(a)]
+
+        def _passo(dt):
+            if not fila:
+                return False
+            a = fila.pop(0)
+            try:
+                if not _sons.get(a):
+                    s = _carregar(a)
+                    if s:
+                        _sons.setdefault(a, []).append(s)
+            except Exception as e:
+                print(f"[SOM] precarregar '{a}': {e}")
+            return bool(fila)
+        Clock.schedule_interval(_passo, 0)
+    except Exception as e:
+        print(f"[SOM] precarregar: {e}")
 
 
 def tocar(acao: str):

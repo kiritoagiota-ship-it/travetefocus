@@ -255,10 +255,10 @@ class TelaLoading(Screen):
         layout.add_widget(caixa)
         caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
         tentativas = [3]
-        # Kirito escondido num canto, esperando o PIN
+        # Kirito espiando por cima da caixa, num dos cantos, esperando o PIN
         try:
             from cenas import KiritoPin
-            kpin = KiritoPin()
+            kpin = KiritoPin(caixa)
         except Exception as e:
             print(f"[loading] kirito do pin: {e}")
             kpin = None
@@ -290,7 +290,8 @@ class TelaLoading(Screen):
                 try: som.tocar_retomada()
                 except Exception: pass
                 self._salvar_sessao()
-                # acesso liberado: o Kirito pula para fora (volta na cena do titulo)
+                # acesso liberado: o Kirito sobe na caixa e some num teleporte
+                # (ele volta pendurado na cena do titulo)
                 Clock.schedule_once(lambda dt: _k('sumir'), 0.35)
 
                 def _fechar(dt2):
@@ -350,7 +351,8 @@ class TelaLoading(Screen):
             Clock.schedule_once(lambda dt: _k('remover'), 0.6)
         pop.bind(on_dismiss=_ao_fechar)
         _abrir_popup(caixa, pop)
-        Clock.schedule_once(lambda dt: _k('aparecer'), 0.45)
+        # depois da caixa abrir e subir com o teclado (ele acompanha a caixa)
+        Clock.schedule_once(lambda dt: _k('aparecer'), 0.8)
         _bind_teclado(caixa, pop)
         from helpers import anexar_teclado
         # teclado numerico com fechar via _verificar (OK no teclado = verificar PIN)

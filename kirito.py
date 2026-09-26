@@ -4,8 +4,14 @@ Kirito em pixel art, montado por partes a partir de parametros de pose
 (tronco, pernas, 2 bracos, 2 espadas, cabelo e sobretudo), com muitos
 quadros interpolados por golpe.
 
-  Elucidator    : espada preta (mao da frente)
-  Dark Repulser : espada azulada/cristalina (mao de tras)
+  Elucidator    : espada preta (mao da frente), bainha na cintura como
+                  uma katana - cabo para a frente, bainha para tras e para
+                  baixo, rente a aba do sobretudo
+  Dark Repulser : espada azulada/cristalina (mao de tras), nas costas
+
+Sobretudo de verdade (nao capa): saia presa na cintura toda, aberta na
+frente, barra no meio da canela. Bracos de 3 px com luva; o da frente tem
+manga mais clara e contorno escuro para nao sumir no sobretudo preto.
 
 Fisica secundaria: o sobretudo e o cabelo reagem ao movimento real do
 boneco (molas que passam do ponto e voltam) e ondulam continuamente; um
@@ -33,13 +39,15 @@ _PALETA = {
     'H': (0.13, 0.14, 0.22, 1), 'h': (0.36, 0.40, 0.62, 1),     # cabelo
     'S': (1.00, 0.86, 0.74, 1), 's': (0.86, 0.66, 0.56, 1),     # pele
     'E': (0.08, 0.10, 0.18, 1),                                  # olho
-    'C': (0.15, 0.15, 0.21, 1), 'c': (0.30, 0.31, 0.42, 1),     # sobretudo
+    'C': (0.17, 0.17, 0.24, 1), 'c': (0.32, 0.33, 0.45, 1),     # sobretudo
+    'A': (0.24, 0.24, 0.33, 1),                                  # manga do braco da frente
     'q': (0.21, 0.19, 0.30, 1),                                  # forro do sobretudo
     'G': (0.62, 0.66, 0.76, 1),                                  # detalhes cinza
-    'P': (0.20, 0.20, 0.27, 1), 'B': (0.06, 0.06, 0.09, 1),     # calca / bota
+    'P': (0.10, 0.10, 0.15, 1), 'B': (0.05, 0.05, 0.08, 1),     # calca / bota
     'M': (0.09, 0.09, 0.13, 1),                                  # luva
     # Elucidator (preta): lamina, fio claro, costas, cabo, guarda, pontas
     'W': (0.08, 0.08, 0.12, 1), 'w': (0.60, 0.64, 0.78, 1), 'u': (0.24, 0.24, 0.33, 1),
+    'v': (0.42, 0.44, 0.56, 1),                                  # filete da bainha
     'K': (0.20, 0.20, 0.27, 1), 'g': (0.34, 0.34, 0.44, 1), 'k': (0.66, 0.68, 0.80, 1),
     # Dark Repulser (cristal azul)
     'R': (0.40, 0.78, 1.00, 1), 'r': (0.88, 0.98, 1.00, 1), 'z': (0.22, 0.52, 0.86, 1),
@@ -67,6 +75,9 @@ _CABECA = [
 ]
 _CABECA_PISCA = list(_CABECA)
 _CABECA_PISCA[7] = "HHHHSSSSSSSSS"          # olho fechado = so a linha de baixo
+_CABECA_BAIXO = list(_CABECA_PISCA)         # olhando para baixo (o PIN sendo digitado)
+_CABECA_BAIXO[9] = "..HHSSSSESSE."
+_CABECAS = {'a': _CABECA, 'f': _CABECA_PISCA, 'b': _CABECA_BAIXO}
 _TRONCO = [
     "....CGGGC....",
     "...CCCGCCC...",
@@ -74,16 +85,29 @@ _TRONCO = [
     "..CCcCGCCCC..",
     "..CCcCGCCCC..",
     ".CCCcCGCCCCC.",
-    ".CCCcCGCCCCC.",
+    ".CMMMMGMMMMC.",          # cinto (fivela prateada no meio)
     ".CCCCPPPCCCC.",
 ]
 _PERNAS = {
-    'repouso':  ["....PP.PP....", "....PP.PP....", "...BBB.BBB..."],
-    'avanco':   ["...PP...PP...", "..PP.....PP..", ".BBB.....BBB."],
-    'agachado': ["..PPP..PPP...", "..BBB..BBBB.."],
-    'pulo':     ["...PPP.PPP...", "....BB..BB..."],
-    'grudado':  [".PPP...PPP...", ".BB.....BB..."],
-    'pendente': ["....PP..PP...", "....PP..PP...", "....BB...BB.."],
+    # em pe: 7 linhas (coxa, joelho, canela, bota). O sobretudo cobre as 5
+    # primeiras e a barra fica no meio da canela, como um sobretudo longo.
+    'repouso':  ["....PP.PP....", "....PP.PP....", "....PP.PP....", "....PP.PP....",
+                 "....PP.PP....", "....BB.BB....", "...BBB.BBB..."],
+    'avanco':   ["....PP..PP...", "....PP...PP..", "...PP....PP..", "...PP.....PP.",
+                 "..PP......PP.", "..BB......BB.", ".BBB......BBB"],
+    'suspenso': ["....PP.PP....", "....PP.PP....", "....PP..PP...", "....PP..PP...",
+                 "...PP...PP...", "...PP....PP..", "...BB....BB.."],
+    'pendente': ["....PP.PP....", "....PP.PP....", "....PP..PP...", "....PP..PP...",
+                 "....PP..PP...", "....BB..BB...", "....BB...BB.."],
+    # pendurado: pernas soltas, pontas dos pes para baixo (2 quadros de balanco)
+    'solto':    ["....PP.PP....", "....PP.PP....", "....PP.PP....", "....PP.PP....",
+                 "....PP..PP...", "....BB..BB...", ".....B...B..."],
+    'solto2':   ["....PP.PP....", "....PP.PP....", "....PP.PP....", "...PP..PP....",
+                 "..PP...PP....", "..BB...BB....", "..B.....B...."],
+    # dobradas: 4 linhas
+    'agachado': ["..PPP..PPP...", "..PP....PPP..", "..PP.....PP..", "..BBB...BBBB."],
+    'pulo':     ["...PPP.PPP...", "...PP...PP...", "...PP...PP...", "....BB..BB..."],
+    'grudado':  [".PPP...PPP...", ".PP.....PP...", ".PP.....PP...", ".BB.....BB..."],
 }
 
 GW, GH = 64, 58          # grade total (espadas cabem para qualquer lado)
@@ -106,6 +130,47 @@ def _linha(px, x0, y0, x1, y1, ch, grossura=1):
         px[(x, y)] = ch
         if grossura > 1:
             px[(x, y - 1)] = ch
+
+
+_CORPO = set('CcAqGPBMSsHhE')           # cores de corpo/roupa (para o contorno do braco)
+
+
+def _braco(px, x0, y0, x1, y1, luva=True, frente=False):
+    """Braco com manga do sobretudo: 3 px de espessura, brilho num lado,
+    punho prateado perto da mao e luva 2x2. O braco da frente tem a manga
+    mais clara e um contorno escuro onde passa por cima do corpo (senao se
+    perde no sobretudo preto)."""
+    dx, dy = x1 - x0, y1 - y0
+    passos = max(abs(dx), abs(dy), 1)
+    horizontal = abs(dx) >= abs(dy)
+    base = 'A' if frente else 'C'
+    meu = {}
+    for i in range(passos + 1):
+        x = round(x0 + dx * i / passos)
+        y = round(y0 + dy * i / passos)
+        punho = i >= passos - 1 and passos > 3
+        if horizontal:
+            meu[(x, y + 1)] = 'G' if punho else 'c'
+            meu[(x, y)] = 'G' if punho else base
+            meu[(x, y - 1)] = 'G' if punho else base
+        else:
+            meu[(x - 1, y)] = 'G' if punho else base
+            meu[(x, y)] = 'G' if punho else base
+            meu[(x + 1, y)] = 'G' if punho else 'c'
+    for vx in (0, 1):                      # ombro arredondado
+        for vy in (0, -1):
+            meu[(x0 + vx, y0 + vy)] = base
+    if luva:
+        for vx in (0, 1):
+            for vy in (0, 1):
+                meu[(x1 + vx, y1 + vy)] = 'M'
+    if frente:
+        for (x, y) in meu:
+            for vx, vy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                q = (x + vx, y + vy)
+                if q not in meu and px.get(q) in _CORPO:
+                    px[q] = 'B'
+    px.update(meu)
 
 
 def _espada(px, mx, my, ang, comp, tipo, smear_de=None, brilho=None):
@@ -149,6 +214,7 @@ def _espada(px, mx, my, ang, comp, tipo, smear_de=None, brilho=None):
 
 
 def _cabo_nas_costas(px, x, y, tipo):
+    """Cabo da Dark Repulser aparecendo por cima do ombro (bainha nas costas)."""
     guarda, ponta = ('g', 'k') if tipo == 1 else ('y', 'Y')
     px[(x - 2, y)] = ponta
     px[(x - 1, y)] = guarda
@@ -160,9 +226,92 @@ def _cabo_nas_costas(px, x, y, tipo):
     px[(x, y + 3)] = guarda if tipo == 1 else 'Y'
 
 
+# bainha da Elucidator: da cintura para tras e para baixo, rente a aba de tras
+# do sobretudo (mais na horizontal ela saia do corpo e parecia um rabo)
+_BAINHA_ANG = 222.0
+_BAINHA_COMP = 11
+
+
+def _bainha_cintura(base_x, y_cinto):
+    """Boca da bainha da Elucidator (na cintura, estilo katana)."""
+    return base_x + 9, y_cinto
+
+
+def _bainha(px, bx, by):
+    """Bainha (saya) presa no cinto, reta e rigida: laca escura com filete
+    claro e ponteira de metal. Vai por cima da aba de tras do sobretudo
+    (o cinto e por fora dele), mas por tras das pernas e do tronco."""
+    a = math.radians(_BAINHA_ANG)
+    ux, uy = math.cos(a), math.sin(a)
+    nx, ny = -uy, ux
+    comp = _BAINHA_COMP
+
+    def pinta(q, ch):
+        if px.get(q) not in ('P', 'B'):
+            px[q] = ch
+    for k in range(0, comp):
+        x, y = bx + ux * k, by + uy * k
+        pinta((round(x), round(y)), 'W')
+        pinta((round(x - nx), round(y - ny)), 'v')                    # filete de cima
+    for k in (comp, comp + 1):                                         # ponteira (kojiri)
+        pinta((round(bx + ux * k), round(by + uy * k)), 'k')
+        pinta((round(bx + ux * k - nx), round(by + uy * k - ny)), 'g')
+
+
+def _cabo_cintura(px, bx, by):
+    """Cabo da Elucidator guardada, saindo da bainha para a frente e para
+    cima: guarda clara, empunhadura trancada (losangos) e pomo."""
+    a = math.radians(_BAINHA_ANG + 180)
+    ux, uy = math.cos(a), math.sin(a)
+    nx, ny = -uy, ux
+    for k in (-1, 0, 1):                             # guarda (tsuba)
+        px[(round(bx + nx * k), round(by + ny * k))] = 'k' if k else 'g'
+    for k in (1, 2, 3, 4):                           # tsuka: trancado escuro/claro
+        px[(round(bx + ux * k), round(by + uy * k))] = 'K' if k % 2 else 'g'
+    px[(round(bx + ux * 5), round(by + uy * 5))] = 'k'                # pomo (kashira)
+
+
+def _sobretudo(px, base_x, y0, n, capa, lift, fase, pernas, saia=1.0):
+    """Saia do sobretudo presa na cintura toda, aberta na frente (as pernas
+    aparecem no meio), com barra, forro e friso prateado. Com vento as abas
+    esvoacam para tras sem se soltar do corpo."""
+    ultima = pernas[-1]
+    xs = [x for x, ch in enumerate(ultima) if ch != '.']
+    perna_min, perna_max = base_x + min(xs), base_x + max(xs)
+    amp = 0.55 + 0.25 * min(3.0, abs(capa))
+    dois_pi = 2 * math.pi
+    for k in range(n):
+        u = k / float(max(1, n - 1))
+        onda = amp * u * math.sin(dois_pi * (fase - k / float(n)))
+        y = y0 - k + int(round(lift * k * 0.28))
+        abre = 0.45 * k * saia
+        vento = max(-1.0, min(1.6, capa)) * 0.45 * k     # aba abre pouco: e casaco, nao capa
+        xe0 = base_x + 1 - int(round(abre + vento + onda))
+        xe1 = base_x + 4 - int(round(vento * 0.30))
+        xd0 = base_x + 8 - int(round(vento * 0.45))
+        xd1 = base_x + 11 + int(round(abre)) - int(round(vento * 0.55 + onda * 0.5))
+        barra = (k == n - 1)
+        nas_botas = (k == len(pernas) - 1)
+        for (a, b, lado) in ((xe0, xe1, 'e'), (xd0, xd1, 'd')):
+            if b < a:
+                a, b = b, a
+            for x in range(a, b + 1):
+                if nas_botas and perna_min <= x <= perna_max:
+                    continue                     # a barra contorna as botas
+                if barra:
+                    ch = 'c'
+                elif (lado == 'e' and x == a) or (lado == 'd' and x == b):
+                    ch = 'c'                     # borda externa (brilho)
+                elif (lado == 'e' and x == b) or (lado == 'd' and x == a):
+                    ch = 'q' if vento > 1.2 else 'G'     # forro com vento / friso
+                else:
+                    ch = 'C'
+                px[(x, y)] = ch
+
+
 # pose padrao: todos os campos que a montagem entende
 POSE_BASE = dict(dx=0, dy=0, pernas='repouso', olhos='a', cabelo=0.0, capa=0.0,
-                 lift=0.0, fase=0.0, brilho=None,
+                 lift=0.0, fase=0.0, brilho=None, saia=1.0, frente1=False,
                  m1=(3, -5), a1=-40.0, c1=15, s1=None,
                  m2=None, a2=None, c2=15, s2=None)
 
@@ -176,23 +325,32 @@ def montar(p):
     base_x = _X0 + dx
     ombro1 = (base_x + 9, topo_tronco - 2)
     ombro2 = (base_x + 3, topo_tronco - 2)
+    y_cinto = topo_tronco - 6
     fase = p.get('fase', 0.0) or 0.0
     dois_pi = 2 * math.pi
+    topo_cab = topo_tronco + len(_CABECA)
 
-    # braco/espada de tras (atras do corpo); sem pose = braco relaxado
-    m2 = p['m2'] if p['m2'] is not None else (-1, -6)
-    mx2, my2 = ombro2[0] + int(round(m2[0])), ombro2[1] + int(round(m2[1]))
-    _linha(px, ombro2[0], ombro2[1], mx2, my2, 'C', grossura=2)
-    if p['a2'] is not None:
-        _espada(px, mx2, my2, p['a2'], int(p['c2']), 2, p['s2'], p.get('brilho'))
-    px[(mx2, my2)] = 'M'
+    # atras de tudo: cabo da Dark Repulser (bainha nas costas)
+    bx, by = _bainha_cintura(base_x, y_cinto)
     if p['a2'] is None:
         _cabo_nas_costas(px, base_x + 1, topo_tronco + 1, 2)
-    if p['a1'] is None:
-        _cabo_nas_costas(px, base_x + 4, topo_tronco + 2, 1)
+
+    # braco/espada de tras (atras do corpo); sem pose = braco relaxado.
+    # Erguido (pendurado, sacando das costas) ele fica na frente do cabelo.
+    m2 = p['m2'] if p['m2'] is not None else (-1, -6)
+    mx2, my2 = ombro2[0] + int(round(m2[0])), ombro2[1] + int(round(m2[1]))
+    ergue2 = m2[1] > 4
+    acima2 = m2[1] > 10              # acima da cabeca (pendurado): desenhado depois dela
+
+    def _braco_tras():
+        _braco(px, ombro2[0], ombro2[1], mx2, my2, frente=ergue2)
+        if p['a2'] is not None:
+            _espada(px, mx2, my2, p['a2'], int(p['c2']), 2, p['s2'], p.get('brilho'))
+            px[(mx2, my2)] = 'M'                 # a mao por cima do cabo
+    if not ergue2:
+        _braco_tras()
 
     # cabelo: mechas continuas que se alongam com o vento e ondulam
-    topo_cab = topo_tronco + len(_CABECA)
     cb = p['cabelo']
     amp = 0.35 + 0.28 * min(3.0, abs(cb))
     for linha, base in ((2, 1), (3, 2), (4, 2), (5, 3), (6, 2), (7, 3), (8, 1)):
@@ -204,52 +362,32 @@ def montar(p):
             y = topo_cab - linha - int(round((caida if i > comp // 2 else 0) + onda))
             px[(base_x - 1 - i, y)] = 'h' if (linha == 5 and i == comp - 1) else 'H'
     # fios espetados no topo que balancam
-    for bx, fx in ((4, 0.0), (8, 0.35)):
+    for bxx, fx in ((4, 0.0), (8, 0.35)):
         oscila = int(round(0.7 * math.sin(dois_pi * (fase + fx)) - min(1.0, max(0.0, cb) * 0.4)))
-        px[(base_x + bx + oscila, topo_cab + 1)] = 'H'
+        px[(base_x + bxx + oscila, topo_cab + 1)] = 'H'
 
-    # sobretudo: aba de tras longa com forro + aba da frente (ondulam)
-    capa, lift = p['capa'], p['lift']
-    y_cint = topo_tronco - len(_TRONCO)
-    amp_c = 0.55 + 0.35 * min(3.0, abs(capa))
-    n_aba = 8
-    for k in range(n_aba):
-        u = k / float(n_aba - 1)
-        onda = amp_c * u * math.sin(dois_pi * (fase - k / 7.0))
-        y = y_cint - k + int(round(lift * k * 0.45))
-        x_ini = base_x - int(round(capa * k * 0.55 + onda))
-        x_fim = base_x + 4 - int(round(capa * k * 0.30 + onda * 0.6))
-        if x_fim < x_ini:
-            x_ini, x_fim = x_fim, x_ini
-        for x in range(x_ini, x_fim + 1):
-            if k == n_aba - 1 or x == x_ini:
-                ch = 'c'                                  # barra / borda do sobretudo
-            elif x == x_fim and k >= 2:
-                ch = 'q'                                  # forro aparecendo
-            else:
-                ch = 'C'
-            px[(x, y)] = ch
-    for k in range(5):
-        u = k / 4.0
-        onda = 0.5 * amp_c * u * math.sin(dois_pi * (fase - k / 5.0 + 0.3))
-        y = y_cint - k + int(round(lift * k * 0.3))
-        x0 = base_x + 8 - int(round(capa * k * 0.15 + onda))
-        x1 = base_x + 12 - int(round(capa * k * 0.10 + onda))
-        for x in range(x0, x1):
-            px[(x, y)] = 'q' if (x == x0 and k >= 2) else 'C'
+    if ergue2 and not acima2:
+        _braco_tras()
 
+    # pernas e, por cima, a saia do sobretudo (aberta na frente); a bainha
+    # da cintura passa por cima da aba de tras
     _estampar(px, pernas, _X0, _PES + len(pernas) - 1)
+    _sobretudo(px, base_x, topo_tronco - len(_TRONCO), len(pernas) - 2 if len(pernas) > 4 else len(pernas) - 1,
+               p['capa'], p['lift'], fase, pernas, p.get('saia', 1.0))
+    _bainha(px, bx, by)
     _estampar(px, _TRONCO, base_x, topo_tronco)
-    _estampar(px, _CABECA_PISCA if p['olhos'] == 'f' else _CABECA, base_x, topo_cab)
 
-    # braco/espada da frente
-    if p['m1'] is not None:
-        mx, my = ombro1[0] + int(round(p['m1'][0])), ombro1[1] + int(round(p['m1'][1]))
-        _linha(px, ombro1[0], ombro1[1], mx, my, 'C', grossura=2)
-        if p['a1'] is not None:
-            _espada(px, mx, my, p['a1'], int(p['c1']), 1, p['s1'], p.get('brilho'))
-        px[(mx, my)] = 'M'
-        px[(mx + 1, my)] = 'M'
+    # braco da frente: erguido acima do ombro passa por tras da cabeca
+    ergue = p['m1'] is not None and p['m1'][1] > 4 and not p.get('frente1')
+    if ergue:
+        _braco_frente(px, p, ombro1)
+    _estampar(px, _CABECAS.get(p['olhos'], _CABECA), base_x, topo_cab)
+    if acima2:
+        _braco_tras()
+    if p['a1'] is None:
+        _cabo_cintura(px, bx, by)                  # espada guardada na cintura
+    if not ergue:
+        _braco_frente(px, p, ombro1)
 
     # contorno (rim light ciano) para ler no fundo escuro
     for (x, y) in list(px.keys()):
@@ -260,6 +398,17 @@ def montar(p):
             if q not in px:
                 px[q] = 'O'
     return px
+
+
+def _braco_frente(px, p, ombro1):
+    if p['m1'] is None:
+        return
+    mx, my = ombro1[0] + int(round(p['m1'][0])), ombro1[1] + int(round(p['m1'][1]))
+    _braco(px, ombro1[0], ombro1[1], mx, my, frente=True)
+    if p['a1'] is not None:
+        _espada(px, mx, my, p['a1'], int(p['c1']), 1, p['s1'], p.get('brilho'))
+        px[(mx, my)] = 'M'
+        px[(mx + 1, my)] = 'M'
 
 
 def pose(**kw):
@@ -283,7 +432,7 @@ def _chave(p):
 # ═══════════════════════════════════════════════════════════════════
 #  SEQUENCIAS (keyframes interpolados a 30fps)
 # ═══════════════════════════════════════════════════════════════════
-_NUM = ('dx', 'dy', 'cabelo', 'capa', 'lift', 'a1', 'a2', 'c1', 'c2')
+_NUM = ('dx', 'dy', 'cabelo', 'capa', 'lift', 'a1', 'a2', 'c1', 'c2', 'saia')
 
 
 def _ease(t):
@@ -316,7 +465,7 @@ def sequencia(chaves):
 # ═══════════════════════════════════════════════════════════════════
 #  CACHE
 # ═══════════════════════════════════════════════════════════════════
-_CACHE = OrderedDict()     # chave_pose -> bytes RGBA (GW x GH)
+_CACHE = OrderedDict()     # chave_pose -> (bytes RGBA (GW x GH), caixa)
 _CACHE_MAX = 900
 _TEX = OrderedDict()       # (chave_pose, silhueta) -> Texture
 _TEX_MAX = 220
@@ -325,24 +474,39 @@ _TC_NORMAL = (0, 0, 1, 0, 1, 1, 0, 1)
 _TC_ESPELHO = (1, 0, 0, 0, 0, 1, 1, 1)
 
 
-def _bytes(p):
-    """Pose -> imagem RGBA (GW x GH) em bytes. Cache LRU; so Python puro
-    (pode rodar antes do primeiro quadro, sem contexto grafico)."""
+def _gerar_imagem(p):
     ch = _chave(p)
-    dados = _CACHE.get(ch)
-    if dados is not None:
+    item = _CACHE.get(ch)
+    if item is not None:
         _CACHE.move_to_end(ch)
-        return ch, dados
+        return ch, item
     buf = bytearray(GW * GH * 4)
+    x0 = y0 = 10 ** 6
+    x1 = y1 = -10 ** 6
     for (x, y), c in montar(p).items():
         if 0 <= x < GW and 0 <= y < GH:
             i = (y * GW + x) * 4
             buf[i:i + 4] = _RGBA[c]
-    dados = bytes(buf)
-    _CACHE[ch] = dados
+            if c not in 'xX':                 # rastro nao conta para o enquadramento
+                x0, x1 = min(x0, x), max(x1, x)
+                y0, y1 = min(y0, y), max(y1, y)
+    item = (bytes(buf), (x0, y0, x1, y1) if x1 >= x0 else (_X0, _PES, _X0 + 12, _PES + 26))
+    _CACHE[ch] = item
     while len(_CACHE) > _CACHE_MAX:
         _CACHE.popitem(last=False)
-    return ch, dados
+    return ch, item
+
+
+def _bytes(p):
+    """Pose -> imagem RGBA (GW x GH) em bytes. Cache LRU; so Python puro
+    (pode rodar antes do primeiro quadro, sem contexto grafico)."""
+    ch, item = _gerar_imagem(p)
+    return ch, item[0]
+
+
+def caixa(p):
+    """Retangulo ocupado pela pose (x0, y0, x1, y1), em pixels da grade."""
+    return _gerar_imagem(p)[1][1]
 
 
 def _runs(p, espelhar=False):
@@ -404,6 +568,8 @@ class KiritoPixel(Widget):
     espelhar = BooleanProperty(False)
     rotacao = NumericProperty(0.0)
     escala_y = NumericProperty(1.0)
+    escala_x = NumericProperty(1.0)
+    clarao = NumericProperty(0.0)          # 0..1: boneco todo branco (teleporte)
 
     def __init__(self, ps=4, **kwargs):
         kwargs.setdefault('size_hint', (None, None))
@@ -421,6 +587,7 @@ class KiritoPixel(Widget):
         self._on_quadro = None
         self._on_fim = None
         self._loop = False
+        self.ao_redesenhar = None         # chamado quando a imagem da pose muda
         # fisica secundaria
         self._m_capa = _Mola(95, 9)
         self._m_cab = _Mola(110, 10)
@@ -437,10 +604,13 @@ class KiritoPixel(Widget):
             self._sc = Scale(1, 1, 1)
             Color(1, 1, 1, 1)
             self._rect = Rectangle(pos=(0, 0), size=(GW * self.ps, GH * self.ps))
+            self._cor_clarao = Color(0.85, 0.97, 1, 0)
+            self._rect_clarao = Rectangle(pos=(0, 0), size=(0, 0))
             PopMatrix()
         self.bind(pos=self._mover, x=self._mover, y=self._mover,
-                  rotacao=self._mover, escala_y=self._mover,
-                  espelhar=lambda *_: self._desenhar(forcar=True))
+                  rotacao=self._mover, escala_y=self._mover, escala_x=self._mover,
+                  espelhar=lambda *_: self._desenhar(forcar=True),
+                  clarao=lambda *_: self._desenhar(forcar=True))
         self._mover()
         self._desenhar()
 
@@ -479,6 +649,16 @@ class KiritoPixel(Widget):
         lx, ly = self.mao_local(qual)
         return self.x + lx, self.y + ly
 
+    def extensao(self, p=None):
+        """(esq, baixo, dir, cima): quanto a pose (com espadas) se estende a
+        partir da ancora, em px de tela. Para manter o boneco no quadro."""
+        x0, y0, x1, y1 = caixa(p or self._base)
+        ps = self.ps
+        ax, ay = self.ancora_local()
+        if self.espelhar:
+            x0, x1 = GW - 1 - x1, GW - 1 - x0
+        return ax - x0 * ps, ay - y0 * ps, (x1 + 1) * ps - ax, (y1 + 1) * ps - ay
+
     def _mover(self, *_):
         self._tr.xy = (self.x, self.y)
         orig = self.pivo if self.pivo is not None else self.ancora_local()
@@ -486,6 +666,7 @@ class KiritoPixel(Widget):
         self._rot.angle = self.rotacao
         ax, ay = self.ancora_local()
         self._sc.origin = (ax, ay)
+        self._sc.x = self.escala_x
         self._sc.y = self.escala_y
 
     # ── desenho ──────────────────────────────────────────────────────
@@ -516,6 +697,15 @@ class KiritoPixel(Widget):
             self._ult_chave = chave
             self._rect.texture = _textura(self._pose)
             self._rect.tex_coords = _TC_ESPELHO if self.espelhar else _TC_NORMAL
+            if self.clarao > 0:
+                self._rect_clarao.texture = _textura(self._pose, silhueta=True)
+                self._rect_clarao.tex_coords = self._rect.tex_coords
+                self._rect_clarao.size = self._rect.size
+            else:
+                self._rect_clarao.size = (0, 0)
+            self._cor_clarao.a = self.clarao
+            if self.ao_redesenhar is not None:
+                self.ao_redesenhar()
         except Exception as e:
             print(f"[kirito] desenho ignorado: {e}")
 
@@ -689,25 +879,39 @@ class KiritoPixel(Widget):
 POSE_A = {
     # uma espada, em guarda
     'guarda':     pose(m1=(3, -5), a1=-40.0),
-    'fim':        pose(m1=(3, -5), a1=None),
-    # tela do PIN: espiando pela borda, as maos segurando a quina da tela
-    'espreita':   pose(dx=1, m1=(4, 5), a1=None, m2=(3, 4)),
-    'espreita2':  pose(dx=1, dy=-1, m1=(4, 4), a1=None, m2=(3, 3)),
-    'susto':      pose(pernas='pulo', dx=-1, dy=1, m1=(3, 8), a1=None, m2=(-2, 7)),
-    # agarrado na parede (espadas nas costas), corpo encolhido
+    # guardado: mao no cabo da Elucidator (na cintura), como um samurai em repouso
+    'guardado':   pose(m1=(2, -3), a1=None),
+    'fim':        pose(m1=(2, -3), a1=None),
+    # tela do PIN: espiando por cima da borda da caixa, as duas maos apoiadas
+    # nela e os olhos no codigo sendo digitado (o corpo fica escondido atras)
+    # (a borda fica na linha topo+2 da pose sem dy; as maos ficam paradas nela
+    # enquanto a cabeca sobe/desce: m_y = 4 - dy)
+    'espia':       pose(dy=1, m1=(3, 3), a1=None, m2=(-3, 3), a2=None, olhos='b', frente1=True),
+    'espia_olha':  pose(dy=1, m1=(3, 3), a1=None, m2=(-3, 3), a2=None, frente1=True),
+    'espia_alto':  pose(dy=3, m1=(3, 1), a1=None, m2=(-3, 1), a2=None, frente1=True),
+    'espia_baixo': pose(dy=-3, m1=(3, 7), a1=None, m2=(-3, 7), a2=None, frente1=True),
+    'susto':      pose(pernas='pulo', dx=-1, dy=1, m1=(3, 7), a1=None, m2=(-2, 7)),
+    # agarrado na parede (espadas guardadas), corpo encolhido
     'grudado':    pose(pernas='grudado', dy=-2, m1=(3, 3), a1=None),
-    # pendurado por uma mao, a outra no cabo da Elucidator (samurai pronto)
-    'pendurado':  pose(pernas='pendente', m2=(-1, 17), a2=None, m1=(-3, 8), a1=None, lift=-0.4),
-    'pendurado2': pose(pernas='pulo', dy=1, m2=(-1, 16), a2=None, m1=(-4, 9), a1=None, lift=-0.2),
-    'agacha':     pose(pernas='agachado', dy=-3, m1=(2, 3), a1=None),
-    'pulo':       pose(pernas='pulo', dy=-1, m1=(4, 2), a1=None),
-    # saca a Elucidator das costas (iai) e golpe 1 (jodan -> diagonal)
-    'saca1':      pose(pernas='pulo', m1=(-2, 7), a1=110.0, c1=10, m2=(4, 2)),
+    # pendurado por uma mao na borda de cima (braco esticado ao lado da
+    # cabeca), a outra no cabo da Elucidator: samurai pronto para sacar.
+    # A mao que segura a borda fica no MESMO ponto nas 3 poses.
+    'pendurado':   pose(pernas='solto', m2=(-3, 15), a2=None, m1=(2, -3), a1=None, saia=0.35),
+    'pendurado_b': pose(pernas='solto2', m2=(-3, 15), a2=None, m1=(2, -3), a1=None, saia=0.35),
+    # kamae: recolhe as pernas e empurra a guarda com o polegar (koiguchi)
+    'pendurado2':  pose(pernas='pulo', dy=3, m2=(-3, 15), a2=None, m1=(3, -2), a1=None, saia=0.5),
+    'agacha':     pose(pernas='agachado', dy=-3, m1=(2, -3), a1=None),
+    'pulo':       pose(pernas='pulo', dy=-1, m1=(2, -3), a1=None),
+    # saque iai: a lamina sai da bainha da cintura e corta na horizontal, subindo
+    'saca1':      pose(pernas='avanco', dx=1, m1=(4, -1), a1=_BAINHA_ANG, c1=7, m2=(-2, 1)),
+    'corta1':     pose(pernas='avanco', dx=2, dy=-1, m1=(8, 0), a1=370.0, m2=(-4, 1)),
+    'segue1':     pose(pernas='avanco', dx=2, dy=-1, m1=(6, 3), a1=395.0, m2=(-4, 1)),
+    # golpe de cima para baixo (mini Kirito ao apagar)
     'arma1':      pose(pernas='avanco', dx=-1, m1=(0, 9), a1=112.0, m2=(4, 1)),
-    'corta1':     pose(pernas='avanco', dx=2, dy=-1, m1=(7, -2), a1=-38.0, m2=(-4, 2)),
-    'segue1':     pose(pernas='avanco', dx=2, dy=-1, m1=(4, -6), a1=-70.0, m2=(-4, 1)),
+    'corta_desce': pose(pernas='avanco', dx=2, dy=-1, m1=(7, -2), a1=-38.0, m2=(-4, 2)),
+    'segue_desce': pose(pernas='avanco', dx=2, dy=-1, m1=(4, -6), a1=-70.0, m2=(-4, 1)),
     # saca a Dark Repulser (mao de tras sobe ate o cabo nas costas)
-    'pega2':      pose(pernas='avanco', dx=1, m1=(5, -4), a1=-40.0, m2=(-1, 7), a2=None),
+    'pega2':      pose(pernas='avanco', dx=1, m1=(5, -4), a1=-40.0, m2=(-1, 8), a2=None),
     'saca2':      pose(pernas='avanco', dx=1, m1=(5, -4), a1=-40.0, m2=(-3, 8), a2=100.0, c2=14),
     'dupla':      pose(pernas='avanco', dy=-1, m1=(6, 3), a1=40.0, m2=(-5, -1), a2=205.0),
     # combo samurai com as duas
@@ -722,9 +926,17 @@ POSE_A = {
     'iai_corte':  pose(pernas='avanco', dx=3, dy=-2, m1=(8, 0), a1=-5.0, c1=17, m2=(7, -4), a2=-28.0, c2=17),
     'iai_fim':    pose(pernas='avanco', dx=3, dy=-3, m1=(8, -1), a1=-12.0, c1=17, m2=(7, -5), a2=-35.0, c2=17),
     'chiburi':    pose(pernas='avanco', dx=2, dy=-2, m1=(6, 3), a1=30.0, m2=(5, -1), a2=10.0),
-    'embainha':   pose(pernas='repouso', m1=(0, 9), a1=95.0, c1=9, m2=(-2, 9), a2=100.0, c2=9),
-    'guardado':   pose(pernas='repouso', m1=(3, -5), a1=None, m2=None, a2=None),
+    # embainhar (noto): a ponta da preta entra na boca da bainha da cintura e
+    # desliza ate o clique; a azul volta para as costas
+    # (angulo -138 = 222 - 360: vindo do chiburi a lamina desce pela frente
+    # ate a boca da bainha, em vez de dar a volta por cima da cabeca)
+    'embainha_a': pose(pernas='repouso', m1=(6, 1), a1=_BAINHA_ANG - 360, c1=8, m2=(-2, 9), a2=268.0, c2=10),
+    'embainha_b': pose(pernas='repouso', m1=(3, -2), a1=_BAINHA_ANG - 360, c1=4, m2=(-2, 6), a2=268.0, c2=5),
+    'embainha_c': pose(pernas='repouso', m1=(2, -3), a1=_BAINHA_ANG - 360, c1=0, m2=(-2, 5), a2=268.0, c2=0),
     # compatibilidade com cenas antigas
+    'embainha':   pose(pernas='repouso', m1=(3, -2), a1=_BAINHA_ANG - 360, c1=4, m2=(-2, 6), a2=268.0, c2=5),
+    'espreita':   pose(dy=1, m1=(3, 3), a1=None, m2=(-3, 3), a2=None, frente1=True),
+    'espreita2':  pose(dy=3, m1=(3, 1), a1=None, m2=(-3, 1), a2=None, frente1=True),
     'x_arma':     pose(pernas='avanco', dx=-1, m1=(-3, 6), a1=135.0, m2=(-5, 6), a2=160.0),
     'x_corta':    pose(pernas='avanco', dx=2, dy=-1, m1=(7, 0), a1=-20.0, m2=(6, -3), a2=-40.0),
     'final_arma': pose(pernas='agachado', dy=-2, m1=(-4, 7), a1=120.0, m2=(-6, 7), a2=140.0),

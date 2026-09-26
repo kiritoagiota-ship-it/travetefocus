@@ -1,0 +1,17 @@
+Efeitos sonoros das espadas (TraveteFocus)
+==========================================
+
+Montados (cortados, mixados, equalizados e normalizados) a partir de
+gravacoes em dominio publico - licenca CC0 1.0
+(https://creativecommons.org/publicdomain/zero/1.0/):
+
+- "Sword" e "Sword Clash" - StarNinjas (OpenGameArt.org)
+    corte, corte2, carga, golpe_final, titulo, transicao
+- "Swishes Sound Pack" - artisticdude (OpenGameArt.org)
+    corte, corte2, sacar_iai, pulo, susto, teleporte, transicao
+- "RPG Sound Pack" - artisticdude (OpenGameArt.org)
+    sacar, sacar_iai, golpe_final, pulo, corte2, titulo, teleporte
+- "RPG Audio" - Kenney (www.kenney.nl)
+    koiguchi, desliza, embainhar, pouso, agarra, susto
+
+CC0 nao exige credito; fica registrado por gentileza aos autores.
