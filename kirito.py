@@ -1153,6 +1153,16 @@ def _fund(**kw):
     return pose(**kw)
 
 
+# combo de samurai: cada silaba vem de uma direcao diferente
+POSE_A.update({
+    # de baixo para cima (kiriage): agachado com as laminas baixas para tras
+    'sobe_arma':   pose(pernas='agachado', dy=-3, m1=(-3, -1), a1=235.0, m2=(-5, -1), a2=215.0, olhos='s'),
+    'sobe_corta':  pose(pernas='avanco', dx=2, m1=(5, 7), a1=430.0, m2=(3, 8), a2=445.0, olhos='g'),
+    # do alto para baixo (kirioroshi): no ar, as duas acima da cabeca
+    'desce_arma':  pose(pernas='pulo', m1=(-1, 12), a1=100.0, m2=(-2, 12), a2=115.0, olhos='s'),
+    'desce_corta': pose(pernas='pulo', dy=-1, m1=(6, -4), a1=-60.0, m2=(4, -3), a2=-45.0, olhos='g'),
+})
+
 # golpe final (estilo Bleach): junta as duas espadas acima da cabeca, a
 # fundida suga o infinito da tela, evolui e da o ultimo corte
 POSE_A.update({

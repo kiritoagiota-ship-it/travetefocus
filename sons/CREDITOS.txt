@@ -9,11 +9,18 @@ gravacoes em dominio publico - licenca CC0 1.0
     corte, corte2, carga, golpe_final, titulo, transicao, fusao, reiatsu,
     absorve, getsuga
 - "Swishes Sound Pack" - artisticdude (OpenGameArt.org)
-    corte, corte2, sacar_iai, pulo, susto, teleporte, transicao, getsuga
+    corte, corte2, sacar_iai, pulo, susto, teleporte, transicao, getsuga,
+    habilidade
 - "RPG Sound Pack" - artisticdude (OpenGameArt.org)
     sacar, sacar_iai, golpe_final, pulo, corte2, titulo, teleporte, fusao,
-    reiatsu, absorve, getsuga, separa, materializa
+    reiatsu, absorve, getsuga, separa, materializa, habilidade
 - "RPG Audio" - Kenney (www.kenney.nl)
     koiguchi, desliza, embainhar, pouso, agarra, susto
 
 CC0 nao exige credito; fica registrado por gentileza aos autores.
+
+Voz "Starburst Stream" (voz_starburst, voz_stream)
+--------------------------------------------------
+Gerada pela voz de leitura do proprio Windows ("Microsoft Zira") e
+tratada aqui: tom mais grave, voz dobrada e um eco curto. Para usar uma
+voz gravada, basta trocar esses dois arquivos (mesmo nome, formato WAV).

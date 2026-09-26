@@ -19,6 +19,24 @@ import som
 from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, _bind_teclado
 
 
+def _ordenadas(memorias):
+    """Turnos em ordem de data (a data de um turno pode ser editada e um
+    dia antigo pode ser lancado depois: a ordem de gravacao nao serve)."""
+    def chave(par):
+        i, m = par
+        raw = str(m.get('data', '')).strip()
+        for fmt in ("%d/%m/%Y  %H:%M", "%d/%m/%Y %H:%M", "%d/%m/%Y"):
+            try:
+                return (datetime.strptime(raw, fmt), i)
+            except ValueError:
+                continue
+        try:
+            return (datetime.strptime(raw.split()[0], "%d/%m/%Y"), i)
+        except Exception:
+            return (datetime.min, i)
+    return [m for _, m in sorted(enumerate(memorias), key=chave)]
+
+
 class TelaMemorias(Screen):
     filtro_mes = StringProperty("TODOS")
 
@@ -49,7 +67,7 @@ class TelaMemorias(Screen):
         cont.add_widget(btn_todos)
 
         vistos = set()
-        for m in reversed(app.memorias):
+        for m in reversed(_ordenadas(app.memorias)):
             raw    = m.get('data', '')
             partes = raw.strip().split('/')
             if len(partes) >= 3:
@@ -105,8 +123,9 @@ class TelaMemorias(Screen):
                 return f"{partes[1].strip()}/{partes[2].strip()[:4]}"
             return ""
 
-        mems = (app.memorias if self.filtro_mes == "TODOS"
-                else [m for m in app.memorias
+        todas = _ordenadas(app.memorias)
+        mems = (todas if self.filtro_mes == "TODOS"
+                else [m for m in todas
                       if _mes_de(m.get('data', '')) == self.filtro_mes])
 
         # Atualizar contador no header
@@ -149,7 +168,7 @@ class TelaMemorias(Screen):
     def _atualizar_grafico(self):
         app      = App.get_running_app()
         grafico  = self.ids.grafico_barras
-        recentes = app.memorias[-8:] if app.memorias else []
+        recentes = _ordenadas(app.memorias)[-8:] if app.memorias else []
         # Cache: nao redesenhar se dados nao mudaram
         novo_hash = str([(m.get("data"), m.get("total")) for m in recentes])
         if getattr(grafico, "_ultimo_hash", None) == novo_hash:

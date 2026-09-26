@@ -44,8 +44,9 @@ BRANCO = (1.0, 1.0, 1.0)
 
 # efeitos que as cenas tocam (pre-carregados no inicio de cada cena)
 _SONS_TITULO = ['agarra', 'koiguchi', 'pulo', 'pouso', 'sacar_iai', 'corte', 'sacar',
-                'corte2', 'fusao', 'reiatsu', 'absorve', 'carga', 'getsuga', 'separa',
-                'desliza', 'embainhar', 'titulo', 'teleporte']
+                'corte2', 'habilidade', 'voz_starburst', 'voz_stream', 'fusao', 'reiatsu',
+                'absorve', 'carga', 'getsuga', 'separa', 'desliza', 'embainhar', 'titulo',
+                'teleporte']
 _SONS_PIN = ['agarra', 'susto', 'pulo', 'pouso', 'teleporte']
 
 
@@ -1015,6 +1016,132 @@ def _pendurado_idle(base, base_b, piscar=True):
     return quadros
 
 
+class _NomeGolpe(Widget):
+    """Nome da habilidade no estilo SAO: '- DUAL BLADES -' pequeno em cima e
+    'STARBURST STREAM' grande, com brilho e linhas saindo dos lados.
+    parte1(): 'STARBURST' aparece letra a letra; parte2(): 'STREAM' chega
+    num impacto; sumir(): apaga tudo."""
+
+    def __init__(self, cx, cy, largura_max, **kwargs):
+        kwargs.setdefault('size_hint', (None, None))
+        kwargs.setdefault('size', (0, 0))
+        super().__init__(**kwargs)
+        from kivy.metrics import sp
+        # a Orbitron e larga: mede de verdade e encolhe ate caber (sobra
+        # espaco nos lados para as linhas), senao corta em tela pequena
+        fs = max(sp(12), min(sp(26), largura_max / 12.0))
+        cabe = largura_max * 0.8
+        for tentativa in range(3):
+            t1 = CoreLabel(text="STARBURST", font_name="orbitron.ttf", font_size=fs, bold=True)
+            t1.refresh()
+            t2 = CoreLabel(text="STREAM", font_name="orbitron.ttf", font_size=fs, bold=True)
+            t2.refresh()
+            largura = t1.texture.width + fs * 0.55 + t2.texture.width
+            if largura <= cabe or tentativa == 2:
+                break
+            fs = max(sp(9), fs * cabe / largura * 0.98)
+        t0 = CoreLabel(text="-  DUAL BLADES  -", font_name="orbitron.ttf", font_size=max(sp(7), fs * 0.42))
+        t0.refresh()
+        self._tex1, self._tex2, self._tex0 = t1.texture, t2.texture, t0.texture
+        w1, h1 = self._tex1.size
+        w2, h2 = self._tex2.size
+        esp = fs * 0.55
+        total = w1 + esp + w2
+        self._x1 = cx - total / 2.0
+        self._x2 = self._x1 + w1 + esp
+        self._y = cy - h1 / 2.0
+        self._cx, self._cy, self._h = cx, cy, h1
+        self._total = total
+        with self.canvas:
+            self._c_ln = Color(0.0, 0.9, 1.0, 0)
+            self._ln_e = Line(points=[cx, cy, cx, cy], width=dp(1.3))
+            self._ln_d = Line(points=[cx, cy, cx, cy], width=dp(1.3))
+            self._c_sub = Color(0.6, 0.95, 1.0, 0)
+            w0, h0 = self._tex0.size
+            self._r_sub = Rectangle(texture=self._tex0, size=(w0, h0),
+                                    pos=(cx - w0 / 2.0, self._y + h1 + dp(4)))
+            # brilho (copia maior e ciano atras das letras)
+            PushMatrix()
+            self._sc_g = Scale(1.06, 1.18, 1, origin=(cx, cy))
+            self._c_g1 = Color(0.0, 0.8, 1.0, 0)
+            self._r_g1 = Rectangle(texture=self._tex1, size=(w1, h1), pos=(self._x1, self._y))
+            self._c_g2 = Color(0.0, 0.8, 1.0, 0)
+            self._r_g2 = Rectangle(texture=self._tex2, size=(w2, h2), pos=(self._x2, self._y))
+            PopMatrix()
+            self._c_1 = Color(1, 1, 1, 0)
+            self._r_1 = Rectangle(texture=self._tex1, size=(0, h1), pos=(self._x1, self._y))
+            PushMatrix()
+            self._sc_2 = Scale(1, 1, 1, origin=(self._x2 + w2 / 2.0, cy))
+            self._c_2 = Color(1, 1, 1, 0)
+            self._r_2 = Rectangle(texture=self._tex2, size=(w2, h2), pos=(self._x2, self._y))
+            PopMatrix()
+        self._ev = None
+        self._t1 = self._t2 = self._tsome = None
+        self._t = 0.0
+
+    def parte1(self):
+        self._t1 = self._t
+        self._ligar()
+
+    def parte2(self):
+        self._t2 = self._t
+        self._ligar()
+
+    def sumir(self):
+        self._tsome = self._t
+        self._ligar()
+
+    def _ligar(self):
+        if self._ev is None:
+            self._ev = Clock.schedule_interval(self._tick, 1 / 60.)
+
+    def _tick(self, dt):
+        try:
+            self._t += dt
+            some = 1.0
+            if self._tsome is not None:
+                some = max(0.0, 1 - (self._t - self._tsome) / 0.45)
+            w1, h1 = self._tex1.size
+            if self._t1 is not None:
+                u = min(1.0, (self._t - self._t1) / 0.55)
+                w = max(1.0, w1 * u)
+                self._r_1.texture = self._tex1.get_region(0, 0, w, h1)
+                self._r_1.size = (w, h1)
+                self._c_1.a = some
+                self._c_g1.a = 0.35 * some * (0.8 + 0.2 * math.sin(self._t * 14))
+                self._c_sub.a = 0.85 * min(1.0, u * 2) * some
+                abre = min(1.0, (self._t - self._t1) / 0.35)
+                meia = self._total / 2.0 + dp(10)
+                alcance = meia + dp(34) * abre
+                self._ln_e.points = [self._cx - meia, self._cy, self._cx - alcance, self._cy]
+                self._ln_d.points = [self._cx + meia, self._cy, self._cx + alcance, self._cy]
+                self._c_ln.a = 0.9 * abre * some
+            if self._t2 is not None:
+                u2 = min(1.0, (self._t - self._t2) / 0.16)
+                s = 1.7 - 0.7 * (1 - (1 - u2) ** 3)
+                self._sc_2.x = self._sc_2.y = s
+                clarao = max(0.0, 1 - (self._t - self._t2) / 0.3)
+                self._c_2.rgba = (1, 1, 1, min(1.0, u2 * 1.5) * some)
+                self._c_g2.a = (0.35 + 0.5 * clarao) * some
+                self._c_g1.a = (0.35 + 0.4 * clarao) * some
+                self._sc_g.x = 1.06 + 0.08 * clarao
+                self._sc_g.y = 1.18 + 0.25 * clarao
+            if self._tsome is not None and some <= 0:
+                self.parar()
+                return False
+        except Exception as e:
+            print(f"[nome golpe] {e}")
+            self.parar()
+            return False
+
+    def parar(self):
+        if self._ev is not None:
+            self._ev.cancel()
+            self._ev = None
+        if self.parent:
+            self.parent.remove_widget(self)
+
+
 def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
     """Kirito pendurado por uma mao num canto de cima, a outra no cabo da
     Elucidator: kamae, solta, iai na cintura; saca a Dark Repulser e segue o
@@ -1086,17 +1213,19 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         def quadro(x, y, poses):
             return _no_quadro(kk, x, y, [P[n] if isinstance(n, str) else n for n in poses], area, m)
 
-        def corte_trecho(i, cor, sentido=1, som_corte='corte', cor2=None):
+        def corte_trecho(i, cor, sentido=1, som_corte='corte', cor2=None, arco=None,
+                         achat=0.42):
             i0, i1 = _TRECHOS[i]
             cx, cy = titulo.x_do_trecho(i0, i1)
             larg = max(titulo._larg[i1] - titulo._larg[i0], th)
-            a0, a1 = (160, -150) if sentido > 0 else (20, 330)
+            a0, a1 = arco or ((160, -150) if sentido > 0 else (20, 330))
             camada.add_widget(CorteMeiaLua(centro=(cx, cy), raio=larg * 0.95, ang_ini=a0,
-                                           ang_fim=a1, espessura=th * 0.9, achat=0.42, cor=cor))
-            if cor2 is not None:           # golpe duplo: segunda meia-lua cruzando
-                camada.add_widget(CorteMeiaLua(centro=(cx, cy + th * 0.1), raio=larg * 0.9,
-                                               ang_ini=a1 + 180, ang_fim=a0 + 180,
-                                               espessura=th * 0.7, achat=0.42, cor=cor2))
+                                           ang_fim=a1, espessura=th * 0.9, achat=achat, cor=cor))
+            if cor2 is not None:           # a segunda lamina: meia-lua junto, um pouco defasada
+                d = 22 if a1 > a0 else -22
+                camada.add_widget(CorteMeiaLua(centro=(cx, cy - th * 0.08), raio=larg * 0.82,
+                                               ang_ini=a0 - d, ang_fim=a1 - d,
+                                               espessura=th * 0.7, achat=achat, cor=cor2))
                 _som('corte2')
             titulo.revelar(i0, i1, cor=(1, 1, 1) if cor == CIANO else AZUL)
             faiscas.estourar(cx, cy, cor, n=18, forca=dp(170), tam=ps)
@@ -1207,7 +1336,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             kk.mostrar(_com(P['pulo'], olhos='s'))
             _som('pulo')
             kk.empurrar(capa=-10, cabelo=-8, lift=12)
-            alvo = quadro(cx1 - th * 1.3, y_topo, POSES_G1)
+            alvo = quadro(ox_t - th * 0.7, oy_t + th * 0.5, POSES_G1)
             # giro para a frente (horario, olhando para a direita)
             _mover(kk, (ax, ay), alvo, 0.5, altura=0.0, rot=(0, -360), fantasmas=4, on_fim=_golpe1,
                    limite=(area, m))
@@ -1251,31 +1380,46 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                     kk.empurrar(cabelo=8)
             kk.tocar(seq, on_quadro=_q, on_fim=lambda: _combo(1))
 
-        # ── 5. combo samurai em cima das letras: "VE", "TE ", "FO" ────
+        # ── 5. combo samurai com as duas: cada silaba de uma direcao ──
+        # "VE": de baixo, cortando para cima | "TE ": do alto, no ar, cortando
+        # para baixo | "FO": pela direita, virado, corte cruzado para tras
         GOLPES = {
-            1: ('c2_arma', 'c2_corta', (120, None), CIANO, 1, 'corte', None),
-            2: ('c3_arma', 'c3_corta', (None, 225), AZUL, -1, 'corte2', None),
-            3: ('giro_a', 'giro_b', (60, 230), CIANO, 1, 'corte', AZUL),
+            1: ('sobe_arma', 'sobe_corta', (235, 215), 'baixo', (225, 405), CIANO, AZUL, 'corte'),
+            2: ('desce_arma', 'desce_corta', (100, 115), 'cima', (135, -45), CIANO, AZUL, 'corte'),
+            3: ('x_arma', 'x_corta', (135, 160), 'direita', (-20, 200), AZUL, CIANO, 'corte2'),
         }
+
+        def _alvo_golpe(lado, i, poses):
+            i0, i1 = _TRECHOS[i]
+            cx, cy = titulo.x_do_trecho(i0, i1)
+            if lado == 'baixo':                       # cabeca abaixo das letras
+                kk.espelhar = False
+                cima_p = _ext(kk, [P[poses[0]]])[3]
+                return quadro(cx - th * 0.35, oy_t - dp(4) - cima_p, poses)
+            if lado == 'cima':                        # no ar, acima das letras
+                kk.espelhar = False
+                baixo_p = _ext(kk, [P[poses[0]]])[1]
+                return quadro(cx - th * 0.45, oy_t + th + dp(10) + baixo_p, poses)
+            kk.espelhar = True                         # 'direita': virado para a esquerda
+            return quadro(ox_t + titulo._larg[i1] + th * 0.9, cy - th * 0.1, poses)
 
         def _combo(i):
             if i > 3:
                 _final()
                 return
-            p_arma, p_corta, (s1, s2), cor, sentido, som_c, cor2 = GOLPES[i]
-            cx, _ = titulo.x_do_trecho(*_TRECHOS[i])
-            kk.espelhar = False
-            poses = [P[p_arma], P[p_corta], P['dupla']]
+            p_arma, p_corta, (s1, s2), lado, arco, cor, cor2, som_c = GOLPES[i]
             ax, ay = kk.ancora()
-            if i == 3:
-                # giro no ar: o boneco gira inteiro, entao vale o raio da pose
-                r = _raio(kk, poses)
-                alvo = (min(area[2] - m - r, max(area[0] + m + r, cx - th * 0.5)),
-                        min(area[3] - m - r, max(area[1] + m + r, y_topo + th * 0.6)))
-                h = _arco(ay, alvo[1], th * 0.9, area[3] - m - r)
+            alvo = _alvo_golpe(lado, i, [p_arma, p_corta])
+            teto = area[3] - m - _ext(kk, [P[p_arma], P[p_corta]])[3]
+            if lado == 'baixo':
+                h, giro, dur = 0.0, None, 0.17               # desliza por baixo
+            elif lado == 'cima':
+                h, giro, dur = _arco(ay, alvo[1], th * 1.1, teto), None, 0.22   # salta
             else:
-                alvo = quadro(cx - th * 1.0, y_topo, poses)
-                h = _arco(ay, alvo[1], th * 0.4, area[3] - m - _ext(kk, poses)[3])
+                h, giro, dur = _arco(ay, alvo[1], th * 0.6, teto), (0, 360), 0.22  # gira e vira
+            kk.mostrar(_com(P[p_arma], olhos='s'))
+            if lado != 'baixo':
+                _som('pulo')
 
             def _ataca():
                 kk.rotacao = 0
@@ -1283,11 +1427,11 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                                    (1, _com(K.smear(P[p_corta], s1, s2), olhos='g')),
                                    (1, _com(P[p_corta], olhos='g')), (3, _com(P[p_corta], olhos='s')),
                                    (1, _com(P[p_corta], olhos='s'))])
-                kk.tocar(seq, on_quadro=lambda q: q == 2 and corte_trecho(i, cor, sentido, som_c, cor2),
-                         on_fim=lambda: _combo(i + 1))
-            _mover(kk, (ax, ay), alvo, 0.15, altura=h,
-                   rot=(0, -360) if i == 3 else None, cor_fantasma=cor, on_fim=_ataca,
-                   limite=(area, m))
+                kk.tocar(seq, on_quadro=lambda q: q == 2 and corte_trecho(
+                    i, cor, 1, som_c, cor2, arco=arco, achat=0.5 if lado != 'direita' else 0.42),
+                    on_fim=lambda: _combo(i + 1))
+            _mover(kk, (ax, ay), alvo, dur, altura=h, rot=giro, cor_fantasma=cor,
+                   on_fim=_ataca, limite=(area, m))
 
         # ── 6. golpe final (estilo Bleach) ───────────────────────────
         p_fim = ['evo_corte', 'evo_fim', 'dupla', 'chiburi', 'embainha_a', 'embainha_b',
@@ -1308,13 +1452,25 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             _som('pouso')
             ax, ay = kk.ancora()
             poeira(ax, ay - kk.extensao()[1], n=8)
-            cam[0].ir(1.12, foco=(ax, ay + alt * 0.35), dur=1.4)
+            cam[0].ir(1.12, foco=(ax, ay + alt * 0.35), dur=1.8)
+            # nome da habilidade embaixo da frase (a acao e em cima dela)
+            nome = _NomeGolpe(ox_t + titulo.tw / 2.0, oy_t - th * 1.5, W * 0.9)
+            estado['nome'] = nome
+            camada.add_widget(nome)
+            # a pose: cruza as duas espadas no alto enquanto diz "Starburst...
+            # Stream!" - o clarao da fusao cai no pico do "Stream"
             seq = K.sequencia([(3, _com(P['agacha'], olhos='s')), (5, _com(P['dupla'], olhos='s')),
-                               (9, P['une_a']), (8, P['une_b']), (1, P['une_b'])])
+                               (20, P['une_a']), (14, P['une_b']), (12, P['une_b'])])
 
             def _q(i):
-                if i == 8:
+                if i == 6:
+                    _som('habilidade')
+                    _som('voz_starburst')
+                    nome.parte1()
+                elif i == 8:
                     _som('pulo')                     # as duas sobem cruzadas
+                elif i == 41:
+                    _som('voz_stream')
             kk.tocar(seq, on_quadro=_q, on_fim=_flash_fusao)
 
         def _flash_fusao():
@@ -1331,6 +1487,10 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             kk.pausar(0.1)
             kk.empurrar(cabelo=10, lift=8)
             aura.alvo = 0.35
+            nome = estado.get('nome')
+            if nome is not None:
+                nome.parte2()
+                ag.depois(1.1, nome.sumir)
             ag.depois(0.7, _sugar)
 
         def _sugar():
@@ -1546,7 +1706,7 @@ def limpar_cena(camada):
         for w in list(camada.children):
             if isinstance(w, K.KiritoPixel):
                 w.parar()
-            elif isinstance(w, (_AuraEspada, _Fluxo, _OndaGetsuga)):
+            elif isinstance(w, (_AuraEspada, _Fluxo, _OndaGetsuga, _NomeGolpe)):
                 w.parar()
         if camada.parent:
             camada.parent.remove_widget(camada)

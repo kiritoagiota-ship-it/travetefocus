@@ -64,6 +64,19 @@ class TelaProgresso(Screen):
                 cards.append(alvo)
         entrada_cascata(cards, atraso=0.06)
 
+    @staticmethod
+    def _sequencia_valida(app):
+        """A sequencia so vale se o ultimo turno finalizado foi hoje ou
+        ontem; passou disso, ela quebrou (mostra 0 ate o proximo turno)."""
+        try:
+            from datetime import datetime as DT
+            ultima = DT.strptime(app.ultima_data, "%d/%m/%Y").date()
+            if (DT.now().date() - ultima).days > 1:
+                return 0
+        except Exception:
+            pass
+        return int(app.streak or 0)
+
     def on_enter(self):
         app   = App.get_running_app()
         level, xp_atual, xp_necessario = calcular_level(app.total_xp)
@@ -87,7 +100,7 @@ class TelaProgresso(Screen):
                lambda v: f"MELHOR DIA\n[color=#ffcc00]{fmt_br(v)} un.[/color]", atraso=0.29)
         self._cascata_cards()
 
-        streak = app.streak
+        streak = self._sequencia_valida(app)
         barra  = self.ids.barra_circular
         # valores do anel antes de qualquer animacao (uma unica, sem estouro)
         barra.maximo = max(1, xp_necessario)
@@ -97,7 +110,7 @@ class TelaProgresso(Screen):
         if streak >= 5:
             barra.cor_anel = [1, 0.55, 0, 1]
             # em() renderiza o emoji com NotoEmoji se disponivel, senao usa texto
-            self.ids.lbl_streak.text  = f"{em('🔥')}  STREAK  {streak}  DIAS"
+            self.ids.lbl_streak.text  = f"{em('🔥')}  STREAK  {streak}  {'DIA' if streak == 1 else 'DIAS'}"
             self.ids.lbl_streak.color = (1, 0.5, 0, 1)
             fire = (Animation(cor_anel=[1, 0.42, 0, 1], duration=0.7,
                               transition='in_out_sine') +
@@ -108,6 +121,6 @@ class TelaProgresso(Screen):
             fire.start(barra)
         else:
             barra.cor_anel = [0, 0.9, 1, 1]
-            self.ids.lbl_streak.text  = f"STREAK  {streak}  DIAS"
+            self.ids.lbl_streak.text  = f"STREAK  {streak}  {'DIA' if streak == 1 else 'DIAS'}"
             self.ids.lbl_streak.color = (0, 0.9, 1, 0.7)
 

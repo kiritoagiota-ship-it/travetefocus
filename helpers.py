@@ -128,11 +128,16 @@ def obter_titulo_level(level: int) -> str:
 def aplicar_fundo_holografico(widget, cor_borda=None):
     if cor_borda is None:
         cor_borda = (0, 0.9, 1, 0.85)
+    # chamado de novo (ex: caixa do PIN fica verde no acerto): so troca a cor,
+    # sem empilhar outro fundo e outra borda por cima dos antigos
+    if getattr(widget, '_bg_cor_borda', None) is not None:
+        widget._bg_cor_borda.rgba = cor_borda
+        return
     with widget.canvas.before:
         Color(0.03, 0.03, 0.09, 0.97)
         widget._bg_rr = RoundedRectangle(
             pos=widget.pos, size=widget.size, radius=[14])
-        Color(*cor_borda)
+        widget._bg_cor_borda = Color(*cor_borda)
         widget._bg_ln = Line(
             rounded_rectangle=[widget.x, widget.y, widget.width, widget.height, 14],
             width=1.6)

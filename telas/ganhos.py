@@ -1,17 +1,23 @@
-import som
-"""telas/ganhos.py — TelaGanhos"""
+"""telas/ganhos.py — TelaGanhos
+
+Regra do calculo (por periodo: semanal, quinzenal ou mensal):
+  - toda peca ate a meta vale o valor BASE (padrao R$ 0,25);
+  - cada peca ACIMA da meta vale o valor BONUS (padrao R$ 0,30).
+  Ex: meta 3000, 3500 pecas -> 3000 x 0,25 + 500 x 0,30 = R$ 900,00.
+So entram os turnos ja finalizados (memorias). Um turno contado no
+fechamento de um periodo nao entra de novo no periodo seguinte (mesmo que
+os dois caiam no mesmo dia).
+"""
 from kivy.uix.screenmanager import Screen
 from kivy.uix.label import Label
 from kivy.uix.boxlayout import BoxLayout
 from kivy.app import App
 from kivy.animation import Animation
-from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.metrics import dp
 from datetime import datetime
 
-from efeitos import (BotaoAngular, BotaoAngularAlerta, ListaItem,
-                     tremer_tela, explodir_estilhacos)
+from efeitos import BotaoAngular, BotaoAngularAlerta, ListaItem, tremer_tela
 import som
 from animacoes_ui import entrada_cascata, contar, fmt_br
 from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, em, anexar_teclado
@@ -23,6 +29,31 @@ def _data_str_para_obj(data_str):
         return datetime.strptime(data_limpa, "%d/%m/%Y")
     except Exception:
         return None
+
+
+def _num(texto, inteiro=False, minimo=0.01):
+    """Numero digitado no campo (aceita virgula). Vazio ou invalido = None."""
+    t = (texto or '').strip().replace(',', '.')
+    if not t:
+        return None
+    try:
+        v = float(t)
+    except ValueError:
+        return None
+    if inteiro:
+        v = int(v)
+    return v if v >= minimo else None
+
+
+def _chave_turno(m):
+    """Identidade de um turno (memoria): o mesmo turno nunca conta em dois
+    periodos. Turnos novos tem 'ts'; os antigos usam data + total."""
+    ts = m.get('ts')
+    return f"ts:{ts}" if ts is not None else f"{m.get('data', '')}|{m.get('total', 0)}"
+
+
+def _reais(v):
+    return f"R$ {fmt_br(v, 2)}"
 
 
 class TelaGanhos(Screen):
@@ -47,41 +78,65 @@ class TelaGanhos(Screen):
     def _cfg(self):
         return App.get_running_app().config_ganhos
 
-    def _pecas_no_periodo(self, inicio_str, fim_str=None):
+    # ── contagem de pecas ───────────────────────────────────────────────
+    def _ja_contadas(self, periodo=None):
+        """Turnos ja contados no fechamento de OUTROS periodos."""
+        chaves = set()
+        for p in App.get_running_app().periodos_ganhos:
+            if p is periodo or not p.get('data_fim'):
+                continue
+            chaves.update(p.get('contadas', []))
+        return chaves
+
+    def _turnos_no_periodo(self, inicio_str, fim_str=None, excluir=()):
         app    = App.get_running_app()
         # (sem cache: a chave por len(memorias) ficava velha ao editar a data
         # de um turno e gravava total/ganho errado ao fechar o periodo)
         inicio = _data_str_para_obj(inicio_str)
         fim    = _data_str_para_obj(fim_str) if fim_str else None
         if inicio is None:
-            return 0
-        total = 0
+            return []
+        turnos = []
         for m in app.memorias:
             d = _data_str_para_obj(m.get('data', ''))
-            if d is None:
+            if d is None or d < inicio or (fim is not None and d > fim):
                 continue
-            if fim:
-                if inicio <= d <= fim:
-                    total += int(m.get('total', 0))
-            else:
-                if d >= inicio:
-                    total += int(m.get('total', 0))
+            if _chave_turno(m) in excluir:
+                continue
+            turnos.append(m)
+        return turnos
+
+    def _pecas_no_periodo(self, inicio_str, fim_str=None, excluir=()):
+        total = 0
+        for m in self._turnos_no_periodo(inicio_str, fim_str, excluir):
+            try:
+                total += int(m.get('total', 0))
+            except (TypeError, ValueError):
+                pass
         return total
+
+    # ── dinheiro ────────────────────────────────────────────────────────
+    def _detalhe_ganho(self, total_pecas):
+        """(pecas_base, valor_base, pecas_bonus, valor_bonus, total)."""
+        cfg = self._cfg()
+        meta  = int(cfg['meta_bonus'])
+        base  = float(cfg['valor_base'])
+        bonus = float(cfg['valor_bonus'])
+        n_base = min(total_pecas, meta)
+        n_bonus = max(0, total_pecas - meta)
+        v_base = round(n_base * base, 2)
+        v_bonus = round(n_bonus * bonus, 2)
+        return n_base, v_base, n_bonus, v_bonus, round(v_base + v_bonus, 2)
 
     def _calcular_ganho(self, total_pecas):
         """
-        Base R$0.25/peca para todas as pecas.
-        Bonus R$0.30/peca só para as pecas ACIMA da meta.
+        Base R$0.25/peca para as pecas ate a meta.
+        Bonus R$0.30/peca so para as pecas ACIMA da meta.
         Ex: 3500 pecas, meta=3000 -> 3000x0.25 + 500x0.30 = R$900.
         """
-        cfg = self._cfg()
-        meta  = cfg['meta_bonus']
-        base  = cfg['valor_base']
-        bonus = cfg['valor_bonus']
-        if total_pecas <= meta:
-            return round(total_pecas * base, 2)
-        return round(meta * base + (total_pecas - meta) * bonus, 2)
+        return self._detalhe_ganho(total_pecas)[4]
 
+    # ── tela ────────────────────────────────────────────────────────────
     def _atualizar_config_ui(self):
         cfg = self._cfg()
         self.ids.inp_valor_base.text  = f"{cfg['valor_base']:.2f}"
@@ -95,32 +150,41 @@ class TelaGanhos(Screen):
         aberto   = next((p for p in reversed(periodos) if not p.get('data_fim')), None)
 
         if aberto is None:
-            self.ids.lbl_periodo_status.text = "[color=#444444]--  Nenhum periodo aberto  --[/color]"
+            self.ids.lbl_periodo_status.text = "[color=#8c96aa]--  Nenhum periodo aberto  --[/color]"
             self.ids.lbl_periodo_pecas.text  = ""
             self.ids.lbl_periodo_ganho.text  = ""
-            self.ids.lbl_periodo_bonus.text  = "[color=#333333]Configure abaixo e clique em ABRIR PERIODO[/color]"
+            self.ids.lbl_periodo_bonus.text  = "[color=#8c96aa]Configure abaixo e toque em ABRIR PERIODO[/color]"
             self.ids.btn_fechar_periodo.opacity  = 0
             self.ids.btn_fechar_periodo.disabled = True
             return
 
         cfg      = self._cfg()
-        pecas    = self._pecas_no_periodo(aberto['data_inicio'])
+        pecas    = self._pecas_no_periodo(aberto['data_inicio'], excluir=self._ja_contadas(aberto))
         ganho    = self._calcular_ganho(pecas)
-        bonus_ok = pecas >= cfg['meta_bonus']
-        faltam   = max(0, int(cfg['meta_bonus']) - pecas)
+        meta     = int(cfg['meta_bonus'])
+        faltam   = max(0, meta - pecas)
         tipo     = aberto.get('tipo', 'periodo').capitalize()
+        bonus_rs = _reais(cfg['valor_bonus'])
 
         self.ids.lbl_periodo_status.text = (
             f"[color=#00ff88]>> {tipo} aberto desde [b]{aberto['data_inicio']}[/b][/color]")
         contar(self.ids.lbl_periodo_pecas, pecas,
-               lambda v: f"[color=#888888]Pecas[/color]\n[color=#00e5ff][b]{fmt_br(v)}[/b][/color]")
+               lambda v: f"[color=#9aa6bd]Pecas[/color]\n[color=#00e5ff][b]{fmt_br(v)}[/b][/color]")
         contar(self.ids.lbl_periodo_ganho, ganho,
-               lambda v: f"[color=#888888]Projecao[/color]\n[color=#00ff88][b]R$ {fmt_br(v, 2)}[/b][/color]",
+               lambda v: f"[color=#9aa6bd]Projecao[/color]\n[color=#00ff88][b]R$ {fmt_br(v, 2)}[/b][/color]",
                inteiro=False)
-        self.ids.lbl_periodo_bonus.text = (
-            f"[color=#ffcc00]{em('🔥')} BONUS ATIVO — R${cfg['valor_bonus']:.2f}/peca[/color]"
-            if bonus_ok else
-            f"[color=#555555]Faltam {faltam} pecas para bonus (R${cfg['valor_bonus']:.2f}/peca)[/color]")
+        if pecas > meta:
+            n_base, v_base, n_bonus, v_bonus, _ = self._detalhe_ganho(pecas)
+            self.ids.lbl_periodo_bonus.text = (
+                f"[color=#ffcc00]{em('🔥')} META BATIDA! {fmt_br(n_bonus)} pecas a mais "
+                f"x {bonus_rs} = +{_reais(v_bonus)}[/color]")
+        elif pecas == meta:
+            self.ids.lbl_periodo_bonus.text = (
+                f"[color=#ffcc00]{em('🔥')} META BATIDA! Cada peca a mais agora vale {bonus_rs}[/color]")
+        else:
+            self.ids.lbl_periodo_bonus.text = (
+                f"[color=#aab4c8]Faltam {fmt_br(faltam)} pecas para a meta de {fmt_br(meta)} - "
+                f"acima dela cada peca vale {bonus_rs}[/color]")
         self.ids.btn_fechar_periodo.opacity  = 1
         self.ids.btn_fechar_periodo.disabled = False
 
@@ -134,7 +198,7 @@ class TelaGanhos(Screen):
             vazio = Label(
                 text="[ SEM PERIODOS FECHADOS ]",
                 font_name="orbitron.ttf", font_size="11sp",
-                color=(0, 0.9, 1, 0.22), halign="center", valign="middle",
+                color=(0, 0.9, 1, 0.45), halign="center", valign="middle",
                 size_hint_y=None, height=dp(60))
             vazio.text_size = (Window.width * 0.85, None)
             cont.add_widget(vazio)
@@ -147,15 +211,14 @@ class TelaGanhos(Screen):
             df    = p['data_fim']
             pecas = p.get('total_pecas', 0)
             ganho = p.get('total_ganho', 0.0)
-            # Usar em() para o emoji de fogo — fica lindo com markup=True no ListaItem
-            bonus_icon = f"{em('🔥')} " if pecas >= self._cfg()['meta_bonus'] else ""
+            meta_p = p.get('meta', self._cfg()['meta_bonus'])
+            bonus_icon = f"{em('🔥')} " if pecas > meta_p else ""
 
             row = BoxLayout(size_hint_y=None, height=dp(68), spacing=dp(6))
             lbl = ListaItem(
                 text=(f"  {bonus_icon}{tipo}  {di} - {df}\n"
-                      f"  {pecas} un.   [color=#00ff88]R$ {ganho:.2f}[/color]"),
+                      f"  {fmt_br(pecas)} un.   [color=#00ff88]{_reais(ganho)}[/color]"),
                 markup=True, size_hint_x=0.82)
-            # Botão de deletar com emoji via em()
             btn_del = BotaoAngularAlerta(
                 text=em('✕'), size_hint_x=0.18, font_size="18sp")
             row.add_widget(lbl)
@@ -189,7 +252,7 @@ class TelaGanhos(Screen):
                 aplicar_fundo_holografico(cx2, (1.0, 0.08, 0.22, 0.9))
                 cx2.add_widget(Label(
                     text=(f"[color=#ff2244]!!  APAGAR PERIODO?[/color]\n"
-                          f"[color=#cccccc]{tipo}  {di} - {df}\nR$ {ganho:.2f}[/color]"),
+                          f"[color=#cccccc]{tipo}  {di} - {df}\n{_reais(ganho)}[/color]"),
                     markup=True, font_name="orbitron.ttf", font_size="12sp",
                     halign="center", size_hint_y=None, height=dp(80)))
                 bts = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(12))
@@ -213,19 +276,57 @@ class TelaGanhos(Screen):
         idx    = tipos.index(atual) if atual in tipos else 0
         self.ids.spin_tipo.text = tipos[(idx + 1) % len(tipos)]
 
-    def salvar_config(self):
-        cfg = self._cfg()
+    def _aviso(self, texto, cor=(0, 1, 0.55, 1)):
+        """Recado curto que sobe e some (confirma o que foi salvo ou o erro)."""
         try:
-            cfg['valor_base']   = max(0.01, float(self.ids.inp_valor_base.text  or 0.25))
-            cfg['valor_bonus']  = max(0.01, float(self.ids.inp_valor_bonus.text or 0.30))
-            cfg['meta_bonus']   = max(1,    int(self.ids.inp_meta_bonus.text    or 3000))
-            cfg['tipo_periodo'] = self.ids.spin_tipo.text.lower()
-        except (ValueError, TypeError):
-            pass
+            lbl = Label(text=texto, markup=True, font_name="orbitron.ttf", font_size="12sp",
+                        color=(cor[0], cor[1], cor[2], 0), halign="center", valign="middle",
+                        size_hint=(None, None), size=(Window.width * 0.9, dp(40)),
+                        pos=(Window.width * 0.05, Window.height * 0.12))
+            lbl.text_size = lbl.size
+            Window.add_widget(lbl)
+            anim = (Animation(color=cor, y=lbl.y + dp(16), duration=0.25, transition='out_quad') +
+                    Animation(duration=1.3) +
+                    Animation(color=(cor[0], cor[1], cor[2], 0), y=lbl.y + dp(34),
+                              duration=0.35, transition='in_quad'))
+            anim.bind(on_complete=lambda *_: Window.remove_widget(lbl))
+            anim.start(lbl)
+        except Exception as e:
+            print(f"[ganhos] aviso: {e}")
+
+    def salvar_config(self):
+        """Salva cada campo por conta propria (um valor invalido nao impede os
+        outros) e avisa o que ficou de fora. Aceita virgula (0,30)."""
+        cfg = self._cfg()
+        invalidos = []
+        base = _num(self.ids.inp_valor_base.text)
+        bonus = _num(self.ids.inp_valor_bonus.text)
+        meta = _num(self.ids.inp_meta_bonus.text, inteiro=True, minimo=1)
+        if base is not None:
+            cfg['valor_base'] = base
+        else:
+            invalidos.append("BASE")
+        if bonus is not None:
+            cfg['valor_bonus'] = bonus
+        else:
+            invalidos.append("BONUS")
+        if meta is not None:
+            cfg['meta_bonus'] = meta
+        else:
+            invalidos.append("META")
+        cfg['tipo_periodo'] = self.ids.spin_tipo.text.lower()
         App.get_running_app().salvar_dados()
+        self._atualizar_config_ui()          # mostra o que ficou valendo
         self._atualizar_periodo_atual()
-        som.tocar_salvar()
-        tremer_tela(5)
+        if invalidos:
+            som.tocar_erro()
+            self._aviso("VALOR INVALIDO: " + ", ".join(invalidos) + " (mantido o anterior)",
+                        (1, 0.35, 0.35, 1))
+        else:
+            som.tocar_salvar()
+            tremer_tela(5)
+            self._aviso("CALCULO SALVO: base " + _reais(cfg['valor_base']) + " / bonus "
+                        + _reais(cfg['valor_bonus']) + " acima de " + fmt_br(cfg['meta_bonus']))
 
     def abrir_periodo(self):
         app      = App.get_running_app()
@@ -261,12 +362,20 @@ class TelaGanhos(Screen):
         if idx_aberto is None:
             return
         idx_real = len(periodos) - 1 - idx_aberto
-        aberto   = dict(periodos[idx_real])
-        pecas    = self._pecas_no_periodo(aberto['data_inicio'])
+        original = periodos[idx_real]
+        aberto   = dict(original)
+        turnos   = self._turnos_no_periodo(aberto['data_inicio'], excluir=self._ja_contadas(original))
+        pecas    = sum(int(m.get('total', 0)) for m in turnos)
         ganho    = self._calcular_ganho(pecas)
+        cfg      = self._cfg()
         aberto['data_fim']    = datetime.now().strftime("%d/%m/%Y")
         aberto['total_pecas'] = pecas
         aberto['total_ganho'] = round(ganho, 2)
+        # guarda as regras usadas e os turnos contados (nao contam de novo)
+        aberto['meta']        = int(cfg['meta_bonus'])
+        aberto['valor_base']  = float(cfg['valor_base'])
+        aberto['valor_bonus'] = float(cfg['valor_bonus'])
+        aberto['contadas']    = [_chave_turno(m) for m in turnos]
         periodos[idx_real]   = aberto
         app.periodos_ganhos  = periodos
         app.salvar_dados()
@@ -279,35 +388,39 @@ class TelaGanhos(Screen):
 
     def _popup_resultado(self, pecas, ganho, periodo):
         pop, layout = _make_popup()
-        h   = min(dp(320), int(Window.height * 0.56))
-        cfg = self._cfg()
+        h   = min(dp(340), int(Window.height * 0.62))
         caixa = BoxLayout(
             orientation='vertical',
             padding=[dp(24), dp(18), dp(24), dp(18)],
             spacing=dp(10), size_hint=(0.90, None), height=h)
         aplicar_fundo_holografico(caixa, (0, 0.9, 1, 0.9))
-        bonus_ok = pecas >= cfg['meta_bonus']
-        taxa     = cfg['valor_bonus'] if bonus_ok else cfg['valor_base']
+        n_base, v_base, n_bonus, v_bonus, total = self._detalhe_ganho(pecas)
+        cfg = self._cfg()
 
         caixa.add_widget(Label(
             text="[b][color=#00e5ff]>>  PERIODO ENCERRADO  <<[/color][/b]",
             markup=True, font_name="orbitron.ttf", font_size="15sp",
             size_hint_y=None, height=dp(34), halign="center"))
 
-        bonus_line = (f"[color=#ffcc00]{em('🔥')} BONUS APLICADO R${taxa:.2f}/peca[/color]"
-                      if bonus_ok else
-                      f"[color=#888888]R$ {taxa:.2f}/peca (base)[/color]")
+        linha_base = (f"[color=#aab4c8]{fmt_br(n_base)} x {_reais(cfg['valor_base'])}[/color]"
+                      f"   [color=#00e5ff]{_reais(v_base)}[/color]")
+        if n_bonus > 0:
+            linha_bonus = (f"[color=#ffcc00]{em('🔥')} {fmt_br(n_bonus)} acima da meta x "
+                           f"{_reais(cfg['valor_bonus'])}   +{_reais(v_bonus)}[/color]")
+        else:
+            linha_bonus = (f"[color=#8c96aa]Meta de {fmt_br(cfg['meta_bonus'])} nao batida "
+                           f"(faltaram {fmt_br(int(cfg['meta_bonus']) - pecas)})[/color]")
 
         caixa.add_widget(Label(
-            text=(f"[color=#888888]Periodo[/color]   "
-                  f"[color=#00e5ff]{periodo['data_inicio']} - {periodo['data_fim']}[/color]\n\n"
-                  f"[color=#888888]Total de pecas[/color]   "
-                  f"[color=#00e5ff][b]{pecas} un.[/b][/color]\n\n"
-                  f"{bonus_line}\n\n"
-                  f"[color=#888888]Total a receber[/color]   "
-                  f"[color=#00ff88][b]R$ {ganho:.2f}[/b][/color]"),
+            text=(f"[color=#aab4c8]Periodo[/color]   "
+                  f"[color=#00e5ff]{periodo['data_inicio']} - {periodo['data_fim']}[/color]\n"
+                  f"[color=#aab4c8]Total de pecas[/color]   "
+                  f"[color=#00e5ff][b]{fmt_br(pecas)} un.[/b][/color]\n\n"
+                  f"{linha_base}\n{linha_bonus}\n\n"
+                  f"[color=#aab4c8]Total a receber[/color]   "
+                  f"[color=#00ff88][b]{_reais(total)}[/b][/color]"),
             markup=True, font_name="rajdhani.ttf", font_size="16sp",
-            halign="center", size_hint_y=None, height=dp(160)))
+            halign="center", size_hint_y=None, height=dp(190)))
 
         btn = BotaoAngular(text=">>  OK", size_hint_y=None, height=dp(50))
         btn.bind(on_release=lambda *_: pop.dismiss())

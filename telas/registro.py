@@ -149,31 +149,37 @@ class TelaRegistro(Screen):
         tot_xp    = sum(int(x[2]) for x in app.registros)
 
         def _confirmar(data_str):
+            import time
             # Guardar XP anterior para animacao de progresso
             app.xp_anterior = getattr(app, "total_xp", 0)
             app.memorias.append({
                 "data":  data_str, "total": tot_pecas,
-                "xp":    tot_xp,  "itens": list(app.registros)
+                "xp":    tot_xp,  "itens": list(app.registros),
+                "ts":    round(time.time(), 3),     # identidade do turno (ganhos)
             })
-            app.total_geral += tot_pecas
-            if tot_pecas > app.melhor_dia:
-                app.melhor_dia = tot_pecas
-            hoje_str = data_str.strip().split()[0].strip()
+            dia_str = data_str.strip().split()[0].strip()
             if app.ultima_data:
                 try:
                     from datetime import datetime as DT
                     d1   = DT.strptime(app.ultima_data, "%d/%m/%Y")
-                    d2   = DT.strptime(hoje_str,        "%d/%m/%Y")
+                    d2   = DT.strptime(dia_str,         "%d/%m/%Y")
                     diff = (d2 - d1).days
-                    if   diff == 1: app.streak += 1
-                    elif diff == 0: pass
-                    else:           app.streak  = 1
+                    if diff == 1:
+                        app.streak += 1
+                    elif diff > 1:
+                        app.streak = 1
+                    # diff == 0: mesmo dia; diff < 0: lancamento de um dia
+                    # antigo - nao mexe na sequencia nem na ultima data
+                    if diff >= 0:
+                        app.ultima_data = dia_str
                 except Exception:
                     app.streak = 1
+                    app.ultima_data = dia_str
             else:
                 app.streak = 1
-            app.ultima_data = hoje_str
+                app.ultima_data = dia_str
             app.registros.clear()
+            app.recalcular_totais()
             app.salvar_dados()
             som.tocar_finalizar()
             vibrar(200)

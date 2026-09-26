@@ -144,17 +144,28 @@ class TraveteApp(App):
         transicao_tela(self, destino)
 
     def recalcular_totais(self):
-        total_g = 0; total_x = 0; melhor = 0
+        total_g = 0; total_x = 0
+        por_dia = {}                       # dois turnos no mesmo dia somam
         for m in self.memorias:
-            total_g += int(m.get('total', 0))
-            total_x += int(m.get('xp',    0))
-            if m.get('total', 0) > melhor:
-                melhor = m['total']
+            try:
+                t = int(m.get('total', 0))
+            except (TypeError, ValueError):
+                t = 0
+            total_g += t
+            try:
+                total_x += int(m.get('xp', 0))
+            except (TypeError, ValueError):
+                pass
+            dia = str(m.get('data', '')).strip().split(' ')[0]
+            por_dia[dia] = por_dia.get(dia, 0) + t
         for r in self.registros:
-            total_x += int(r[2]) if len(r) > 2 else 0
+            try:
+                total_x += int(r[2]) if len(r) > 2 else 0
+            except (TypeError, ValueError):
+                pass
         self.total_geral = total_g
         self.total_xp    = total_x
-        self.melhor_dia  = melhor
+        self.melhor_dia  = max(por_dia.values(), default=0)
 
     def salvar_dados(self, sincrono=False):
         snapshot = {

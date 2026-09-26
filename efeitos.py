@@ -15,14 +15,16 @@ from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.graphics import (
     Color, Rectangle, RenderContext, Ellipse, Line,
-    PushMatrix, PopMatrix, Rotate, Scale, Triangle, RoundedRectangle
+    PushMatrix, PopMatrix, Rotate, Scale, Triangle, RoundedRectangle,
+    Translate, Mesh
 )
-from kivy.properties import NumericProperty, ListProperty
+from kivy.properties import NumericProperty, ListProperty, StringProperty
 from kivy.metrics import dp
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.core.text import Label as CoreLabel
 from kivy.animation import Animation
+import math
 import random
 
 # Som de clique — importado do módulo independente
@@ -257,30 +259,273 @@ class InputHolografico(TextInput):
 # ═══════════════════════════════════════════════════════════
 
 class EspadaHolografica(Widget):
+    """Espada em holograma ao lado do titulo da loading.
+    estilo 'katana' (Elucidator): lamina curva de um fio, hamon, tsuba oval
+    e cabo trancado. estilo 'cristal' (Dark Repulser): lamina reta de
+    cristal facetada, guarda com gema.
+    Ao aparecer (opacidade 0 -> 1) a lamina cresce a partir da guarda; depois
+    flutua, um brilho percorre a lamina, linhas de holograma sobem e
+    faiscas saem dela. Desenho montado uma vez; a animacao so mexe em
+    transformacoes e cores (leve)."""
     escala    = NumericProperty(0)
     opacidade = NumericProperty(0)
     cor       = ListProperty([0, 0.89, 1, 1])
+    estilo    = StringProperty('katana')
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.bind(pos=self._draw, size=self._draw,
-                  escala=self._draw, opacidade=self._draw)
+        self._t = 0.0
+        self._ev = None
+        self._revelou = False
+        self._flash = 0.0
+        self._faiscas = []
+        self._montar()
+        self.bind(pos=self._posicionar, size=self._posicionar,
+                  escala=self._ao_mudar, opacidade=self._ao_mudar,
+                  cor=lambda *_: self._montar(), estilo=lambda *_: self._montar())
 
-    def _draw(self, *_):
+    # ── desenho (uma vez) ────────────────────────────────────────────
+    def _montar(self, *_):
         self.canvas.clear()
+        r, g, b = self.cor[0], self.cor[1], self.cor[2]
+        L = dp(124)                         # comprimento total (ponta para cima)
+        y0 = -L / 2.0                       # pomo
+        y_guarda = y0 + dp(31)
+        y_ponta = L / 2.0
+        self._y_guarda, self._y_ponta = y_guarda, y_ponta
+        katana = self.estilo != 'cristal'
+        try:
+            from infinito import textura_radial
+            tex = textura_radial()
+        except Exception:
+            tex = None
+        self._cores = []                    # (Color, alfa_base)
+
+        def cor(a, clareia=0.0):
+            c = Color(r + (1 - r) * clareia, g + (1 - g) * clareia, b + (1 - b) * clareia, 0)
+            self._cores.append((c, a))
+            return c
+
+        # geometria da lamina (centro, largura) de baixo para cima
+        n = 22
+        esq, dirt, meio = [], [], []
+        comp_l = y_ponta - (y_guarda + dp(3))
+        for i in range(n + 1):
+            t = i / float(n)
+            y = y_guarda + dp(3) + comp_l * t
+            if katana:
+                x = -dp(4.5) * t * t                     # sori: a ponta volta para as costas
+                w = dp(3.4) * (1 - 0.22 * t)
+                if t > 0.88:                             # kissaki
+                    w *= max(0.0, 1 - (t - 0.88) / 0.12)
+                esq.append((x - w * 0.8, y))             # costas (mais fina)
+                dirt.append((x + w, y))                  # fio
+            else:
+                x = 0.0
+                w = dp(4.2) * (1 - 0.15 * t) if t < 0.86 else dp(4.2) * 0.87 * max(0.0, 1 - (t - 0.86) / 0.14)
+                esq.append((x - w, y))
+                dirt.append((x + w, y))
+            meio.append((x, y))
+        self._meio = meio
+
         with self.canvas:
             PushMatrix()
-            Scale(self.escala, self.escala, 1, origin=self.center)
-            cx, cy = self.center
-            Color(self.cor[0], self.cor[1], self.cor[2], self.opacidade)
-            Triangle(points=[cx - 4, cy - 25, cx + 4, cy - 25, cx, cy + 45])
-            Color(self.cor[0], self.cor[1], self.cor[2], self.opacidade * 0.3)
-            Line(points=[cx, cy - 25, cx, cy + 50], width=2.5)
-            Color(self.cor[0] * 0.8, self.cor[1], self.cor[2], self.opacidade)
-            Rectangle(pos=(cx - 12, cy - 27), size=(24, 5))
-            Color(0.1, 0.1, 0.2, self.opacidade)
-            Rectangle(pos=(cx - 2, cy - 45), size=(4, 18))
+            self._tr = Translate(0, 0)
+            self._rot = Rotate(angle=0, origin=(0, 0))
+            self._sc = Scale(1, 1, 1)
+            # aura
+            cor(0.22)
+            self._aura = Rectangle(texture=tex, pos=(-dp(26), y0 - dp(10)), size=(dp(52), L + dp(20)))
+            # lamina (cresce a partir da guarda ao aparecer)
+            PushMatrix()
+            self._sc_lamina = Scale(1, 1, 1, origin=(0, y_guarda))
+            idx = list(range(2 * (n + 1)))
+            if katana:
+                cor(0.30)
+                Mesh(mode='triangle_strip', indices=idx,
+                     vertices=[v for p, q in zip(esq, dirt) for v in (p[0], p[1], 0, 0, q[0], q[1], 0, 0)])
+                cor(0.95, 0.55)
+                Line(points=[v for p in dirt for v in p], width=dp(1.1))          # fio
+                cor(0.55)
+                Line(points=[v for p in esq for v in p], width=dp(0.9))           # costas
+                hamon = []
+                for i, (p, q) in enumerate(zip(meio, dirt)):
+                    if 0 < i < n - 1:
+                        k = 0.35 + 0.18 * math.sin(i * 1.9)
+                        hamon.extend((p[0] + (q[0] - p[0]) * k, p[1]))
+                cor(0.6, 0.35)
+                Line(points=hamon, width=dp(0.8))                                   # hamon
+            else:
+                cor(0.40, 0.25)
+                Mesh(mode='triangle_strip', indices=idx,
+                     vertices=[v for p, q in zip(esq, meio) for v in (p[0], p[1], 0, 0, q[0], q[1], 0, 0)])
+                cor(0.18)
+                Mesh(mode='triangle_strip', indices=idx,
+                     vertices=[v for p, q in zip(meio, dirt) for v in (p[0], p[1], 0, 0, q[0], q[1], 0, 0)])
+                cor(0.95, 0.5)
+                Line(points=[v for p in meio for v in p], width=dp(1.0))          # aresta central
+                cor(0.8)
+                Line(points=[v for p in esq for v in p] + [v for p in reversed(dirt) for v in p],
+                     width=dp(0.9))
+            # brilho percorrendo a lamina
+            self._c_varre = cor(0.0, 0.8)
+            self._varre = Line(points=[0, 0, 0, 0], width=dp(2.2), cap='round')
+            # linhas de holograma
+            self._c_scan = cor(0.0, 0.3)
+            self._scan = [Line(points=[0, 0, 0, 0], width=dp(0.7)) for _ in range(9)]
             PopMatrix()
+            # guarda, cabo e pomo
+            if katana:
+                cor(0.35)
+                Ellipse(pos=(-dp(8), y_guarda - dp(2.4)), size=(dp(16), dp(4.8)))
+                cor(0.95, 0.4)
+                Line(ellipse=(-dp(8), y_guarda - dp(2.4), dp(16), dp(4.8)), width=dp(1.0))
+                cor(0.9, 0.5)
+                Rectangle(pos=(-dp(3), y_guarda + dp(2.4)), size=(dp(5), dp(2.4)))  # habaki
+                cor(0.28)
+                Rectangle(pos=(-dp(2.8), y0 + dp(4)), size=(dp(5.6), y_guarda - dp(2.4) - (y0 + dp(4))))
+                ziguezague = []
+                yy = y0 + dp(5)
+                lado = -1
+                while yy < y_guarda - dp(3):
+                    ziguezague.extend((lado * dp(2.6), yy))
+                    yy += dp(3.2)
+                    lado = -lado
+                cor(0.85, 0.3)
+                Line(points=ziguezague, width=dp(0.9))                                # fita trancada
+                cor(0.9, 0.3)
+                Line(rounded_rectangle=(-dp(2.8), y0 + dp(4), dp(5.6),
+                                        y_guarda - dp(2.4) - (y0 + dp(4)), dp(1.5)), width=dp(0.8))
+                cor(0.9, 0.5)
+                Ellipse(pos=(-dp(3.4), y0), size=(dp(6.8), dp(5)))                   # kashira
+            else:
+                gx = dp(12)
+                cor(0.40)
+                Mesh(mode='triangle_fan', indices=[0, 1, 2, 3, 4, 5],
+                     vertices=[-gx, y_guarda, 0, 0, -gx + dp(3), y_guarda + dp(3), 0, 0,
+                               gx - dp(3), y_guarda + dp(3), 0, 0, gx, y_guarda, 0, 0,
+                               gx - dp(3), y_guarda - dp(3), 0, 0, -gx + dp(3), y_guarda - dp(3), 0, 0])
+                cor(0.95, 0.4)
+                Line(points=[-gx, y_guarda, -gx + dp(3), y_guarda + dp(3), gx - dp(3), y_guarda + dp(3),
+                             gx, y_guarda, gx - dp(3), y_guarda - dp(3), -gx + dp(3), y_guarda - dp(3)],
+                     close=True, width=dp(1.0))
+                cor(1.0, 0.8)
+                Mesh(mode='triangle_fan', indices=[0, 1, 2, 3],                        # gema
+                     vertices=[0, y_guarda + dp(3), 0, 0, dp(2.6), y_guarda, 0, 0,
+                               0, y_guarda - dp(3), 0, 0, -dp(2.6), y_guarda, 0, 0])
+                cor(0.30)
+                Rectangle(pos=(-dp(2.6), y0 + dp(5)), size=(dp(5.2), y_guarda - dp(3) - (y0 + dp(5))))
+                yy = y0 + dp(7)
+                while yy < y_guarda - dp(4):                                        # aneis do cabo
+                    Line(points=[-dp(2.6), yy, dp(2.6), yy], width=dp(0.8))
+                    yy += dp(4)
+                cor(0.9, 0.3)
+                Line(rectangle=(-dp(2.6), y0 + dp(5), dp(5.2), y_guarda - dp(3) - (y0 + dp(5))), width=dp(0.8))
+                cor(0.95, 0.6)
+                Mesh(mode='triangle_fan', indices=[0, 1, 2, 3],                        # pomo
+                     vertices=[0, y0 + dp(6), 0, 0, dp(3.4), y0 + dp(2.5), 0, 0,
+                               0, y0 - dp(1), 0, 0, -dp(3.4), y0 + dp(2.5), 0, 0])
+            # clarao da ponta (quando termina de aparecer)
+            self._c_ponta = cor(0.0, 0.9)
+            self._r_ponta = Rectangle(texture=tex, size=(0, 0))
+            # faiscas
+            self._c_fx = []
+            for _ in range(6):
+                c = Color(r, g, b, 0)
+                q = Rectangle(size=(0, 0))
+                self._c_fx.append((c, q))
+            PopMatrix()
+        self._posicionar()
+        self._aplicar()
+
+    # ── animacao ─────────────────────────────────────────────────────
+    def _posicionar(self, *_):
+        self._cx = self.x + self.width / 2.0
+        self._cy = self.y + self.height / 2.0
+        self._aplicar()
+
+    def _ao_mudar(self, *_):
+        if self.opacidade > 0.01 and self._ev is None:
+            self._ev = Clock.schedule_interval(self._tick, 1 / 45.)
+        self._aplicar()
+
+    def _aplicar(self):
+        if not hasattr(self, '_tr'):
+            return
+        op = max(0.0, min(1.0, self.opacidade))
+        bob = math.sin(self._t * 2.6) * dp(3)
+        self._tr.xy = (self._cx, self._cy + bob)
+        self._rot.angle = math.sin(self._t * 1.3) * 2.0
+        e = max(0.0, self.escala)
+        self._sc.x = self._sc.y = e
+        self._sc_lamina.y = max(0.001, min(1.0, op * 1.15))
+        pulso = 0.85 + 0.15 * math.sin(self._t * 3.1)
+        for c, a in self._cores:
+            c.a = a * op * pulso
+        # brilho que percorre a lamina (a cada 2,4 s)
+        ciclo = self._t % 2.4
+        if op > 0.95 and ciclo < 0.55 and self._meio:
+            u = ciclo / 0.55
+            i = int(u * (len(self._meio) - 4))
+            p0, p1 = self._meio[i], self._meio[min(len(self._meio) - 1, i + 3)]
+            self._varre.points = [p0[0], p0[1], p1[0], p1[1]]
+            self._c_varre.a = 0.9 * math.sin(math.pi * u)
+        else:
+            self._c_varre.a = 0
+        # linhas de holograma subindo
+        if self._meio:
+            y_a, y_b = self._y_guarda + dp(3), self._y_ponta
+            passo = (y_b - y_a) / len(self._scan)
+            desl = (self._t * dp(14)) % passo
+            for k, ln in enumerate(self._scan):
+                y = y_a + k * passo + desl
+                ln.points = [-dp(6), y, dp(6), y]
+            self._c_scan.a = 0.22 * op
+        # clarao na ponta quando acabou de aparecer
+        if op >= 0.99 and not self._revelou:
+            self._revelou = True
+            self._flash = 1.0
+        s = dp(30) * (0.5 + self._flash)
+        self._r_ponta.pos = (-s / 2, self._y_ponta - s / 2)
+        self._r_ponta.size = (s, s)
+        self._c_ponta.a = self._flash * op
+
+    def _tick(self, dt):
+        try:
+            if self.get_root_window() is None or self.opacidade <= 0.01:
+                self._ev = None
+                return False
+            self._t += dt
+            self._flash = max(0.0, self._flash - dt * 2.2)
+            # faiscas saindo da lamina
+            if random.random() < 0.25 and self.opacidade > 0.9:
+                livres = [fx for fx in self._c_fx if fx[0].a <= 0.01]
+                if livres:
+                    c, q = livres[0]
+                    y = random.uniform(self._y_guarda, self._y_ponta)
+                    self._faiscas.append([c, q, random.uniform(-dp(5), dp(5)), y, random.uniform(0.5, 0.9), 0.0])
+            vivas = []
+            for f in self._faiscas:
+                c, q, x, y, vida, t = f
+                t += dt
+                f[5] = t
+                if t >= vida:
+                    c.a = 0
+                    q.size = (0, 0)
+                    continue
+                k = 1 - t / vida
+                yy = y + t * dp(22)
+                s = dp(2) * (0.5 + 0.5 * k)
+                q.pos = (x - s / 2, yy - s / 2)
+                q.size = (s, s)
+                c.a = k * self.opacidade
+                vivas.append(f)
+            self._faiscas = vivas
+            self._aplicar()
+        except Exception as e:
+            print(f"[espada holo] {e}")
+            self._ev = None
+            return False
 
 
 # ═══════════════════════════════════════════════════════════
@@ -813,49 +1058,194 @@ class PoeiraDigital(Widget):
 
 def explodir_estilhacos(widget_alvo, callback_final):
     """
-    Explosão SAO com coordenadas globais (Window space).
-    Reduzido para 12 cacos + 8 poeira = 20 widgets totais
-    (vs 50 anterior) — reduz spike de frame em ~60%.
+    Estilhacos no estilo SAO: o item se parte em poligonos com a imagem real
+    dele; os cacos voam girando, viram cristal ciano e se desfazem em
+    pontinhos de luz que sobem. Coordenadas da janela; tudo num unico
+    Clock (leve mesmo com varios itens de uma vez, como no WIPE).
     """
     tremer_tela(14)
+    fim = [False]
 
-    if widget_alvo.parent:
-        gx, gy = widget_alvo.parent.to_window(widget_alvo.x, widget_alvo.y)
-    else:
-        gx, gy = widget_alvo.to_window(0, 0)
-    gw, gh = widget_alvo.size
+    def _acabar(*_):
+        if fim[0]:
+            return
+        fim[0] = True
+        try:
+            if camada.parent:
+                Window.remove_widget(camada)
+        except Exception:
+            pass
+        try:
+            callback_final()
+        except Exception as e:
+            print(f"[estilhacos] callback: {e}")
 
-    widget_alvo.opacity = 0
+    camada = Widget(size_hint=(None, None), size=Window.size, pos=(0, 0))
+    try:
+        if widget_alvo.parent:
+            gx, gy = widget_alvo.parent.to_window(widget_alvo.x, widget_alvo.y)
+        else:
+            gx, gy = widget_alvo.to_window(0, 0)
+        gw, gh = max(1.0, widget_alvo.width), max(1.0, widget_alvo.height)
+        # foto do item (com ele visivel), depois some
+        tex = None
+        try:
+            op = widget_alvo.opacity
+            widget_alvo.opacity = 1
+            tex = widget_alvo.export_as_image().texture
+            widget_alvo.opacity = op
+        except Exception as e:
+            print(f"[estilhacos] sem foto do item: {e}")
+        widget_alvo.opacity = 0
+        Window.add_widget(camada)
 
-    camada = FloatLayout(size=Window.size)
-    Window.add_widget(camada)
+        flash = FlashExplosao((gx, gy), (gw, gh))
+        camada.add_widget(flash)
+        Animation(opacity=0, escala=1.5, duration=0.22).start(flash)
 
-    flash = FlashExplosao((gx, gy), (gw, gh))
-    camada.add_widget(flash)
-    Animation(opacity=0, escala=1.6, duration=0.20).start(flash)
+        # malha triangular com pontos internos deslocados (cacos irregulares)
+        cols = max(3, min(8, int(gw / dp(46)) + 1))
+        linhas = max(2, min(5, int(gh / dp(24)) + 1))
+        pts = []
+        for j in range(linhas + 1):
+            fila = []
+            for i in range(cols + 1):
+                x = gx + gw * i / cols
+                y = gy + gh * j / linhas
+                if 0 < i < cols:
+                    x += random.uniform(-0.32, 0.32) * gw / cols
+                if 0 < j < linhas:
+                    y += random.uniform(-0.32, 0.32) * gh / linhas
+                fila.append((x, y))
+            pts.append(fila)
+        tris = []
+        for j in range(linhas):
+            for i in range(cols):
+                a, b = pts[j][i], pts[j][i + 1]
+                c, d = pts[j + 1][i + 1], pts[j + 1][i]
+                if random.random() < 0.5:
+                    tris += [(a, b, c), (a, c, d)]
+                else:
+                    tris += [(a, b, d), (b, c, d)]
 
-    # 12 cacos (era 28)
-    for _ in range(12):
-        c   = CacoSAO(gx, gy, gw, gh)
-        camada.add_widget(c)
-        nx  = c.x + random.randint(-260, 260)
-        nyp = c.y + random.randint(60, 160)
-        nyc = nyp - random.randint(200, 420)
-        (Animation(x=nx, y=nyp, angulo=random.randint(360, 720),
-                   duration=0.26, transition='out_circ') +
-         Animation(y=nyc, opacity=0, escala=0,
-                   duration=0.55, transition='in_quad')).start(c)
+        ccx, ccy = gx + gw / 2.0, gy + gh / 2.0
+        cacos = []
+        with camada.canvas:
+            for tri in tris:
+                mx = sum(p[0] for p in tri) / 3.0
+                my = sum(p[1] for p in tri) / 3.0
+                vs = []
+                for (x, y) in tri:
+                    vs.extend((x, y, (x - gx) / gw, 1.0 - (y - gy) / gh))
+                PushMatrix()
+                tr = Translate(0, 0)
+                rot = Rotate(angle=0, origin=(mx, my))
+                cor = Color(1, 1, 1, 1)
+                m = Mesh(mode='triangle_fan', indices=[0, 1, 2], vertices=vs)
+                if tex is not None:
+                    m.texture = tex
+                else:
+                    cor.rgba = (0.05, 0.25, 0.4, 0.95)
+                # brilho de cristal por cima da foto (acende no estalo e cresce no voo)
+                cor_brilho = Color(0.55, 0.95, 1.0, 0)
+                Mesh(mode='triangle_fan', indices=[0, 1, 2],
+                     vertices=[v for p in tri for v in (p[0], p[1], 0, 0)])
+                cor_borda = Color(0.55, 1.0, 1.0, 0.9)
+                Line(points=[v for p in tri for v in p], close=True, width=1.1)
+                PopMatrix()
+                # voa para fora do centro do item, com um empurrao para cima
+                dx, dy = mx - ccx, my - ccy
+                ang = math.atan2(dy + random.uniform(-0.2, 0.2) * gh, dx + random.uniform(-0.3, 0.3) * gw)
+                v = dp(random.uniform(140, 420))
+                cacos.append({
+                    'tr': tr, 'rot': rot, 'cor': cor, 'borda': cor_borda, 'brilho': cor_brilho,
+                    'x': 0.0, 'y': 0.0,
+                    'vx': math.cos(ang) * v, 'vy': math.sin(ang) * v * 0.7 + dp(random.uniform(120, 260)),
+                    'va': random.uniform(-540, 540), 'a': 0.0, 'mx': mx, 'my': my,
+                    'vida': random.uniform(0.7, 1.0), 'soltou': False, 'tem_tex': tex is not None})
+            # pontinhos de luz (os cacos viram luz no fim)
+            luzes = []
+            for _ in range(min(90, len(cacos) * 3)):
+                c = Color(0.7, 1.0, 1.0, 0)
+                r = Rectangle(size=(0, 0))
+                luzes.append([c, r, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        livres = list(range(len(luzes)))
+        vivas = []
+        t = [0.0]
+        grav = dp(1100)
 
-    # 8 pontos de poeira (era 22)
-    for _ in range(8):
-        p = PoeiraDigital(gx, gy, gw, gh)
-        camada.add_widget(p)
-        Animation(x=p.x + random.randint(-160, 160),
-                  y=p.y + random.randint(60, 300),
-                  opacity=0, duration=0.75).start(p)
-
-    Clock.schedule_once(
-        lambda dt: (Window.remove_widget(camada), callback_final()), 0.95)
+        def _passo(dt):
+            try:
+                dt = min(dt, 1 / 30.)
+                t[0] += dt
+                for k in cacos:
+                    u = t[0] / k['vida']
+                    if u >= 1:
+                        if k['cor'].a:
+                            k['cor'].a = 0
+                            k['borda'].a = 0
+                            k['brilho'].a = 0
+                        continue
+                    k['vy'] -= grav * dt
+                    k['vx'] *= 0.985
+                    k['x'] += k['vx'] * dt
+                    k['y'] += k['vy'] * dt
+                    k['a'] += k['va'] * dt
+                    k['tr'].xy = (k['x'], k['y'])
+                    k['rot'].origin = (k['mx'], k['my'])
+                    k['rot'].angle = k['a']
+                    # vira cristal: a foto vai clareando para o ciano e some
+                    cristal = min(1.0, u * 1.6)
+                    alfa = 1.0 if u < 0.55 else max(0.0, 1 - (u - 0.55) / 0.45)
+                    if k['tem_tex']:
+                        k['cor'].rgba = (1 - 0.45 * cristal, 1.0, 1.0, alfa)
+                    else:
+                        k['cor'].a = 0.95 * alfa
+                    estalo = max(0.0, 1 - t[0] / 0.1)
+                    k['brilho'].a = alfa * min(0.85, 0.7 * estalo + 0.4 * cristal)
+                    k['borda'].a = 0.9 * alfa * (0.6 + 0.4 * math.sin(t[0] * 30 + k['mx']))
+                    if u > 0.6 and not k['soltou']:
+                        k['soltou'] = True
+                        for _ in range(3):
+                            if not livres:
+                                break
+                            i = livres.pop()
+                            L = luzes[i]
+                            L[2] = k['mx'] + k['x'] + random.uniform(-dp(6), dp(6))
+                            L[3] = k['my'] + k['y'] + random.uniform(-dp(6), dp(6))
+                            L[4] = random.uniform(-dp(30), dp(30))
+                            L[5] = dp(random.uniform(60, 150))
+                            L[6] = L[7] = random.uniform(0.35, 0.6)
+                            vivas.append(i)
+                for i in list(vivas):
+                    L = luzes[i]
+                    L[6] -= dt
+                    if L[6] <= 0:
+                        L[0].a = 0
+                        L[1].size = (0, 0)
+                        vivas.remove(i)
+                        livres.append(i)
+                        continue
+                    L[2] += L[4] * dt
+                    L[3] += L[5] * dt
+                    kk = L[6] / L[7]
+                    s = dp(2.6) * (0.5 + 0.5 * kk)
+                    L[1].pos = (L[2] - s / 2, L[3] - s / 2)
+                    L[1].size = (s, s)
+                    L[0].a = kk
+                if t[0] >= 1.15:
+                    _acabar()
+                    return False
+            except Exception as e:
+                print(f"[estilhacos] {e}")
+                _acabar()
+                return False
+        Clock.schedule_interval(_passo, 1 / 60.)
+        Clock.schedule_once(_acabar, 2.0)          # seguranca
+    except Exception as e:
+        print(f"[estilhacos] ignorado: {e}")
+        widget_alvo.opacity = 0
+        _acabar()
 
 
 # ══════════════════════════════════════════════════════════════════════

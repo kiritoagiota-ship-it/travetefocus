@@ -246,7 +246,8 @@
                 id:          espada_dir
                 size_hint_x: None
                 width:       dp(26)
-                cor:         [0.6, 0.1, 0.9, 1]
+                cor:         [0.55, 0.45, 1.0, 1]
+                estilo:      'cristal'
         Label:
             id:        version_label
             text:      "[ NERVEGEAR SYSTEM V6.0 ]"
@@ -375,6 +376,7 @@
 
             # ── Botões secundários VERTICAIS com cores únicas ──
             BoxLayout:
+                id:          caixa_botoes_menu
                 orientation: 'vertical'
                 pos_hint:    {"center_x": 0.5, "center_y": 0.37}
                 size_hint:   (0.88, None)
@@ -421,9 +423,10 @@
                     cor_texto:    [1.00, 0.72, 0.00, 1.0]
                     on_release:   app.mudar_tela("calculadora")
 
-            # ── Linha decorativa inferior ─────────────────────
+            # ── Linha decorativa inferior (logo abaixo dos botoes) ──
             Widget:
-                pos_hint:  {"center_x": 0.5, "center_y": 0.375}
+                pos_hint:  {"center_x": 0.5}
+                y:         caixa_botoes_menu.y - dp(16)
                 size_hint: (0.88, None)
                 height:    dp(1)
                 canvas:
@@ -975,7 +978,7 @@
         BoxLayout:
             orientation: 'vertical'
             size_hint_y: None
-            height:      dp(172)
+            height:      dp(190)
             spacing:     dp(6)
             padding:     [dp(14), dp(10), dp(14), dp(10)]
             canvas.before:
@@ -1029,10 +1032,10 @@
                 id:          lbl_periodo_bonus
                 text:        ""
                 markup:      True
-                font_name:   "orbitron.ttf"
-                font_size:   "10sp"
+                font_name:   "rajdhani.ttf"
+                font_size:   "14sp"
                 size_hint_y: None
-                height:      dp(20)
+                height:      dp(38)
                 halign:      "center"
                 valign:      "middle"
                 text_size:   self.size
@@ -1082,7 +1085,7 @@
                 text:        "CONFIGURAÇÕES DO CÁLCULO"
                 font_name:   "orbitron.ttf"
                 font_size:   "10sp"
-                color:       rgba("#00e5ff55")
+                color:       rgba("#00e5ffb0")
                 size_hint_y: None
                 height:      dp(18)
                 halign:      "center"
@@ -1095,8 +1098,8 @@
                 Label:
                     text:        "Base R$"
                     font_name:   "rajdhani.ttf"
-                    font_size:   "13sp"
-                    color:       rgba("#888888")
+                    font_size:   "14sp"
+                    color:       rgba("#b4bed2")
                     size_hint_x: 0.22
                     halign:      "right"
                     valign:      "middle"
@@ -1111,8 +1114,8 @@
                 Label:
                     text:        "Bônus R$"
                     font_name:   "rajdhani.ttf"
-                    font_size:   "13sp"
-                    color:       rgba("#888888")
+                    font_size:   "14sp"
+                    color:       rgba("#b4bed2")
                     size_hint_x: 0.22
                     halign:      "right"
                     valign:      "middle"
@@ -1132,8 +1135,8 @@
                 Label:
                     text:        "Meta"
                     font_name:   "rajdhani.ttf"
-                    font_size:   "13sp"
-                    color:       rgba("#888888")
+                    font_size:   "14sp"
+                    color:       rgba("#b4bed2")
                     size_hint_x: 0.14
                     halign:      "right"
                     valign:      "middle"
@@ -1164,8 +1167,8 @@
         Label:
             text:        "HISTÓRICO DE PERÍODOS FECHADOS"
             font_name:   "orbitron.ttf"
-            font_size:   "9sp"
-            color:       rgba("#00e5ff33")
+            font_size:   "10sp"
+            color:       rgba("#00e5ffb0")
             size_hint_y: None
             height:      dp(20)
             halign:      "center"
