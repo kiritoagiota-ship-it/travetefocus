@@ -48,6 +48,10 @@ _PALETA = {
     # Elucidator (preta): lamina, fio claro, costas, cabo, guarda, pontas
     'W': (0.08, 0.08, 0.12, 1), 'w': (0.60, 0.64, 0.78, 1), 'u': (0.24, 0.24, 0.33, 1),
     'v': (0.42, 0.44, 0.56, 1),                                  # filete da bainha
+    'j': (0.30, 0.32, 0.43, 1),                                  # hamon (ondas no aco preto)
+    '9': (0.55, 1.00, 1.00, 1),                                  # ciano aceso (reiatsu, olhos)
+    '5': (1.00, 0.86, 0.30, 1),                                  # emote "!" / "..."
+    '6': (0.62, 0.88, 1.00, 1),                                  # gota de suor
     'K': (0.20, 0.20, 0.27, 1), 'g': (0.34, 0.34, 0.44, 1), 'k': (0.66, 0.68, 0.80, 1),
     # Dark Repulser (cristal azul)
     'R': (0.40, 0.78, 1.00, 1), 'r': (0.88, 0.98, 1.00, 1), 'z': (0.22, 0.52, 0.86, 1),
@@ -77,7 +81,27 @@ _CABECA_PISCA = list(_CABECA)
 _CABECA_PISCA[7] = "HHHHSSSSSSSSS"          # olho fechado = so a linha de baixo
 _CABECA_BAIXO = list(_CABECA_PISCA)         # olhando para baixo (o PIN sendo digitado)
 _CABECA_BAIXO[9] = "..HHSSSSESSE."
-_CABECAS = {'a': _CABECA, 'f': _CABECA_PISCA, 'b': _CABECA_BAIXO}
+
+
+def _cabeca_var(trocas, base=None):
+    c = list(base or _CABECA)
+    for i, linha in trocas.items():
+        c[i] = linha
+    return c
+
+
+# serio/determinado: sobrancelha franzida por cima de olhos estreitos
+_CABECA_SERIO = _cabeca_var({6: "HHHHHSSEESSEE", 7: "HHHHSSSSESSES", 8: ".HHHSSSSSSSSS"})
+# gritando no golpe: serio + boca aberta
+_CABECA_GRITO = _cabeca_var({9: "..HHSSSSSSEs.", 10: "...HHsSSSEs.."}, _CABECA_SERIO)
+# olhos acesos em ciano (reiatsu da espada evoluida)
+_CABECA_LUZ = _cabeca_var({6: "HHHHHSSEESSEE", 7: "HHHHSSSS9SS9S", 8: ".HHHSSSS9SS9S"})
+# susto: olhos arregalados e boca em "o"
+_CABECA_SUSTO = _cabeca_var({6: "HHHHHSSSESSES", 9: "..HHSSSSSSEs."})
+# feliz: olhos fechados em arco (^^)
+_CABECA_FELIZ = _cabeca_var({6: "HHHHHSSSSSSES", 7: "HHHHSSSSESESE", 8: ".HHHSSSSSSSSS"})
+_CABECAS = {'a': _CABECA, 'f': _CABECA_PISCA, 'b': _CABECA_BAIXO, 's': _CABECA_SERIO,
+            'g': _CABECA_GRITO, 'l': _CABECA_LUZ, 'u': _CABECA_SUSTO, 'e': _CABECA_FELIZ}
 _TRONCO = [
     "....CGGGC....",
     "...CCCGCCC...",
@@ -110,7 +134,7 @@ _PERNAS = {
     'grudado':  [".PPP...PPP...", ".PP.....PP...", ".PP.....PP...", ".BB.....BB..."],
 }
 
-GW, GH = 64, 58          # grade total (espadas cabem para qualquer lado)
+GW, GH = 80, 72          # grade total (espadas cabem para qualquer lado, ate a fundida erguida)
 _X0 = 25                 # coluna esquerda do tronco/cabeca
 _PES = 14                # linha dos pes (sobra embaixo para espadas apontando p/ baixo)
 
@@ -173,13 +197,14 @@ def _braco(px, x0, y0, x1, y1, luva=True, frente=False):
     px.update(meu)
 
 
+def _p(x, y):
+    return (round(x), round(y))
+
+
 def _espada(px, mx, my, ang, comp, tipo, smear_de=None, brilho=None):
-    """tipo 1 = Elucidator (preta), 2 = Dark Repulser (cristal azul).
-    Lamina de 3 px (fio claro / miolo / costas), guarda em cruz, pomo."""
-    if tipo == 1:
-        lam, fio, costas, guarda, ponta_g, centro_g, pomo = 'W', 'w', 'u', 'g', 'k', 'k', 'g'
-    else:
-        lam, fio, costas, guarda, ponta_g, centro_g, pomo = 'R', 'r', 'z', 'y', 'Y', 'r', 'Y'
+    """tipo 1 = Elucidator (katana preta), 2 = Dark Repulser (cristal azul),
+    3 = as duas fundidas numa so, 4 = a fundida depois de absorver o
+    infinito (evoluida). (mx, my) = mao; a lamina aponta para `ang`."""
     a = math.radians(ang)
     ux, uy = math.cos(a), math.sin(a)
     nx, ny = -uy, ux
@@ -194,23 +219,119 @@ def _espada(px, mx, my, ang, comp, tipo, smear_de=None, brilho=None):
                 if q not in px:
                     px[q] = 'x' if k < comp * 0.75 else 'X'
             g += passo
-    for k in (-3, -2, -1):                               # cabo + pomo
-        px[(round(mx + ux * k), round(my + uy * k))] = 'K' if k > -3 else pomo
-    for k in (-2, -1, 0, 1, 2):                          # guarda em cruz
-        ch = ponta_g if abs(k) == 2 else (centro_g if k == 0 else guarda)
-        px[(round(mx + ux + nx * k), round(my + uy + ny * k))] = ch
-    for k in range(2, comp + 1):                         # lamina: fio / miolo / costas
+    if tipo == 1:
+        _katana(px, mx, my, ux, uy, nx, ny, comp, brilho if smear_de is None else None)
+    elif tipo == 2:
+        _repulser(px, mx, my, ux, uy, nx, ny, comp, brilho if smear_de is None else None)
+    else:
+        _fundida(px, mx, my, ux, uy, nx, ny, comp, brilho if smear_de is None else None, tipo == 4)
+
+
+def _cabo_trancado(px, mx, my, ux, uy, nx, ny, n, escuro, claro, pomo):
+    """Tsuka: cabo com a fita trancada em losangos (2 px), pomo na ponta."""
+    for k in range(1, n + 1):
+        cx, cy = mx - ux * k, my - uy * k
+        px[_p(cx, cy)] = escuro if k % 2 else claro
+        px[_p(cx - nx, cy - ny)] = claro if k % 2 else escuro
+    px[_p(mx - ux * (n + 1), my - uy * (n + 1))] = pomo
+    px[_p(mx - ux * (n + 1) - nx, my - uy * (n + 1) - ny)] = pomo
+
+
+def _katana(px, mx, my, ux, uy, nx, ny, comp, brilho):
+    """Elucidator como katana: cabo longo trancado, tsuba curta e grossa,
+    habaki, lamina curva (sori) preta com fio prateado e hamon ondulado,
+    ponta (kissaki) afiada."""
+    _cabo_trancado(px, mx, my, ux, uy, nx, ny, 5, 'K', 'g', 'k')
+    if comp < 1:
+        return
+    for j, ch in ((-2, 'g'), (-1, 'k'), (0, 'k'), (1, 'k'), (2, 'g')):     # tsuba
+        px[_p(mx + ux + nx * j, my + uy + ny * j)] = ch
+    if comp < 2:
+        return
+    for j in (-1, 0, 1):                                                   # habaki
+        px[_p(mx + ux * 2 + nx * j, my + uy * 2 + ny * j)] = 'k'
+    sori = max(1.0, comp * 0.13)                     # curvatura da katana
+    ini = 3
+    for k in range(ini, comp + 1):
+        u = (k - ini) / float(max(1, comp - ini))
+        off = -sori * u * u                          # curva para as costas
+        bx, by = mx + ux * k + nx * off, my + uy * k + ny * off
+        hamon = (k % 4) in (1, 2)
+        px[_p(bx, by)] = 'j' if hamon else 'W'
+        px[_p(bx + nx, by + ny)] = 'w'
+        if k < comp:
+            px[_p(bx - nx, by - ny)] = 'u'
+    off = -sori
+    px[_p(mx + ux * (comp + 1) + nx * (off + 0.4), my + uy * (comp + 1) + ny * (off + 0.4))] = 'w'
+    if brilho is not None:
+        k = ini + int(brilho * (comp - ini))
+        u = (k - ini) / float(max(1, comp - ini))
+        off = -sori * u * u
+        bx, by = mx + ux * k + nx * off, my + uy * k + ny * off
+        px[_p(bx + nx, by + ny)] = '!'
+        px[_p(bx + nx - ux, by + ny - uy)] = '1'
+        px[_p(bx, by)] = '1'
+
+
+def _repulser(px, mx, my, ux, uy, nx, ny, comp, brilho):
+    """Dark Repulser: lamina reta de cristal (3 tons), guarda em cruz com
+    pontas de cristal e uma gema no centro, cabo curto."""
+    for k in (1, 2):
+        px[_p(mx - ux * k, my - uy * k)] = 'K'
+    px[_p(mx - ux * 3, my - uy * 3)] = 'Y'
+    for j in (-2, -1, 0, 1, 2):
+        ch = 'Y' if abs(j) == 2 else ('r' if j == 0 else 'y')
+        px[_p(mx + ux + nx * j, my + uy + ny * j)] = ch
+    for k in range(2, comp + 1):
         bx, by = mx + ux * k, my + uy * k
-        px[(round(bx), round(by))] = lam
-        px[(round(bx + nx), round(by + ny))] = fio
+        px[_p(bx, by)] = 'r' if k % 5 == 3 else 'R'          # faceta clara no miolo
+        px[_p(bx + nx, by + ny)] = 'r'
         if k < comp - 1:
-            px[(round(bx - nx), round(by - ny))] = costas
-    px[(round(mx + ux * (comp + 1)), round(my + uy * (comp + 1)))] = fio
-    if brilho is not None and smear_de is None:          # brilho correndo na lamina
+            px[_p(bx - nx, by - ny)] = 'z'
+    px[_p(mx + ux * (comp + 1), my + uy * (comp + 1))] = 'r'
+    if brilho is not None:
         k = 2 + int(brilho * (comp - 2))
-        px[(round(mx + ux * k + nx), round(my + uy * k + ny))] = '!'
-        px[(round(mx + ux * (k - 1) + nx), round(my + uy * (k - 1) + ny))] = '1'
-        px[(round(mx + ux * k), round(my + uy * k))] = '1'
+        px[_p(mx + ux * k + nx, my + uy * k + ny)] = '!'
+        px[_p(mx + ux * (k - 1) + nx, my + uy * (k - 1) + ny)] = '1'
+        px[_p(mx + ux * k, my + uy * k)] = '1'
+
+
+# simbolo de infinito (guarda da espada evoluida): (eixo, lado)
+_GUARDA_INF = [(0, -2), (0, -1), (0, 1), (0, 2), (1, -3), (1, 0), (1, 3),
+               (2, -2), (2, -1), (2, 1), (2, 2)]
+
+
+def _fundida(px, mx, my, ux, uy, nx, ny, comp, brilho, evo):
+    """As duas espadas fundidas: lamina larga (4 px) preta com fio de
+    cristal e veios azuis. Evoluida (depois de absorver o infinito): fio
+    branco, veios acesos e a guarda vira o simbolo do infinito."""
+    _cabo_trancado(px, mx, my, ux, uy, nx, ny, 6, 'K', 'y', 'Y')
+    if evo:
+        for (e, j) in _GUARDA_INF:
+            px[_p(mx + ux * (1 + e) + nx * j, my + uy * (1 + e) + ny * j)] = '!' if (e, j) == (1, 0) else 'Y'
+        ini = 4
+    else:
+        for j, ch in ((-2, 'Y'), (-1, 'y'), (0, 'r'), (1, 'y'), (2, 'Y')):
+            px[_p(mx + ux + nx * j, my + uy + ny * j)] = ch
+        for j in (-1, 0, 1):
+            px[_p(mx + ux * 2 + nx * j, my + uy * 2 + ny * j)] = 'y'
+        ini = 3
+    fio, veio, costas = ('!', '9', '9') if evo else ('r', 'z', 'R')
+    for k in range(ini, comp + 1):
+        bx, by = mx + ux * k, my + uy * k
+        px[_p(bx + nx, by + ny)] = fio
+        px[_p(bx, by)] = veio if (k % 3 == 0) else 'W'
+        if k < comp:
+            px[_p(bx - nx, by - ny)] = costas
+        if k < comp - 1:
+            px[_p(bx - 2 * nx, by - 2 * ny)] = 'W'
+    px[_p(mx + ux * (comp + 1), my + uy * (comp + 1))] = fio
+    px[_p(mx + ux * (comp + 2) - nx * 0.4, my + uy * (comp + 2) - ny * 0.4)] = fio
+    if brilho is not None:
+        k = ini + int(brilho * (comp - ini))
+        px[_p(mx + ux * k + nx, my + uy * k + ny)] = '!'
+        px[_p(mx + ux * (k - 1) + nx, my + uy * (k - 1) + ny)] = '1'
+        px[_p(mx + ux * k, my + uy * k)] = '1'
 
 
 def _cabo_nas_costas(px, x, y, tipo):
@@ -260,15 +381,13 @@ def _bainha(px, bx, by):
 
 def _cabo_cintura(px, bx, by):
     """Cabo da Elucidator guardada, saindo da bainha para a frente e para
-    cima: guarda clara, empunhadura trancada (losangos) e pomo."""
-    a = math.radians(_BAINHA_ANG + 180)
+    cima: tsuba, cabo trancado em losangos e pomo (o mesmo da katana)."""
+    a = math.radians(_BAINHA_ANG)                    # direcao da lamina (dentro da bainha)
     ux, uy = math.cos(a), math.sin(a)
     nx, ny = -uy, ux
-    for k in (-1, 0, 1):                             # guarda (tsuba)
-        px[(round(bx + nx * k), round(by + ny * k))] = 'k' if k else 'g'
-    for k in (1, 2, 3, 4):                           # tsuka: trancado escuro/claro
-        px[(round(bx + ux * k), round(by + uy * k))] = 'K' if k % 2 else 'g'
-    px[(round(bx + ux * 5), round(by + uy * 5))] = 'k'                # pomo (kashira)
+    for j, ch in ((-1, 'g'), (0, 'k'), (1, 'g')):    # tsuba
+        px[(round(bx + nx * j), round(by + ny * j))] = ch
+    _cabo_trancado(px, bx, by, ux, uy, nx, ny, 5, 'K', 'g', 'k')
 
 
 def _sobretudo(px, base_x, y0, n, capa, lift, fase, pernas, saia=1.0):
@@ -309,9 +428,52 @@ def _sobretudo(px, base_x, y0, n, capa, lift, fase, pernas, saia=1.0):
                 px[(x, y)] = ch
 
 
+def _alca_peito(px, base_x, topo):
+    """Alca diagonal que prende a bainha da Dark Repulser nas costas, com
+    fivela prateada (detalhe do sobretudo do Kirito)."""
+    for i, (x, y) in enumerate(((3, 0), (4, -1), (5, -2), (6, -3), (7, -3), (8, -4), (9, -5))):
+        px[(base_x + x, topo + y)] = 'G' if i == 3 else 'B'
+
+
+def _fivelas_botas(px):
+    """Fivela prateada no cano de cada bota (linha de cima das botas)."""
+    botas = [q for q, ch in px.items() if ch == 'B' and q[1] < _PES + 4]
+    if not botas:
+        return
+    topo = max(y for _, y in botas)
+    for (x, y) in botas:
+        if y == topo and px.get((x - 1, y)) == 'B' and px.get((x + 1, y)) != 'B':
+            px[(x, y)] = 'G'
+
+
+def _emote(px, qual, base_x, topo_cab):
+    """Balaozinho de expressao por cima da cabeca (simetrico: o boneco pode
+    estar espelhado): '!', 'gota', '...', 'brilho'."""
+    if qual == '!':
+        for y in range(topo_cab + 5, topo_cab + 9):
+            px[(base_x + 11, y)] = '5'
+            px[(base_x + 12, y)] = '5'
+        px[(base_x + 11, topo_cab + 3)] = '5'
+        px[(base_x + 12, topo_cab + 3)] = '5'
+    elif qual == 'gota':
+        for (x, y) in ((1, 0), (0, -1), (1, -1), (2, -1), (0, -2), (1, -2), (2, -2), (1, -3)):
+            px[(base_x + x, topo_cab - 1 + y)] = '6'
+        px[(base_x + 2, topo_cab - 2)] = '!'
+    elif qual == '...':
+        for x0 in (3, 6, 9):
+            for (dx, dy) in ((0, 0), (1, 0), (0, 1), (1, 1)):
+                px[(base_x + x0 + dx, topo_cab + 4 + dy)] = '5'
+    elif qual == 'brilho':
+        cx, cy = base_x + 13, topo_cab + 2
+        px[(cx, cy)] = '!'
+        for (dx, dy) in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            px[(cx + dx, cy + dy)] = '1'
+
+
 # pose padrao: todos os campos que a montagem entende
 POSE_BASE = dict(dx=0, dy=0, pernas='repouso', olhos='a', cabelo=0.0, capa=0.0,
                  lift=0.0, fase=0.0, brilho=None, saia=1.0, frente1=False,
+                 tipo1=1, fusao=False, emote=None,
                  m1=(3, -5), a1=-40.0, c1=15, s1=None,
                  m2=None, a2=None, c2=15, s2=None)
 
@@ -332,7 +494,7 @@ def montar(p):
 
     # atras de tudo: cabo da Dark Repulser (bainha nas costas)
     bx, by = _bainha_cintura(base_x, y_cinto)
-    if p['a2'] is None:
+    if p['a2'] is None and not p.get('fusao'):
         _cabo_nas_costas(px, base_x + 1, topo_tronco + 1, 2)
 
     # braco/espada de tras (atras do corpo); sem pose = braco relaxado.
@@ -376,6 +538,8 @@ def montar(p):
                p['capa'], p['lift'], fase, pernas, p.get('saia', 1.0))
     _bainha(px, bx, by)
     _estampar(px, _TRONCO, base_x, topo_tronco)
+    _alca_peito(px, base_x, topo_tronco)
+    _fivelas_botas(px)
 
     # braco da frente: erguido acima do ombro passa por tras da cabeca
     ergue = p['m1'] is not None and p['m1'][1] > 4 and not p.get('frente1')
@@ -388,6 +552,8 @@ def montar(p):
         _cabo_cintura(px, bx, by)                  # espada guardada na cintura
     if not ergue:
         _braco_frente(px, p, ombro1)
+    if p.get('emote'):
+        _emote(px, p['emote'], base_x, topo_cab)
 
     # contorno (rim light ciano) para ler no fundo escuro
     for (x, y) in list(px.keys()):
@@ -406,7 +572,7 @@ def _braco_frente(px, p, ombro1):
     mx, my = ombro1[0] + int(round(p['m1'][0])), ombro1[1] + int(round(p['m1'][1]))
     _braco(px, ombro1[0], ombro1[1], mx, my, frente=True)
     if p['a1'] is not None:
-        _espada(px, mx, my, p['a1'], int(p['c1']), 1, p['s1'], p.get('brilho'))
+        _espada(px, mx, my, p['a1'], int(p['c1']), p.get('tipo1', 1), p['s1'], p.get('brilho'))
         px[(mx, my)] = 'M'
         px[(mx + 1, my)] = 'M'
 
@@ -588,6 +754,7 @@ class KiritoPixel(Widget):
         self._on_fim = None
         self._loop = False
         self.ao_redesenhar = None         # chamado quando a imagem da pose muda
+        self._pausa = 0.0                 # hit-stop: segundos congelado no impacto
         # fisica secundaria
         self._m_capa = _Mola(95, 9)
         self._m_cab = _Mola(110, 10)
@@ -648,6 +815,18 @@ class KiritoPixel(Widget):
         """Posicao aproximada da mao (coords do pai), sem considerar rotacao."""
         lx, ly = self.mao_local(qual)
         return self.x + lx, self.y + ly
+
+    def ponta_espada(self, qual=1, p=None):
+        """(x, y) da ponta da lamina `qual` (coords do pai), sem rotacao."""
+        p = p or self._base
+        ang = p['a1'] if qual == 1 else p['a2']
+        if ang is None:
+            return self.ponto_mao(qual)
+        comp = (p['c1'] if qual == 1 else p['c2']) + 2
+        hx, hy = self.x + self.mao_local(qual, p)[0], self.y + self.mao_local(qual, p)[1]
+        a = math.radians(ang)
+        dx = math.cos(a) * comp * self.ps
+        return hx + (-dx if self.espelhar else dx), hy + math.sin(a) * comp * self.ps
 
     def extensao(self, p=None):
         """(esq, baixo, dir, cima): quanto a pose (com espadas) se estende a
@@ -712,6 +891,8 @@ class KiritoPixel(Widget):
     def _vida(self, dt):
         """Fisica do sobretudo/cabelo a partir da velocidade real do boneco."""
         try:
+            if self._pausa > 0:
+                return
             dt = min(dt, 1 / 15.)
             self._t += dt
             ax, ay = self.ancora()
@@ -772,8 +953,16 @@ class KiritoPixel(Widget):
         self._quadro(0)
         self._ev = Clock.schedule_interval(self._quadro, 1 / FPS)
 
+    def pausar(self, seg):
+        """Hit-stop: congela a animacao (e a fisica) por `seg` no instante do
+        impacto - o golpe parece mais pesado."""
+        self._pausa = max(self._pausa, float(seg))
+
     def _quadro(self, dt):
         try:
+            if self._pausa > 0:
+                self._pausa -= dt
+                return
             if self._i >= len(self._seq):
                 if self._loop:
                     self._i = 0
@@ -944,6 +1133,37 @@ POSE_A = {
     'pousa':      pose(pernas='agachado', dy=-3, m1=(5, -3), a1=-50.0, m2=(-4, -3), a2=230.0),
     'guarda2':    pose(m1=(0, 6), a1=95.0, c1=8, m2=(-2, 7), a2=100.0, c2=8),
 }
+
+
+def _duas_maos(m1, a1, recuo=3.0):
+    """m2 (mao de tras) segurando o mesmo cabo, `recuo` px atras da mao da
+    frente (empunhadura de duas maos da espada fundida)."""
+    a = math.radians(a1)
+    return (6 + m1[0] - math.cos(a) * recuo, m1[1] - math.sin(a) * recuo)
+
+
+def _fund(**kw):
+    """Pose com a espada fundida (evo=True: evoluida), segurada com as duas maos."""
+    evo = kw.pop('evo', False)
+    kw.setdefault('tipo1', 4 if evo else 3)
+    kw.setdefault('c1', 23 if evo else 20)
+    kw['fusao'] = True
+    if 'm2' not in kw:
+        kw['m2'] = _duas_maos(kw['m1'], kw['a1'])
+    return pose(**kw)
+
+
+# golpe final (estilo Bleach): junta as duas espadas acima da cabeca, a
+# fundida suga o infinito da tela, evolui e da o ultimo corte
+POSE_A.update({
+    'une_a':       pose(m1=(-1, 16), a1=110.0, m2=(-1, 15), a2=70.0, olhos='s'),
+    'une_b':       pose(m1=(-6, 18), a1=90.0, m2=(0, 15), a2=90.0, olhos='s'),
+    'fund_alto':   _fund(m1=(-6, 18), a1=90.0, m2=(0, 15), olhos='s'),
+    'evo_alto':    _fund(m1=(-6, 18), a1=90.0, m2=(0, 15), olhos='l', evo=True),
+    'evo_carga':   _fund(pernas='agachado', dx=-1, dy=-3, m1=(-3, -1), a1=195.0, olhos='l', evo=True),
+    'evo_corte':   _fund(pernas='avanco', dx=3, dy=-2, m1=(8, 0), a1=-5.0, olhos='g', evo=True),
+    'evo_fim':     _fund(pernas='avanco', dx=3, dy=-3, m1=(8, -1), a1=-12.0, olhos='l', evo=True),
+})
 
 
 def smear(p, de=None, de2=None):

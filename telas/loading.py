@@ -290,8 +290,8 @@ class TelaLoading(Screen):
                 try: som.tocar_retomada()
                 except Exception: pass
                 self._salvar_sessao()
-                # acesso liberado: o Kirito sobe na caixa e some num teleporte
-                # (ele volta pendurado na cena do titulo)
+                # acesso liberado: o Kirito sobe na caixa, sorri e some num
+                # teleporte (ele volta pendurado na cena do titulo)
                 Clock.schedule_once(lambda dt: _k('sumir'), 0.35)
 
                 def _fechar(dt2):
@@ -327,6 +327,7 @@ class TelaLoading(Screen):
                     lbl_status.text  = "[color=#ff2222]ACESSO NEGADO. BLOQUEIO ATIVADO.[/color]"
                     btn.disabled     = True
                     inp_pin.disabled = True
+                    Clock.schedule_once(lambda dt: _k('bloqueado'), 0.35)
                     def _bloqueado(_dt):
                         _k('remover')
                         pop.dismiss()
@@ -449,14 +450,15 @@ class TelaLoading(Screen):
                 return
             try:
                 frase = random.choice(frases)
-                x     = random.uniform(0.05, 0.85) * Window.width
-                y_ini = random.uniform(0.15, 0.45) * Window.height
+                # parte de baixo da tela, por baixo da luta (o foco e o Kirito)
+                x     = random.uniform(0.05, 0.75) * self.width
+                y_ini = random.uniform(0.08, 0.34) * self.height
                 lbl   = Label(
-                    text=f"[color=#00e5ff44]{frase}[/color]",
+                    text=f"[color=#00e5ff26]{frase}[/color]",
                     markup=True, font_name="orbitron.ttf", font_size="9sp",
                     size_hint=(None, None), size=(200, 20),
                     pos=(x, y_ini), opacity=0)
-                Window.add_widget(lbl)
+                self.add_widget(lbl, index=max(0, len(self.children) - 1))
                 self._part_lbls.append(lbl)
                 anim = (Animation(opacity=1, y=y_ini + 30, duration=0.4, transition='out_quad') +
                         Animation(duration=0.5) +
@@ -466,11 +468,12 @@ class TelaLoading(Screen):
             except Exception:
                 pass
 
-        self._part_ev = Clock.schedule_interval(_criar, 0.25)
+        self._part_ev = Clock.schedule_interval(_criar, 0.45)
 
     def _remover_particula(self, lbl):
         try:
-            Window.remove_widget(lbl)
+            if lbl.parent is not None:
+                lbl.parent.remove_widget(lbl)
             if lbl in self._part_lbls:
                 self._part_lbls.remove(lbl)
         except Exception:
@@ -482,7 +485,8 @@ class TelaLoading(Screen):
             self._part_ev = None
         for lbl in list(getattr(self, '_part_lbls', [])):
             try:
-                Window.remove_widget(lbl)
+                if lbl.parent is not None:
+                    lbl.parent.remove_widget(lbl)
             except Exception:
                 pass
         self._part_lbls = []

@@ -6,11 +6,13 @@ gravacoes em dominio publico - licenca CC0 1.0
 (https://creativecommons.org/publicdomain/zero/1.0/):
 
 - "Sword" e "Sword Clash" - StarNinjas (OpenGameArt.org)
-    corte, corte2, carga, golpe_final, titulo, transicao
+    corte, corte2, carga, golpe_final, titulo, transicao, fusao, reiatsu,
+    absorve, getsuga
 - "Swishes Sound Pack" - artisticdude (OpenGameArt.org)
-    corte, corte2, sacar_iai, pulo, susto, teleporte, transicao
+    corte, corte2, sacar_iai, pulo, susto, teleporte, transicao, getsuga
 - "RPG Sound Pack" - artisticdude (OpenGameArt.org)
-    sacar, sacar_iai, golpe_final, pulo, corte2, titulo, teleporte
+    sacar, sacar_iai, golpe_final, pulo, corte2, titulo, teleporte, fusao,
+    reiatsu, absorve, getsuga, separa, materializa
 - "RPG Audio" - Kenney (www.kenney.nl)
     koiguchi, desliza, embainhar, pouso, agarra, susto
 

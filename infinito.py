@@ -142,6 +142,9 @@ class InfinitoLoader(Widget):
         self._txt_ult  = None
         self._txt_acum = 0.0
         self._txt_dots = 0
+        self._sug      = None         # sendo sugado (golpe final do Kirito)
+        self._sug_u    = 0.0
+        self.pontos_atuais = []       # curva como esta sendo desenhada agora
         self._montar_canvas()
         self.bind(pos=self._recalcular, x=self._recalcular, y=self._recalcular,
                   size=self._recalcular)
@@ -274,12 +277,18 @@ class InfinitoLoader(Widget):
         n = len(pts)
         a = self._escala
         respiro = 0.5 + 0.5 * math.sin(self._t * 2.4)
+        some = 1.0                                     # 0 = ja foi todo sugado
+        if self._sug is not None:
+            pts, some, e = self._deformar(dt, e)
+            vel_extra = 1 + 5.0 * self._sug_u
+            self._fase = (self._fase + dt * vel * (vel_extra - 1)) % 1.0
+        self.pontos_atuais = pts
 
         # halo radial atras de tudo
-        self._c_halo.rgba = (r, g, b, (0.10 + 0.14 * e) * (0.75 + 0.25 * respiro))
+        self._c_halo.rgba = (r, g, b, (0.10 + 0.14 * min(1.0, e)) * (0.75 + 0.25 * respiro) * some)
         # trilho fantasma
-        self._c_trilho.rgba   = (0.55 + 0.3 * r, 0.6 + 0.3 * g, 0.75 + 0.25 * b, 0.05 + 0.06 * e)
-        self._c_trilho_b.rgba = (r, g, b, 0.012 + 0.022 * e)
+        self._c_trilho.rgba   = (0.55 + 0.3 * r, 0.6 + 0.3 * g, 0.75 + 0.25 * b, (0.05 + 0.06 * e) * some)
+        self._c_trilho_b.rgba = (r, g, b, (0.012 + 0.022 * e) * some)
 
         # cauda: fracao da curva atras da cabeca
         comp = (0.10 + 0.32 * e)
@@ -304,22 +313,87 @@ class InfinitoLoader(Widget):
         self._strip(self._m_cauda, amostras, larg_max * 2.0, 1.1)
         self._strip(self._m_bloom, amostras, larg_max * 6.5, 0.8)
         self._strip(self._m_miolo, amostras, larg_max * 0.9, 1.4)
-        self._c_cauda.rgba = (r, g, b, 0.45 + 0.55 * e)
-        self._c_bloom.rgba = (r, g, b, 0.18 + 0.14 * e)
-        self._c_miolo.rgba = (_lerp(r, 1, 0.8), _lerp(g, 1, 0.8), _lerp(b, 1, 0.8), 0.5 + 0.5 * e)
+        self._c_cauda.rgba = (r, g, b, min(1.0, 0.45 + 0.55 * e) * some)
+        self._c_bloom.rgba = (r, g, b, min(1.0, 0.18 + 0.14 * e) * some)
+        self._c_miolo.rgba = (_lerp(r, 1, 0.8), _lerp(g, 1, 0.8), _lerp(b, 1, 0.8), min(1.0, 0.5 + 0.5 * e) * some)
 
         hx, hy = amostras[0]
         tam_glow = a * (0.30 + 0.35 * e) * (0.9 + 0.1 * respiro)
         self._glow.pos  = (hx - tam_glow / 2, hy - tam_glow / 2)
         self._glow.size = (tam_glow, tam_glow)
-        self._c_glow.rgba = (_lerp(r, 1, 0.25), _lerp(g, 1, 0.25), _lerp(b, 1, 0.25), 0.55 + 0.35 * e)
+        self._c_glow.rgba = (_lerp(r, 1, 0.25), _lerp(g, 1, 0.25), _lerp(b, 1, 0.25), min(1.0, 0.55 + 0.35 * e) * some)
         tam_n = max(3.0, larg_max * 1.35)
         self._nucleo.pos  = (hx - tam_n / 2, hy - tam_n / 2)
         self._nucleo.size = (tam_n, tam_n)
-        self._c_nucleo.rgba = (1, 1, 1, 0.55 + 0.45 * e)
+        self._c_nucleo.rgba = (1, 1, 1, min(1.0, 0.55 + 0.45 * e) * some)
 
-        self._atualizar_faiscas(dt, hx, hy, amostras, e, (r, g, b), a)
-        self._atualizar_texto(dt, (r, g, b), e)
+        self._atualizar_faiscas(dt, hx, hy, amostras, min(1.0, e), (r, g, b), a)
+        self._atualizar_texto(dt, (r, g, b), min(1.0, e))
+        if self._sug_u > 0:
+            self._c_txt.a *= max(0.0, 1 - 2 * self._sug_u)
+
+    # ── sugado pela espada ──────────────────────────────────────────────
+    def sugar(self, alvo, dur=2.4, on_fim=None):
+        """O infinito e sugado ate alvo() (ponta da espada): a curva gira em
+        espiral e encolhe ate o ponto, o cometa acelera e brilha mais, e no
+        fim nao sobra nada. alvo(): (x, y) nas mesmas coords deste widget."""
+        self._sug = {'t': 0.0, 'dur': max(0.1, dur), 'alvo': alvo, 'fim': on_fim}
+        self._sug_u = 0.0
+
+    def restaurar(self):
+        """Volta ao normal (se a cena for interrompida no meio)."""
+        self._sug = None
+        self._sug_u = 0.0
+        try:
+            flat = [v for p in self._pontos for v in p]
+            self._trilho.points = flat
+            self._trilho_b.points = flat
+        except Exception:
+            pass
+
+    def _deformar(self, dt, e):
+        s = self._sug
+        s['t'] += dt
+        u = min(1.0, s['t'] / s['dur'])
+        self._sug_u = u
+        try:
+            ax, ay = s['alvo']()
+        except Exception:
+            ax, ay = self._cx, self._cy
+        base = self._pontos
+        # pontos mais longe do alvo sao puxados depois (a curva "escorre")
+        dists = [math.hypot(x - ax, y - ay) for x, y in base]
+        dmax = max(dists) or 1.0
+        pts = []
+        for (x, y), d in zip(base, dists):
+            f = (u * 1.45 - 0.45 * d / dmax)
+            f = max(0.0, min(1.0, f))
+            f = f * f * (3 - 2 * f)
+            ang = f * 2.6                              # espiral em volta da ponta
+            vx, vy = x - ax, y - ay
+            c, sn = math.cos(ang), math.sin(ang)
+            k = 1.0 - f
+            pts.append((ax + (vx * c - vy * sn) * k, ay + (vx * sn + vy * c) * k))
+        flat = [v for p in pts for v in p]
+        self._trilho.points = flat
+        self._trilho_b.points = flat
+        # halo encolhe e vai para o alvo
+        r = self._escala * 1.45 * (1 - u) + 1
+        hx = self._cx + (ax - self._cx) * u
+        hy = self._cy + (ay - self._cy) * u
+        self._halo.pos, self._halo.size = (hx - r, hy - r), (2 * r, 2 * r)
+        self._c_txt.a = self._c_txt.a * (1 - u)
+        some = 1.0 - max(0.0, (u - 0.82) / 0.18)
+        if u >= 1:
+            fim, s['fim'] = s['fim'], None
+            self._sug = None
+            self.opacity = 0
+            if fim:
+                try:
+                    fim()
+                except Exception as ex:
+                    print(f"[infinito] fim do sugar: {ex}")
+        return pts, some, e + 0.9 * u
 
     @staticmethod
     def _strip(mesh, amostras, largura, expo_larg):

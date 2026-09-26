@@ -719,6 +719,8 @@ class FundoAnimado(FloatLayout):
 # ═══════════════════════════════════════════════════════════
 
 class FlashExplosao(Widget):
+    """Clarao do item sendo desintegrado: um brilho suave (borda esfumada,
+    nucleo branco) que cresce e some - antes era um retangulo chapado."""
     escala = NumericProperty(1.0)
 
     def __init__(self, pos, size, **kwargs):
@@ -726,16 +728,35 @@ class FlashExplosao(Widget):
         self.size_hint = (None, None)
         self.size = size
         self.pos  = pos
-        self.bind(pos=self._upd, size=self._upd, escala=self._upd, opacity=self._upd)
-
-    def _upd(self, *_):
-        self.canvas.clear()
+        try:
+            from infinito import textura_radial
+            tex = textura_radial()
+        except Exception:
+            tex = None
         with self.canvas:
             PushMatrix()
-            Scale(self.escala, self.escala, 1, origin=self.center)
-            Color(0.8, 1, 1, self.opacity)
-            Rectangle(pos=self.pos, size=self.size)
+            self._sc = Scale(1, 1, 1)
+            self._c_glow = Color(0.2, 0.9, 1.0, 1)
+            self._r_glow = Rectangle(texture=tex)
+            self._c_nuc = Color(0.9, 1.0, 1.0, 1)
+            self._r_nuc = Rectangle(texture=tex)
             PopMatrix()
+        self.bind(pos=self._upd, size=self._upd, escala=self._upd, opacity=self._upd)
+        self._upd()
+
+    def _upd(self, *_):
+        x, y = self.pos
+        w, h = self.size
+        cx, cy = x + w / 2.0, y + h / 2.0
+        self._sc.origin = (cx, cy)
+        self._sc.x = self._sc.y = self.escala
+        # glow largo (passa das bordas do item) e nucleo mais estreito
+        gw, gh = w * 1.35, h * 2.2
+        self._r_glow.pos, self._r_glow.size = (cx - gw / 2, cy - gh / 2), (gw, gh)
+        nw, nh = w * 1.05, h * 1.1
+        self._r_nuc.pos, self._r_nuc.size = (cx - nw / 2, cy - nh / 2), (nw, nh)
+        self._c_glow.a = 0.55
+        self._c_nuc.a = 0.85
 
 
 class CacoSAO(Widget):
