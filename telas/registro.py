@@ -124,7 +124,9 @@ class TelaRegistro(Screen):
         def _fazer():
             som.tocar_delete()
             vibrar(80)
-            explodir_estilhacos(btn, lambda: self.deletar(dado))
+            # mini Kirito fatia o lote e depois vem a explosao de cacos
+            from cenas import kirito_fatiar
+            kirito_fatiar(btn, lambda: self.deletar(dado))
         popup_delete_engracado(_fazer)
 
     def deletar(self, dado):

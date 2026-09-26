@@ -409,3 +409,157 @@ class InfinitoLoader(Widget):
     def on_texto(self, *_):
         if hasattr(self, '_trilho'):      # kwargs chegam antes do canvas existir
             self._recalcular()
+
+
+def cor_do_ciclo(cor, t):
+    """Mesma regra do infinito: ciano padrao cicla; outra cor fica fixa."""
+    cc = list(cor[:3])
+    if sum(abs(a - b) for a, b in zip(cc, _CIANO_PADRAO)) < 0.2 or \
+            sum(abs(a - b) for a, b in zip(cc, (0.0, 0.5, 1.0))) < 0.2:
+        f = (t % _CICLO_SEG) / _CICLO_SEG * len(_CICLO)
+        i = int(f) % len(_CICLO)
+        k = f - int(f)
+        k = 0.5 - 0.5 * math.cos(math.pi * k)
+        return _lerp3(_CICLO[i], _CICLO[(i + 1) % len(_CICLO)], k)
+    return tuple(cc)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  BARRA COM COMETA (substitui a barra segmentada da loading)
+# ═══════════════════════════════════════════════════════════════════
+class BarraCometa(Widget):
+    """Fio de luz: trilho apagado + trecho preenchido com brilho + cometa na
+    ponta + porcentagem. Mesma interface da BarraNeon (progresso 0..100,
+    cor_linha); em ciano a cor cicla junto com o infinito."""
+    progresso = NumericProperty(0)
+    cor_linha = ListProperty([0, 0.9, 1, 1])
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._t = 0.0
+        self._cor = [0.0, 0.9, 1.0]
+        self._pct_ult = None
+        self._ev = None
+        with self.canvas:
+            self._c_trilho = Color(0.6, 0.8, 1, 0.12)
+            self._trilho = Line(points=[0, 0, 0, 0], width=dp(1))
+            self._c_glow = Color(0, 0.9, 1, 0.22)
+            self._glow = Line(points=[0, 0, 0, 0], width=dp(4), cap='round')
+            self._c_fio = Color(0, 0.9, 1, 0.95)
+            self._fio = Line(points=[0, 0, 0, 0], width=dp(1.3), cap='round')
+            self._c_cabeca = Color(0, 0.9, 1, 0.9)
+            self._cabeca = Rectangle(size=(0, 0))
+            self._c_nucleo = Color(1, 1, 1, 0.95)
+            self._nucleo = Ellipse(size=(0, 0))
+            self._c_pct = Color(0.8, 0.95, 1, 0.75)
+            self._pct = Rectangle(size=(0, 0))
+
+    def on_parent(self, inst, parent):
+        try:
+            if parent is not None:
+                try:
+                    self._cabeca.texture = textura_radial()
+                except Exception as e:
+                    print(f"[barra] textura: {e}")
+                if self._ev is None:
+                    self._ev = Clock.schedule_interval(self._tick, 1 / 60.)
+            elif self._ev is not None:
+                self._ev.cancel()
+                self._ev = None
+        except Exception as e:
+            print(f"[barra] on_parent: {e}")
+
+    def _tick(self, dt):
+        try:
+            self._t += dt
+            alvo = cor_do_ciclo(self.cor_linha, self._t)
+            k = 1 - math.exp(-dt * 10)
+            self._cor = [_lerp(self._cor[i], alvo[i], k) for i in range(3)]
+            r, g, b = self._cor
+            pct = max(0.0, min(100.0, float(self.progresso)))
+            larg_pct = dp(40)
+            x0, y = self.x, self.y + self.height / 2.0
+            x1 = self.right - larg_pct
+            if x1 - x0 < 4:
+                return
+            xp = x0 + (x1 - x0) * pct / 100.0
+            self._trilho.points = [x0, y, x1, y]
+            self._fio.points = [x0, y, max(x0 + 0.5, xp), y]
+            self._glow.points = self._fio.points
+            self._c_fio.rgba = (r, g, b, 0.95)
+            self._c_glow.rgba = (r, g, b, 0.22 + 0.06 * math.sin(self._t * 6))
+            self._c_trilho.rgba = (0.6 + 0.4 * r, 0.6 + 0.4 * g, 0.6 + 0.4 * b, 0.12)
+            vivo = pct > 0.5
+            tam = dp(22) * (1.0 + 0.12 * math.sin(self._t * 9))
+            self._cabeca.pos = (xp - tam / 2.0, y - tam / 2.0)
+            self._cabeca.size = (tam, tam) if vivo else (0, 0)
+            self._c_cabeca.rgba = (r, g, b, 0.85)
+            n = dp(4)
+            self._nucleo.pos = (xp - n / 2.0, y - n / 2.0)
+            self._nucleo.size = (n, n) if vivo else (0, 0)
+            p = int(round(pct))
+            if p != self._pct_ult:
+                self._pct_ult = p
+                lbl = CoreLabel(text=f"{p}%", font_name="orbitron.ttf", font_size=sp(9))
+                lbl.refresh()
+                self._pct.texture = lbl.texture
+                self._pct.size = lbl.texture.size
+            tw, th = self._pct.size
+            self._pct.pos = (self.right - tw, y - th / 2.0)
+            self._c_pct.rgba = (0.6 + 0.4 * r, 0.6 + 0.4 * g, 0.6 + 0.4 * b, 0.8)
+        except Exception as e:
+            print(f"[barra] frame ignorado: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  PAINEL HOLOGRAFICO (terminal da loading sem a caixa pesada)
+# ═══════════════════════════════════════════════════════════════════
+from kivy.uix.boxlayout import BoxLayout  # noqa: E402
+
+
+class PainelHolografico(BoxLayout):
+    """Colchetes de canto finos, acento lateral e uma scanline sutil que
+    desce devagar; a cor acompanha o ciclo do infinito."""
+    cor = ListProperty([0, 0.9, 1, 1])
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._t = 0.0
+        self._ev = None
+        with self.canvas.before:
+            self._c_fundo = Color(0.02, 0.06, 0.12, 0.18)
+            self._fundo = Rectangle()
+            self._c_linhas = Color(0, 0.9, 1, 0.55)
+            self._cantos = [Line(points=[0, 0, 0, 0], width=dp(1.1)) for _ in range(4)]
+            self._c_acento = Color(0, 0.9, 1, 0.35)
+            self._acento = Line(points=[0, 0, 0, 0], width=dp(1.4))
+            self._c_scan = Color(0, 0.9, 1, 0.08)
+            self._scan = Rectangle(size=(0, 0))
+
+    def on_parent(self, inst, parent):
+        if parent is not None:
+            if self._ev is None:
+                self._ev = Clock.schedule_interval(self._tick, 1 / 30.)
+        elif self._ev is not None:
+            self._ev.cancel()
+            self._ev = None
+
+    def _tick(self, dt):
+        try:
+            self._t += dt
+            r, g, b = cor_do_ciclo(self.cor, self._t)
+            x, y, w, h = self.x, self.y, self.width, self.height
+            self._fundo.pos, self._fundo.size = (x, y), (w, h)
+            c = min(dp(16), w * 0.2, h * 0.3)
+            self._cantos[0].points = [x, y + h - c, x, y + h, x + c, y + h]
+            self._cantos[1].points = [x + w - c, y + h, x + w, y + h, x + w, y + h - c]
+            self._cantos[2].points = [x, y + c, x, y, x + c, y]
+            self._cantos[3].points = [x + w - c, y, x + w, y, x + w, y + c]
+            self._acento.points = [x + dp(5), y + h * 0.2, x + dp(5), y + h * 0.8]
+            self._c_linhas.rgba = (r, g, b, 0.55)
+            self._c_acento.rgba = (r, g, b, 0.30 + 0.15 * math.sin(self._t * 2))
+            sy = y + h - ((self._t * dp(26)) % (h + dp(20)))
+            self._scan.pos, self._scan.size = (x, sy), (w, dp(2))
+            self._c_scan.rgba = (r, g, b, 0.10)
+        except Exception as e:
+            print(f"[painel] frame ignorado: {e}")

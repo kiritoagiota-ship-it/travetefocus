@@ -163,7 +163,7 @@ class TelaGanhos(Screen):
             cont.add_widget(row)
             linhas.append(row)
 
-            def _fazer_delete(periodo=p, widget=btn_del, tipo=tipo, di=di, df=df, ganho=ganho):
+            def _fazer_delete(periodo=p, widget=row, tipo=tipo, di=di, df=df, ganho=ganho):
                 def _executar():
                     periodos = list(app.periodos_ganhos)
                     if periodo in periodos:
@@ -176,7 +176,9 @@ class TelaGanhos(Screen):
                 def _confirmar_delete(*_):
                     som.tocar_delete()
                     vibrar(80)
-                    explodir_estilhacos(widget, _executar)
+                    # mini Kirito fatia a linha do periodo
+                    from cenas import kirito_fatiar
+                    kirito_fatiar(widget, _executar)
                     tremer_tela(8)
 
                 pop2, lay2 = _make_popup()

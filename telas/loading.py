@@ -16,7 +16,6 @@ from kivy.metrics import dp
 
 from efeitos import tremer_tela, InputHolografico, BotaoAngular
 from infinito import InfinitoLoader  # noqa: F401  (usado no kv: id reator_shader)
-from espadachim import EspadachimPixel
 from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, _bind_teclado
 import som
 
@@ -52,7 +51,7 @@ class TelaLoading(Screen):
         super().__init__(**kwargs)
         self._typing_ativo   = False
         self._espadas_widget = None
-        self._espadachim     = None
+        self._cena           = None
 
     # ── Sessao ─────────────────────────────────────────────────────────────
 
@@ -91,7 +90,10 @@ class TelaLoading(Screen):
     def on_leave(self, *_):
         self._typing_ativo = False
         self._parar_particulas_dados()
-        self._remover_espadachim()
+        if self._cena is not None:
+            from cenas import limpar_cena
+            limpar_cena(self._cena)
+            self._cena = None
         # Limpar espadas ao sair — evita widget órfão na memória
         try:
             if self._espadas_widget and self._espadas_widget.parent:
@@ -134,22 +136,7 @@ class TelaLoading(Screen):
         Animation(build_progress=1.0, duration=1.0, transition='out_expo').start(self.reator)
         Animation(progresso=100, duration=1.0).start(self.ids.barra_loading)
 
-        t     = self.ids.titulo_label
-        t.opacity = 1
-        chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*!"
-        alvo  = "TRAVETE FOCUS"
-        ev = Clock.schedule_interval(
-            lambda dt: setattr(t, 'text',
-                ''.join(random.choice(chars) for _ in range(len(alvo)))),
-            0.04)
-
-        def _finish(dt2):
-            ev.cancel()
-            t.text = alvo
-            Animation(opacity=1, duration=0.4, transition='out_expo').start(self.ids.version_label)
-            Clock.schedule_once(lambda _: _safe_mudar_tela("menu"), 0.5)
-
-        Clock.schedule_once(_finish, 0.8)
+        Clock.schedule_once(lambda dt: self.animar_materializacao(), 0.9)
 
     # ── Full Load — texto ──────────────────────────────────────────────────
 
@@ -284,13 +271,16 @@ class TelaLoading(Screen):
                 try: som.tocar_retomada()
                 except Exception: pass
                 self._salvar_sessao()
+                try:
+                    from cenas import espiar
+                    Clock.schedule_once(lambda dt: espiar(), 0.25)
+                except Exception as e:
+                    print(f"[loading] espiar: {e}")
 
                 def _fechar(dt2):
                     def _apos_fade(*_):
                         pop.dismiss()
-                        # espadachim golpeia e so entao o "hack" continua
-                        self._golpe_espadachim(
-                            lambda: Clock.schedule_once(self.etapa_hack, 0.15))
+                        Clock.schedule_once(self.etapa_hack, 0.2)
                     anim = Animation(opacity=0, duration=0.3, transition='in_expo')
                     anim.bind(on_complete=_apos_fade)
                     anim.start(caixa)
@@ -338,73 +328,6 @@ class TelaLoading(Screen):
         # teclado numerico com fechar via _verificar (OK no teclado = verificar PIN)
         Clock.schedule_once(lambda dt: anexar_teclado(inp_pin, 'numeros'), 0.4)
 
-    # ── Espadachim (senha aceita) ──────────────────────────────────────────
-
-    def _golpe_espadachim(self, continuar):
-        """Espadachim pixel art entra, faz o combo de 2 cortes em meia-lua e
-        sai. Qualquer falha aqui apenas segue a sequencia (nunca trava)."""
-        seguiu = [False]
-
-        def _seguir(*_):
-            if seguiu[0]:
-                return
-            seguiu[0] = True
-            try:
-                continuar()
-            except Exception as e:
-                print(f"[loading] continuar: {e}")
-
-        # rede de seguranca: a historia continua mesmo se algo travar
-        Clock.schedule_once(_seguir, 4.0)
-        if not self._typing_ativo:
-            _seguir()
-            return
-        try:
-            self._remover_espadachim()
-            lado = min(Window.width * 0.86, dp(420))
-            esp = EspadachimPixel(size_hint=(None, None), size=(lado, lado * 0.62),
-                                  pos_hint={'center_x': 0.5, 'center_y': 0.49})
-            esp.opacity = 0
-            self.add_widget(esp)
-            self._espadachim = esp
-            esp.iniciar_idle()
-            Animation(opacity=1, duration=0.25, transition='out_quad').start(esp)
-
-            def _impacto(n):
-                try: som.tocar_corte()
-                except Exception: pass
-                _safe_treme(10 + 6 * n)
-                try:
-                    fl = self.ids.flash_overlay
-                    Animation.cancel_all(fl, 'opacity')
-                    fl.opacity = 0.16
-                    Animation(opacity=0, duration=0.22).start(fl)
-                except Exception:
-                    pass
-
-            def _sair():
-                anim = Animation(opacity=0, duration=0.3, transition='in_quad')
-                anim.bind(on_complete=lambda *_: (self._remover_espadachim(), _seguir()))
-                anim.start(esp)
-
-            Clock.schedule_once(
-                lambda dt: esp.atacar(combo=True, on_impacto=_impacto, on_fim=_sair), 0.45)
-        except Exception as e:
-            print(f"[loading] espadachim ignorado: {e}")
-            self._remover_espadachim()
-            _seguir()
-
-    def _remover_espadachim(self):
-        esp, self._espadachim = self._espadachim, None
-        if esp is None:
-            return
-        try:
-            esp.parar()
-            if esp.parent:
-                esp.parent.remove_widget(esp)
-        except Exception as e:
-            print(f"[loading] remover espadachim: {e}")
-
     # ── Sequencia pos-PIN ──────────────────────────────────────────────────
 
     def etapa_hack(self, dt):
@@ -445,31 +368,40 @@ class TelaLoading(Screen):
         self.animar_materializacao()
 
     def animar_materializacao(self):
-        t     = self.ids.titulo_label
-        v     = self.ids.version_label
-        chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*!"
-        alvo  = "TRAVETE FOCUS"
-
-        Animation(opacidade=1, escala=1.0, duration=0.6,
-                  transition='out_back').start(self.ids.espada_esq)
-        Animation(opacidade=1, escala=1.0, duration=0.6,
-                  transition='out_back').start(self.ids.espada_dir)
-        Animation(opacity=1, duration=0.3, transition='out_expo').start(t)
+        """O Kirito surge numa borda, pula e escreve TRAVETE FOCUS com o
+        rastro das espadas (cenas.cena_titulo). Depois: espadas holograficas,
+        versao e menu. Se a cena falhar, o titulo aparece direto."""
+        if not self._typing_ativo:
+            return
+        t = self.ids.titulo_label
+        v = self.ids.version_label
+        t.text = ""
+        t.opacity = 1
         self._iniciar_particulas_dados()
+        feito = [False]
 
-        ev = Clock.schedule_interval(
-            lambda dt: setattr(t, 'text',
-                "".join(random.choice(chars) for _ in range(len(alvo)))),
-            0.05)
-
-        def finish(*_):
-            ev.cancel()
-            t.text    = alvo
-            v.opacity = 1
+        def _fim():
+            if feito[0] or not self._typing_ativo:
+                return
+            feito[0] = True
+            try:
+                Animation(opacidade=1, escala=1.0, duration=0.6,
+                          transition='out_back').start(self.ids.espada_esq)
+                Animation(opacidade=1, escala=1.0, duration=0.6,
+                          transition='out_back').start(self.ids.espada_dir)
+                Animation(opacity=1, duration=0.4, transition='out_expo').start(v)
+            except Exception as e:
+                print(f"[loading] final do titulo: {e}")
             self._parar_particulas_dados()
-            Clock.schedule_once(lambda _: _safe_mudar_tela("menu"), 1.5)
+            Clock.schedule_once(lambda _: _safe_mudar_tela("menu"), 1.4)
 
-        Clock.schedule_once(finish, 1.2)
+        try:
+            from cenas import cena_titulo
+            self._cena = cena_titulo(self, t, on_fim=_fim, texto="TRAVETE FOCUS")
+        except Exception as e:
+            print(f"[loading] cena do titulo ignorada: {e}")
+            t.text = "TRAVETE FOCUS"
+            _fim()
 
     # ── Particulas ─────────────────────────────────────────────────────────
 

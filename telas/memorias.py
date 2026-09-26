@@ -314,7 +314,10 @@ class TelaMemorias(Screen):
         def _deletar(*_):
             som.tocar_delete()
             tremer_tela(10)
-            explodir_estilhacos(btn_a, _executar_delete)
+            # mini Kirito fatia o cartao do turno inteiro
+            from cenas import kirito_fatiar
+            btn_a.disabled = True
+            kirito_fatiar(caixa, _executar_delete)
 
         _bind_teclado(inp_data, pop)
         btn_salvar_data.bind(on_release=_salvar_data)
@@ -398,6 +401,18 @@ class TelaMemorias(Screen):
         caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
 
         def _confirmar(*_):
+            # versao epica: o Kirito corta a lista inteira antes de apagar
+            btn_s.disabled = True
+            pop.dismiss()
+            itens = list(self.ids.memorias_container.children)
+            try:
+                from cenas import kirito_wipe
+                kirito_wipe(itens, _apagar_tudo)
+            except Exception as e:
+                print(f"[memorias] wipe animado: {e}")
+                _apagar_tudo()
+
+        def _apagar_tudo():
             app = App.get_running_app()
             app.memorias.clear()
             app.registros.clear()
@@ -410,7 +425,6 @@ class TelaMemorias(Screen):
             som.tocar_wipe()
             vibrar(300)
             tremer_tela(25)
-            pop.dismiss()
 
         btn_s.bind(on_release=_confirmar)
         btn_n.bind(on_release=lambda *_: pop.dismiss())
