@@ -81,6 +81,58 @@ def _com(p, **kw):
     return q
 
 
+def _perto(a, alvo):
+    """O mesmo angulo `a`, na volta mais proxima de `alvo` (a lamina vai pelo
+    caminho curto em vez de dar uma volta inteira no ar)."""
+    if a is None or alvo is None:
+        return a
+    while a - alvo > 180:
+        a -= 360
+    while alvo - a > 180:
+        a += 360
+    return a
+
+
+def _de_agora(k, n=2, curva='suave', proxima=None):
+    """Chave inicial = a pose que esta na tela: a sequencia seguinte parte
+    dela (sem 'teletransportar' os bracos de uma pose para a outra).
+    `proxima` = a pose seguinte (acerta a volta dos angulos das laminas)."""
+    p = _com(k._base, s1=None, s2=None, emote=None)
+    if proxima is not None:
+        p['a1'] = _perto(p['a1'], proxima['a1'])
+        p['a2'] = _perto(p['a2'], proxima['a2'])
+    return [(n, p, curva)]
+
+
+def _voo(k, sobe, topo, desce, cortes=(0.22, 0.72)):
+    """on_passo para _mover: pernas esticadas no impulso, encolhidas no alto
+    do pulo e esticadas de novo indo pousar."""
+    atual = [None]
+
+    def _f(u):
+        p = sobe if u < cortes[0] else (topo if u < cortes[1] else desce)
+        if p is not atual[0]:
+            atual[0] = p
+            k.mostrar(p)
+    return _f
+
+
+def _giro(k, a, b, fim, trocas=4):
+    """on_passo para um giro no ar: alterna as duas poses de laminas abertas
+    (parece uma roda de espadas girando) e abre na pose `fim` no final."""
+    atual = [None]
+
+    def _f(u):
+        if u >= 0.8:
+            p = fim
+        else:
+            p = a if int(u / 0.8 * trocas) % 2 == 0 else b
+        if p is not atual[0]:
+            atual[0] = p
+            k.mostrar(p)
+    return _f
+
+
 class _Uma:
     """Chama `fn` uma unica vez (protege on_fim de cenas)."""
 
@@ -1006,11 +1058,18 @@ def _risco_luz(camada, x0, x1, y, dur, cor=CIANO, espessura=None):
 
 
 def _pendurado_idle(base, base_b, piscar=True):
-    """Pernas balancando devagar (uma dobra de vez em quando) e piscada."""
+    """Pernas balancando devagar: vao e voltam passando por um quadro do
+    meio (solto, nao duro), com uma piscada."""
+    meio = dict(base, pernas='solto_meio')
     quadros = []
-    for f in range(56):
-        q = dict(base_b if 22 <= f < 34 else base)
-        if piscar and f in (46, 47):
+    for f in range(64):
+        if 18 <= f < 22 or 34 <= f < 38:
+            q = dict(meio)
+        elif 22 <= f < 34:
+            q = dict(base_b)
+        else:
+            q = dict(base)
+        if piscar and f in (50, 51):
             q['olhos'] = 'f'
         quadros.append(q)
     return quadros
@@ -1293,7 +1352,8 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
 
         def _kamae():
             # recolhe as pernas e empurra a guarda com o polegar: pronto para sacar
-            seq = K.sequencia([(3, P['pendurado_b']), (1, P['pendurado_b']),
+            seq = K.sequencia(_de_agora(kk, 2) +
+                              [(4, P['pendurado_b'], 'out'), (2, _com(P['pendurado2'], olhos='s'), 'segura'),
                                (1, _com(P['pendurado2'], olhos='s'))])
             kk.tocar(seq)
             kk.empurrar(capa=-6, lift=4)
@@ -1310,7 +1370,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
 
         # ── 2. solta e cai girando ate o inicio da frase ─────────────
         cx1, _ = titulo.x_do_trecho(*_TRECHOS[0])
-        POSES_G1 = ['agacha', 'saca1', 'corta1', 'segue1', 'pega2', 'saca2', 'dupla']
+        POSES_G1 = ['agacha', 'saca0', 'saca1', 'corta1', 'segue1', 'pega2', 'saca2', 'dupla']
 
         def _solta():
             balanco['ativo'] = False
@@ -1333,13 +1393,16 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             kk.rotacao = 0
             kk.ancorar(ax, ay)
             kk.espelhar = False
-            kk.mostrar(_com(P['pulo'], olhos='s'))
+            p_pulo = _com(P['pulo'], olhos='s')
+            kk.mostrar(K.esticado(p_pulo))
             _som('pulo')
             kk.empurrar(capa=-10, cabelo=-8, lift=12)
             alvo = quadro(ox_t - th * 0.7, oy_t + th * 0.5, POSES_G1)
-            # giro para a frente (horario, olhando para a direita)
+            # giro para a frente (horario, olhando para a direita): solta com
+            # as pernas esticadas, encolhe no giro e estica de novo para pousar
             _mover(kk, (ax, ay), alvo, 0.5, altura=0.0, rot=(0, -360), fantasmas=4, on_fim=_golpe1,
-                   limite=(area, m))
+                   limite=(area, m),
+                   on_passo=_voo(kk, K.esticado(p_pulo), p_pulo, K.esticado(p_pulo), (0.15, 0.8)))
 
             def _apaga_borda(dt):
                 c_borda.a = max(0.0, c_borda.a - dt / 0.35)
@@ -1355,25 +1418,33 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             ax, ay = kk.ancora()
             poeira(ax, ay - kk.extensao()[1])
             kk.empurrar(lift=-10, capa=-6)
-            seq = K.sequencia([
-                (2, P['agacha']), (4, _com(P['saca1'], olhos='s')),
-                (1, _com(K.smear(P['corta1'], K._BAINHA_ANG), olhos='g')), (1, _com(P['corta1'], olhos='g')),
-                (6, _com(P['segue1'], olhos='s')), (1, _com(P['segue1'], olhos='s'))])
+            # pousa amortecendo, abaixa com a mao no cabo, prende a respiracao
+            # e saca: a lamina passa do ponto e volta devagar
+            chaves, i_r = K.golpe(P['saca0'], P['corta1'], n_arma=3, prende=3, segue=3, volta=6,
+                                  lamina_recua=False, seg=P['segue1'])
+            chaves = [(2, _com(P['agacha'], olhos='s'), 'segura'),
+                      (3, _com(P['agacha'], olhos='s'), 'out')] + chaves
+            i_r += 5
+            seq = K.sequencia(chaves)
 
             def _q(i):
-                if i == 2:
+                if i == i_r - 4:
                     _som('sacar_iai')
-                elif i == 6:
+                elif i == i_r:
                     corte_trecho(0, CIANO, 1, 'corte')
             kk.tocar(seq, on_quadro=_q, on_fim=_saca2)
 
         # ── 4. saca a Dark Repulser (das costas) e toma guarda dupla ──
         def _saca2():
-            seq = K.sequencia([(4, _com(P['pega2'], olhos='s')), (4, _com(P['saca2'], olhos='s')),
-                               (5, _com(P['dupla'], olhos='s')), (6, _com(P['dupla'], olhos='s'))])
+            # leva a mao as costas, puxa a Dark Repulser e abre a guarda dupla
+            # com uma molinha no fim
+            seq = K.sequencia(_de_agora(kk, 3, proxima=P['pega2']) +
+                              [(2, _com(P['pega2'], olhos='s'), 'segura'), (2, _com(P['pega2'], olhos='s'), 'out'),
+                               (5, _com(P['saca2'], olhos='s'), 'mola'), (3, _com(P['dupla'], olhos='s'), 'segura'),
+                               (1, _com(P['dupla'], olhos='s'))])
 
             def _q(i):
-                if i == 5:
+                if i == 7:
                     hx2, hy2 = kk.ponto_mao(2)
                     faiscas.estourar(hx2, hy2, AZUL, n=20, forca=dp(130), tam=ps)
                     _som('sacar')
@@ -1392,13 +1463,14 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         def _alvo_golpe(lado, i, poses):
             i0, i1 = _TRECHOS[i]
             cx, cy = titulo.x_do_trecho(i0, i1)
+            p0 = P[poses[0]] if isinstance(poses[0], str) else poses[0]
             if lado == 'baixo':                       # cabeca abaixo das letras
                 kk.espelhar = False
-                cima_p = _ext(kk, [P[poses[0]]])[3]
+                cima_p = _ext(kk, [p0])[3]
                 return quadro(cx - th * 0.35, oy_t - dp(4) - cima_p, poses)
             if lado == 'cima':                        # no ar, acima das letras
                 kk.espelhar = False
-                baixo_p = _ext(kk, [P[poses[0]]])[1]
+                baixo_p = _ext(kk, [p0])[1]
                 return quadro(cx - th * 0.45, oy_t + th + dp(10) + baixo_p, poses)
             kk.espelhar = True                         # 'direita': virado para a esquerda
             return quadro(ox_t + titulo._larg[i1] + th * 0.9, cy - th * 0.1, poses)
@@ -1407,34 +1479,47 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             if i > 3:
                 _final()
                 return
-            p_arma, p_corta, (s1, s2), lado, arco, cor, cor2, som_c = GOLPES[i]
+            p_arma, p_corta, _rastro, lado, arco, cor, cor2, som_c = GOLPES[i]
+            # cada corte: prepara (a lamina recua), golpeia em 2 quadros de
+            # rastro, passa do ponto e volta com uma molinha
+            chaves, i_r = K.golpe(P[p_arma], P[p_corta], n_arma=2, prende=1, segue=3, volta=4)
+            poses_g = [c[1] for c in chaves]
             ax, ay = kk.ancora()
-            alvo = _alvo_golpe(lado, i, [p_arma, p_corta])
-            teto = area[3] - m - _ext(kk, [P[p_arma], P[p_corta]])[3]
+            alvo = _alvo_golpe(lado, i, poses_g)
+            teto = area[3] - m - _ext(kk, poses_g)[3]
+            arma = _com(P[p_arma], olhos='s')
+            voo = None
             if lado == 'baixo':
-                h, giro, dur = 0.0, None, 0.17               # desliza por baixo
+                h, giro, dur = 0.0, None, 0.2                # desliza agachado por baixo
             elif lado == 'cima':
-                h, giro, dur = _arco(ay, alvo[1], th * 1.1, teto), None, 0.22   # salta
+                h, giro, dur = _arco(ay, alvo[1], th * 1.1, teto), None, 0.26   # salta
+                voo = _voo(kk, K.esticado(arma), K.encolhido(arma), arma, (0.2, 0.7))
             else:
-                h, giro, dur = _arco(ay, alvo[1], th * 0.6, teto), (0, 360), 0.22  # gira e vira
-            kk.mostrar(_com(P[p_arma], olhos='s'))
+                h, giro, dur = _arco(ay, alvo[1], th * 0.6, teto), (0, 360), 0.3   # roda de espadas
+                voo = _giro(kk, _com(P['giro_a'], olhos='s'), _com(P['giro_b'], olhos='s'), arma)
+            kk.mostrar(arma)
             if lado != 'baixo':
                 _som('pulo')
+            else:
+                pe = kk.extensao(arma)[1]                    # poeira nos pes ao deslizar
+
+                def _rastro_chao(u, _ult=[0.0]):
+                    if u - _ult[0] >= 0.3:
+                        _ult[0] = u
+                        bx, by = kk.ancora()
+                        poeira(bx, by - pe, n=4)
+                voo = _rastro_chao
 
             def _ataca():
                 kk.rotacao = 0
-                seq = K.sequencia([(2, _com(P[p_arma], olhos='s')),
-                                   (1, _com(K.smear(P[p_corta], s1, s2), olhos='g')),
-                                   (1, _com(P[p_corta], olhos='g')), (3, _com(P[p_corta], olhos='s')),
-                                   (1, _com(P[p_corta], olhos='s'))])
-                kk.tocar(seq, on_quadro=lambda q: q == 2 and corte_trecho(
+                kk.tocar(K.sequencia(chaves), on_quadro=lambda q: q == i_r and corte_trecho(
                     i, cor, 1, som_c, cor2, arco=arco, achat=0.5 if lado != 'direita' else 0.42),
                     on_fim=lambda: _combo(i + 1))
             _mover(kk, (ax, ay), alvo, dur, altura=h, rot=giro, cor_fantasma=cor,
-                   on_fim=_ataca, limite=(area, m))
+                   on_fim=_ataca, limite=(area, m), on_passo=voo)
 
         # ── 6. golpe final (estilo Bleach) ───────────────────────────
-        p_fim = ['evo_corte', 'evo_fim', 'dupla', 'chiburi', 'embainha_a', 'embainha_b',
+        p_fim = ['evo_corte', 'evo_fim', 'dupla', 'chiburi_a', 'chiburi', 'embainha_a', 'embainha_b',
                  'embainha_c', 'guardado']
         cx_meio = ox_t + titulo.tw / 2.0
 
@@ -1443,10 +1528,12 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             kk.espelhar = False
             alvo = quadro(cx_meio, y_topo, ['agacha', 'une_a', 'une_b', 'fund_alto', 'evo_alto'])
             ax, ay = kk.ancora()
-            kk.mostrar(_com(P['pulo'], olhos='s'))
+            p_pulo = _com(P['pulo'], olhos='s')
+            kk.mostrar(K.esticado(p_pulo))
             _som('pulo')
-            h = _arco(ay, alvo[1], th * 1.2, area[3] - m - _ext(kk, [P['pulo']])[3])
-            _mover(kk, (ax, ay), alvo, 0.35, altura=h, on_fim=_fundir, limite=(area, m))
+            h = _arco(ay, alvo[1], th * 1.2, area[3] - m - _ext(kk, [K.esticado(p_pulo)])[3])
+            _mover(kk, (ax, ay), alvo, 0.38, altura=h, on_fim=_fundir, limite=(area, m),
+                   on_passo=_voo(kk, K.esticado(p_pulo), p_pulo, K.esticado(p_pulo)))
 
         def _fundir():
             _som('pouso')
@@ -1458,9 +1545,19 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             estado['nome'] = nome
             camada.add_widget(nome)
             # a pose: cruza as duas espadas no alto enquanto diz "Starburst...
-            # Stream!" - o clarao da fusao cai no pico do "Stream"
-            seq = K.sequencia([(3, _com(P['agacha'], olhos='s')), (5, _com(P['dupla'], olhos='s')),
-                               (20, P['une_a']), (14, P['une_b']), (12, P['une_b'])])
+            # Stream!" - o clarao da fusao cai no pico do "Stream".
+            # (54 quadros: a voz e o clarao estao sincronizados com eles)
+            seq = K.sequencia([(3, _com(P['agacha'], olhos='s'), 'out'), (5, _com(P['dupla'], olhos='s'), 'out'),
+                               (20, P['une_a'], 'suave'), (14, P['une_b'], 'segura'), (12, P['une_b'])])
+            # o reiatsu vai subindo: cabelo arrepia, sobretudo levanta e, com
+            # as espadas se juntando, o tronco treme de tanta energia
+            for f, q in enumerate(seq):
+                if f >= 8:
+                    u = min(1.0, (f - 8) / 30.0)
+                    q['sobe'] = u
+                    q['lift'] = q['lift'] + 1.4 * u
+                    if f >= 26:
+                        q['dx'] = q['dx'] + K._TREMOR[(f // 2) % len(K._TREMOR)]
 
             def _q(i):
                 if i == 6:
@@ -1476,7 +1573,9 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         def _flash_fusao():
             hx2, hy2 = kk.ponto_mao(1)
             jx, jy = hx2, hy2 + 6 * ps                 # onde as laminas se encontram
-            kk.mostrar(P['fund_alto'])
+            # segura a espada fundida no alto, tremendo com o reiatsu (loop
+            # ate absorver o infinito)
+            kk.tocar(K.poder(_com(P['fund_alto'], olhos='s'), n=36, de=0.9), loop=True)
             _clarao_boneco(kk, 0.35)
             faiscas.estourar(jx, jy, BRANCO, n=26, forca=dp(220), tam=ps)
             faiscas.estourar(jx, jy, AZUL, n=16, forca=dp(160), tam=ps)
@@ -1530,7 +1629,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             if r is not None:
                 r._absorvido = True
             tx, ty = kk.ponta_espada(1)
-            kk.mostrar(P['evo_alto'])
+            kk.tocar(K.poder(P['evo_alto'], n=36, de=1.0, olhos='l'), loop=True)
             _clarao_boneco(kk, 0.3, 0.8)
             _brilho_tela(camada, 0.7, 0.4, (0.85, 1.0, 1.0))
             _anel(camada, (tx, ty), ps * 3, max(W, H) * 0.6, 0.6, CIANO, esp=dp(5))
@@ -1551,18 +1650,22 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             kk.espelhar = False
             x_ini, y_ini = quadro(ox_t - th * 0.5, y_topo + alt * 0.6, ['evo_carga', 'evo_corte'])
             ax, ay = kk.ancora()
-            kk.mostrar(P['evo_carga'])
+            carga = _com(P['evo_carga'], sobe=1.0)
+            kk.parar()
+            kk.mostrar(K.esticado(carga))
             _som('pulo')
             cam[0].ir(1.0, dur=0.35)
-            h = _arco(ay, y_ini, th * 1.4, area[3] - m - _ext(kk, [P['evo_carga']])[3])
-            _mover(kk, (ax, ay), (x_ini, y_ini), 0.38, altura=h, fantasmas=4, on_fim=_carga,
-                   limite=(area, m))
+            h = _arco(ay, y_ini, th * 1.4, area[3] - m - _ext(kk, [K.esticado(carga)])[3])
+            _mover(kk, (ax, ay), (x_ini, y_ini), 0.4, altura=h, fantasmas=4, on_fim=_carga,
+                   limite=(area, m),
+                   on_passo=_voo(kk, K.esticado(carga), K.encolhido(carga), carga, (0.25, 0.65)))
 
         def _carga():
             _som('pouso')
             ax, ay = kk.ancora()
             poeira(ax, ay - kk.extensao()[1], n=8)
-            kk.tocar(K.sequencia([(5, P['evo_carga']), (1, P['evo_carga'])]))
+            # carrega o golpe: a energia treme o corpo e levanta cabelo e sobretudo
+            kk.tocar(K.poder(P['evo_carga'], n=36, de=0.7, olhos='l'), loop=True)
             _som('carga')
             titulo.pulsar(0.9)
             cam[0].ir(1.16, foco=(ax, ay + alt * 0.2), dur=0.8)
@@ -1593,7 +1696,12 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             x_fim, y_fim = quadro(ox_t + titulo.tw - th * 0.8, y_topo, p_fim)
             ax, ay = kk.ancora()
             cam[0].ir(1.0, dur=0.12)
-            kk.mostrar(P['evo_corte'])
+            # o corte: 2 quadros de rastro (meio golpe e golpe inteiro) e o
+            # mergulho com a lamina a frente
+            corte = _com(P['evo_corte'], sobe=1.0)
+            meio = K.smear(K.misturar(P['evo_carga'], corte, 0.5, 0.5), P['evo_carga']['a1'])
+            kk.tocar(K.sequencia([(1, meio, 'segura'), (1, K.smear(corte, P['evo_carga']['a1']), 'segura'),
+                                  (6, corte, 'segura'), (1, corte)]))
             _som('getsuga')
             _tremer(26)
             _brilho_tela(camada, 0.55, 0.3, (0.8, 1.0, 1.0))
@@ -1615,8 +1723,12 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                    cor_fantasma=CIANO, on_fim=_para, limite=(area, m))
 
         def _para():
-            # para de costas para a frase... e o mundo segura a respiracao
-            kk.mostrar(P['evo_fim'])
+            # para de costas para a frase: a lamina passa do ponto, o corpo
+            # vai junto e volta com uma molinha... e o mundo segura a respiracao
+            fim_p = P['evo_fim']
+            seg = _com(fim_p, a1=fim_p['a1'] - 20, dx=fim_p['dx'] + 1, sobe=0.6)
+            kk.tocar(K.sequencia([(2, _com(P['evo_corte'], sobe=1.0), 'out'), (6, seg, 'mola'),
+                                  (6, fim_p, 'segura'), (1, fim_p)]))
             kk.pausar(0.12)
             kk.empurrar(capa=-20, cabelo=-16)
             ag.depois(0.55, _separa)
@@ -1625,7 +1737,9 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             # a espada evoluida se divide de novo nas duas
             hx2, hy2 = kk.ponto_mao(1)
             aura.alvo = 0.0
-            kk.mostrar(_com(P['dupla'], olhos='s'))
+            dupla = _com(P['dupla'], olhos='s')
+            kk.tocar(K.sequencia([(4, _com(dupla, dx=dupla['dx'] + 1, a1=dupla['a1'] + 12,
+                                           a2=dupla['a2'] - 12), 'mola'), (1, dupla)]))
             _clarao_boneco(kk, 0.3, 0.9)
             faiscas.estourar(hx2, hy2, BRANCO, n=18, forca=dp(160), tam=ps)
             faiscas.estourar(hx2, hy2, AZUL, n=10, forca=dp(120), tam=ps)
@@ -1634,17 +1748,20 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             ag.depois(0.45, _chiburi)
 
         def _chiburi():
-            # chiburi (sacode a lamina) e noto: embainha devagar ate o clique
-            seq = K.sequencia([(3, _com(P['chiburi'], olhos='s')), (6, P['embainha_a']),
-                               (8, P['embainha_b']), (2, P['embainha_c']), (2, P['guardado']),
+            # chiburi (ergue e sacode a lamina num estalo) e noto: embainha
+            # devagar ate o clique
+            seq = K.sequencia(_de_agora(kk, 3, 'out', proxima=P['chiburi_a']) +
+                              [(2, P['chiburi_a'], 'out'), (4, _com(P['chiburi'], olhos='s'), 'segura'),
+                               (6, _com(P['chiburi'], olhos='s'), 'suave'), (8, P['embainha_a'], 'in'),
+                               (2, P['embainha_b'], 'out'), (3, P['embainha_c'], 'mola'),
                                (1, P['guardado'])])
 
             def _q(q):
-                if q == 1:
+                if q == 3:
                     _som('pulo')
-                elif q == 5:
+                elif q == 16:
                     _som('desliza')
-                elif q == 17:
+                elif q == 25:
                     _som('embainhar')
                     bx, by = kk.ponto_mao(1)
                     faiscas.estourar(bx, by, BRANCO, n=6, forca=dp(50), tam=max(2, ps * 0.7),
@@ -1869,8 +1986,9 @@ class KiritoPin:
                                       tam=max(2, self.k.ps * 0.6), gravidade=0)
             except Exception:
                 pass
+        # a cabeca sobe devagar e passa um tiquinho do ponto (curiosidade)
         self._depois(0.3, lambda: self.k.tocar(
-            K.sequencia([(12, K.POSE_A['espia_baixo']), (1, K.POSE_A['espia_olha'])]),
+            K.sequencia([(12, K.POSE_A['espia_baixo'], 'mola'), (1, K.POSE_A['espia_olha'])]),
             on_fim=self._esperar))
 
     def _esperar(self):
@@ -1899,7 +2017,8 @@ class KiritoPin:
         try:
             if self.k is None or self._ocupado:
                 return
-            seq = K.sequencia([(2, K.POSE_A['espia_alto']), (3, K.POSE_A['espia']),
+            # pulinho: sobe rapido e desce com uma molinha
+            seq = K.sequencia([(2, K.POSE_A['espia'], 'out'), (5, K.POSE_A['espia_alto'], 'mola'),
                                (1, K.POSE_A['espia'])])
             self.k.tocar(seq, on_fim=self._esperar)
         except Exception as e:
@@ -1917,7 +2036,9 @@ class KiritoPin:
             ps = self.k.ps
             P = K.POSE_A
             self.k.empurrar(cabelo=18, lift=8)
-            self.k.tocar(K.sequencia([(5, _com(P['espia_alto'], olhos='u', emote='!')),
+            # encolhe um instante e salta de susto (!)
+            self.k.tocar(K.sequencia([(1, _com(P['espia'], olhos='u', dy=0, m1=(3, 4), m2=(-3, 4)), 'out'),
+                                      (4, _com(P['espia_alto'], olhos='u', emote='!'), 'segura'),
                                       (1, _com(P['espia_alto'], olhos='u', emote='!')),
                                       (1, _com(P['espia_baixo'], olhos='u'))]))
 
@@ -1925,7 +2046,7 @@ class KiritoPin:
                 if self._bloq:
                     return
                 self._escondido = False
-                seq = K.sequencia([(14, _com(P['espia_baixo'], olhos='s')),
+                seq = K.sequencia([(14, _com(P['espia_baixo'], olhos='s'), 'in'),
                                    (22, _com(P['espia_olha'], olhos='s', emote='gota')),
                                    (1, _com(P['espia_olha'], olhos='s', emote='gota'))])
                 self.k.tocar(seq, on_fim=self._esperar)
@@ -1988,19 +2109,24 @@ class KiritoPin:
                                      (1, _com(P['espia_alto'], olhos='e', emote='brilho'))]))
                 self._depois(0.35, lambda: _teleporte(k, self.clip, self.faiscas, on_fim=self.remover))
                 return
-            k.tocar(K.sequencia([(3, P['espia_alto']), (1, P['espia_alto'])]))
+            # prepara o pulo: a cabeca afunda um pouco (impulso) e sobe
+            k.tocar(K.sequencia([(2, P['espia'], 'out'),
+                                 (3, _com(P['espia'], dy=-1, m1=(3, 5), m2=(-3, 5)), 'segura'),
+                                 (1, P['espia_alto'])]))
 
             def _pula():
                 ax, ay = k.ancora()
                 self._em_cima = True
-                k.mostrar(P['pulo'])
+                pulo = P['pulo']
+                k.mostrar(K.esticado(pulo))
                 _som('pulo')
                 k.empurrar(capa=-8, lift=10)
                 base = k.extensao(P['guardado'])[1]
                 _, topo2, _ = self._borda()
                 alvo = (ax - self.lado * dp(18), topo2 + base)
-                _mover(k, (ax, ay), alvo, 0.3, altura=4 * ps, fantasmas=False,
-                       on_fim=lambda: _pousa(base))
+                _mover(k, (ax, ay), alvo, 0.32, altura=4 * ps, fantasmas=False,
+                       on_fim=lambda: _pousa(base),
+                       on_passo=_voo(k, K.esticado(pulo), pulo, K.esticado(pulo), (0.25, 0.7)))
 
             def _pousa(base):
                 self._pe = base
@@ -2009,11 +2135,12 @@ class KiritoPin:
                 self.faiscas.estourar(ax, ay - base, POEIRA, n=8, forca=dp(60),
                                       tam=max(2, ps * 0.7), gravidade=dp(250))
                 feliz = _com(P['guardado'], olhos='e', emote='brilho')
-                k.tocar(K.sequencia([(3, P['agacha']), (4, feliz),
-                                     (3, _com(feliz, dy=-1)),                 # faz que sim
-                                     (4, feliz), (1, feliz)]),
+                # amortece o pouso, levanta com uma molinha e faz que sim
+                k.tocar(K.sequencia([(2, P['agacha'], 'segura'), (4, P['agacha'], 'out'),
+                                     (4, feliz, 'suave'), (3, _com(feliz, dy=-1), 'mola'),
+                                     (4, feliz, 'segura'), (1, feliz)]),
                         on_fim=lambda: _teleporte(k, self.clip, self.faiscas, on_fim=self.remover))
-            self._depois(0.12, _pula)
+            self._depois(0.2, _pula)
         except Exception as e:
             print(f"[kirito pin] sumir: {e}")
             self.remover()
@@ -2145,27 +2272,31 @@ def kirito_fatiar(alvo, on_fim=None):
         k.espelhar = not esquerda
         k.ancorar(*ini)
         k.mostrar(_com(K.POSE_A['grudado'], olhos='s'))
-        golpe = [K.POSE_A[n] for n in ('arma1', 'corta_desce', 'segue_desce')]
+        # corte de cima para baixo com preparacao e a lamina passando do ponto
+        chaves, i_r = K.golpe(K.POSE_A['arma1'], K.POSE_A['corta_desce'], n_arma=2, prende=1,
+                              segue=3, volta=4, seg=K.POSE_A['segue_desce'])
+        golpe = [c[1] for c in chaves]
         k.precarregar([K.POSE_A[n] for n in ('agacha', 'pulo')] + golpe)
         # ataca pelo canto do widget do lado de onde veio, inteiro no quadro
         ataque = _no_quadro(k, rx - dp(6) if esquerda else rx + rw + dp(6), cy + rh * 0.35,
                             golpe, area, dp(2))
 
         def _pula():
-            k.tocar(K.sequencia([(3, _com(K.POSE_A['agacha'], olhos='s')),
-                                 (1, _com(K.POSE_A['pulo'], olhos='s'))]))
-            Clock.schedule_once(lambda dt: _mover(
-                k, k.ancora(), ataque, 0.26, altura=rh * 0.8 + dp(20),
-                rot=(k.rotacao, 0), on_fim=_golpe), 0.1)
+            # agacha na parede (mola comprimindo) e salta girando para o item
+            k.tocar(K.sequencia([(2, _com(K.POSE_A['grudado'], olhos='s'), 'in'),
+                                 (3, _com(K.POSE_A['agacha'], olhos='s'), 'segura'),
+                                 (1, _com(K.POSE_A['agacha'], olhos='s'))]))
+            arma = _com(K.POSE_A['arma1'], olhos='s')
+            pulo = _com(K.POSE_A['pulo'], olhos='s')
+            Clock.schedule_once(lambda dt: (k.parar(), _mover(
+                k, k.ancora(), ataque, 0.28, altura=rh * 0.8 + dp(20),
+                rot=(k.rotacao, 0), on_fim=_golpe,
+                on_passo=_voo(k, K.esticado(pulo), pulo, arma, (0.2, 0.62)))), 0.2)
 
         def _golpe():
             k.rotacao = 0
             k.espelhar = not esquerda
-            seq = K.sequencia([(2, _com(K.POSE_A['arma1'], olhos='s')),
-                               (1, _com(K.smear(K.POSE_A['corta_desce'], 112), olhos='g')),
-                               (4, _com(K.POSE_A['segue_desce'], olhos='g')),
-                               (1, _com(K.POSE_A['segue_desce'], olhos='s'))])
-            k.tocar(seq, on_quadro=lambda i: i == 2 and _impacto(), on_fim=_sai)
+            k.tocar(K.sequencia(chaves), on_quadro=lambda i: i == i_r and _impacto(), on_fim=_sai)
 
         def _impacto():
             ccx, ccy = rx + rw / 2.0, ry + rh / 2.0
@@ -2258,7 +2389,12 @@ def kirito_wipe(widgets, on_fim=None):
         _precarregar_sons(['sacar', 'corte', 'corte2', 'titulo', 'pulo', 'teleporte'])
         grupos = [vis[i::4] for i in range(4)]
         golpes = [(0.20, 1, CIANO), (0.50, -1, AZUL), (0.35, 1, CIANO), (0.70, -1, AZUL)]
-        poses_x = [K.POSE_A['x_arma'], K.POSE_A['x_corta']]
+        # cada corte de um jeito (cruzado, de cima, de baixo, cruzado), com
+        # preparacao e a lamina passando do ponto
+        tipos = [('x_arma', 'x_corta'), ('desce_arma', 'desce_corta'),
+                 ('sobe_arma', 'sobe_corta'), ('x_arma', 'x_corta')]
+        cortes = [K.golpe(K.POSE_A[a], K.POSE_A[c], n_arma=2, prende=1, segue=3, volta=4)
+                  for a, c in tipos]
 
         def _desintegra(itens):
             from efeitos import explodir_estilhacos
@@ -2273,19 +2409,19 @@ def kirito_wipe(widgets, on_fim=None):
                 _final()
                 return
             fy, lado, cor = golpes[i]
+            chaves, i_r = cortes[i]
+            poses_g = [c[1] for c in chaves]
             y = base + (topo - base) * (1 - fy)
             k.espelhar = lado < 0
-            alvo = _no_quadro(k, cx - lado * W * 0.28, y, poses_x, area, dp(2))
+            alvo = _no_quadro(k, cx - lado * W * 0.28, y, poses_g, area, dp(2))
+            arma = poses_g[0]
 
             def _ataca():
                 k.espelhar = lado < 0
-                seq = K.sequencia([(2, _com(K.POSE_A['x_arma'], olhos='s')),
-                                   (1, _com(K.smear(K.POSE_A['x_corta'], 140), olhos='g')),
-                                   (3, _com(K.POSE_A['x_corta'], olhos='g')),
-                                   (1, _com(K.POSE_A['x_corta'], olhos='s'))])
+                seq = K.sequencia(chaves)
 
                 def _q(q):
-                    if q == 2:
+                    if q == i_r:
                         cam.add_widget(CorteMeiaLua(
                             centro=(cx, y), raio=W * 0.55, ang_ini=165 if lado > 0 else 15,
                             ang_fim=-35 if lado > 0 else 215, espessura=dp(40),
@@ -2296,14 +2432,20 @@ def kirito_wipe(widgets, on_fim=None):
                         k.pausar(0.07)
                         _desintegra(grupos[i])
                 k.tocar(seq, on_quadro=_q, on_fim=lambda: _golpe(i + 1))
-            _mover(k, k.ancora(), alvo, 0.16, altura=dp(30), cor_fantasma=cor, on_fim=_ataca)
+            k.parar()
+            _mover(k, k.ancora(), alvo, 0.2, altura=dp(30), cor_fantasma=cor, on_fim=_ataca,
+                   on_passo=_voo(k, K.esticado(arma), K.encolhido(arma), arma, (0.2, 0.65)))
 
         def _saca():
-            seq = K.sequencia([(3, _com(K.POSE_A['pega2'], olhos='s')), (3, _com(K.POSE_A['saca2'], olhos='s')),
-                               (3, _com(K.POSE_A['dupla'], olhos='s')), (1, _com(K.POSE_A['dupla'], olhos='s'))])
+            seq = K.sequencia(_de_agora(k, 2, proxima=K.POSE_A['pega2']) +
+                              [(2, _com(K.POSE_A['pega2'], olhos='s'), 'segura'),
+                               (2, _com(K.POSE_A['pega2'], olhos='s'), 'out'),
+                               (4, _com(K.POSE_A['saca2'], olhos='s'), 'mola'),
+                               (2, _com(K.POSE_A['dupla'], olhos='s'), 'segura'),
+                               (1, _com(K.POSE_A['dupla'], olhos='s'))])
 
             def _q(i):
-                if i == 4:
+                if i == 6:
                     mx, my = k.ponto_mao(2)
                     faiscas.estourar(mx, my, AZUL, n=16, forca=dp(120), tam=ps)
                     _som('sacar')
@@ -2311,18 +2453,19 @@ def kirito_wipe(widgets, on_fim=None):
 
         def _final():
             k.espelhar = False
-            alvo = _no_quadro(k, cx, (topo + base) / 2.0,
-                              [K.POSE_A['final_arma'], K.POSE_A['final']], area, dp(2))
+            # o X final: preparacao longa (tensao), 2 quadros de rastro e a
+            # continuidade do golpe
+            chaves_f, i_f = K.golpe(K.POSE_A['final_arma'], K.POSE_A['final'], n_arma=3, prende=3,
+                                    segue=4, volta=7, graus=20.0)
+            poses_f = [c[1] for c in chaves_f]
+            alvo = _no_quadro(k, cx, (topo + base) / 2.0, poses_f, area, dp(2))
 
             def _ataca():
                 k.espelhar = False
-                seq = K.sequencia([(4, _com(K.POSE_A['final_arma'], olhos='s')),
-                                   (1, _com(K.smear(K.POSE_A['final'], 130), olhos='g')),
-                                   (8, _com(K.POSE_A['final'], olhos='g')),
-                                   (1, _com(K.POSE_A['final'], olhos='s'))])
+                seq = K.sequencia(chaves_f)
 
                 def _q(q):
-                    if q == 4:
+                    if q == i_f:
                         for sent, cor in ((1, CIANO), (-1, AZUL)):
                             cam.add_widget(CorteMeiaLua(
                                 centro=(cx, alvo[1]), raio=max(W, H) * 0.5, ang_ini=160 if sent > 0 else 20,
@@ -2334,7 +2477,10 @@ def kirito_wipe(widgets, on_fim=None):
                         k.pausar(0.12)
                         _brilho_tela(cam, 0.35, 0.3)
                 k.tocar(seq, on_quadro=_q, on_fim=_sai)
-            _mover(k, k.ancora(), alvo, 0.2, altura=dp(50), on_fim=_ataca)
+            k.parar()
+            arma_f = poses_f[0]
+            _mover(k, k.ancora(), alvo, 0.24, altura=dp(50), on_fim=_ataca,
+                   on_passo=_voo(k, K.esticado(arma_f), K.encolhido(arma_f), arma_f, (0.2, 0.65)))
 
         def _sai():
             _teleporte(k, cam, faiscas, on_fim=_acabou, teto=by1 - dp(2))

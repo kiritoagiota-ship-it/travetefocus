@@ -90,35 +90,109 @@ def salvar_csv(memorias, data_dir):
     return path_downloads or path_app
 
 
+_DIAS = ('segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo')
+
+
+def _milhar(n):
+    try:
+        return f"{int(n):,}".replace(',', '.')
+    except (TypeError, ValueError):
+        return str(n)
+
+
+def mensagem_turno(memoria):
+    """Mensagem de um turno para o grupo do WhatsApp: cada lote na ordem em
+    que foi lancado (so as pecas) e o total. No WhatsApp, *texto* = negrito."""
+    raw = str(memoria.get('data', '')).strip()
+    dia = raw.split()[0] if raw else ''
+    try:
+        d = datetime.strptime(dia, '%d/%m/%Y')
+        data = f"{dia} ({_DIAS[d.weekday()]})"
+    except ValueError:
+        data = dia or '?'
+    linhas = ['\U0001F4CB *PRODUÇÃO DO DIA*', f'\U0001F4C5 {data}', '']
+    itens = memoria.get('itens') or []
+    for it in itens:
+        nome = str(it[0]).strip() if len(it) > 0 else '?'
+        qtd = it[1] if len(it) > 1 else 0
+        linhas.append(f'\U0001F9F5 {nome} — *{_milhar(qtd)}*')
+    if not itens:
+        linhas.append('(sem itens detalhados)')
+    total = memoria.get('total', 0)
+    try:
+        n = int(total)
+    except (TypeError, ValueError):
+        n = 0
+    palavra = 'peça' if n == 1 else 'peças'
+    linhas += ['', f"✅ *TOTAL: {_milhar(total)} {palavra}*"]
+    return '\n'.join(linhas)
+
+
+def _copiar(texto):
+    try:
+        from kivy.core.clipboard import Clipboard
+        Clipboard.copy(texto)
+        return True
+    except Exception as ex:
+        print(f"[EXPORT] copiar falhou: {ex}")
+        return False
+
+
+def enviar_whatsapp(texto):
+    """Abre o WhatsApp com a mensagem pronta (a pessoa escolhe o grupo e
+    envia). Android: WhatsApp ou WhatsApp Business; sem eles, o menu de
+    compartilhar. No PC: copia o texto.
+    Devolve (ok, aviso): aviso = texto para mostrar na tela, ou None."""
+    if _plat == 'android':
+        if compartilhar_android(texto):
+            return True, None
+        if _copiar(texto):
+            return False, "Nao consegui abrir o WhatsApp.\nA mensagem foi copiada: cole no grupo."
+        return False, "Nao consegui abrir o WhatsApp."
+    if _copiar(texto):
+        return True, "Mensagem copiada!\nCole no grupo do WhatsApp."
+    return False, "Nao consegui copiar a mensagem."
+
+
+def _texto_java(texto):
+    """String Java montada a partir de UTF-8: emojis passam inteiros pelo
+    JNI em qualquer versao do pyjnius."""
+    try:
+        from jnius import autoclass
+        JString = autoclass('java.lang.String')
+        return JString(texto.encode('utf-8'), 'UTF-8')
+    except Exception as ex:
+        print(f"[EXPORT] texto java: {ex}")
+        return texto
+
+
 def compartilhar_android(texto, caminho_csv=None):
     """
     Compartilha via Intent Android.
-    Tenta primeiro o WhatsApp; cai para chooser geral.
+    Tenta o WhatsApp (normal e Business); cai para o chooser geral.
     """
     try:
         from jnius import autoclass
         Intent  = autoclass('android.content.Intent')
         PA      = autoclass('org.kivy.android.PythonActivity')
+        jtexto  = _texto_java(texto)
 
-        def _enviar(pkg=None):
+        def _intent(pkg=None):
             intent = Intent(Intent.ACTION_SEND)
             intent.setType('text/plain')
-            intent.putExtra(Intent.EXTRA_TEXT, texto)
+            intent.putExtra(Intent.EXTRA_TEXT, jtexto)
             if pkg:
                 intent.setPackage(pkg)
-                try:
-                    PA.mActivity.startActivity(intent)
-                    return True
-                except Exception:
-                    return False
-            chooser = Intent.createChooser(intent, 'Compartilhar historico')
-            PA.mActivity.startActivity(chooser)
-            return True
+            return intent
 
-        # 1ª tentativa: WhatsApp direto
-        if not _enviar('com.whatsapp'):
-            # 2ª tentativa: chooser geral
-            _enviar()
+        for pkg in ('com.whatsapp', 'com.whatsapp.w4b'):
+            try:
+                PA.mActivity.startActivity(_intent(pkg))
+                return True
+            except Exception:
+                pass                       # nao instalado: tenta o proximo
+        chooser = Intent.createChooser(_intent(), 'Compartilhar')
+        PA.mActivity.startActivity(chooser)
         return True
     except Exception as ex:
         print(f"[EXPORT] compartilhar_android falhou: {ex}")

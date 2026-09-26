@@ -132,7 +132,37 @@ _PERNAS = {
     'agachado': ["..PPP..PPP...", "..PP....PPP..", "..PP.....PP..", "..BBB...BBBB."],
     'pulo':     ["...PPP.PPP...", "...PP...PP...", "...PP...PP...", "....BB..BB..."],
     'grudado':  [".PPP...PPP...", ".PP.....PP...", ".PP.....PP...", ".BB.....BB..."],
+    # quadros do meio (entram sozinhos na troca de pernas, ver _TRANS_PERNAS):
+    # meio passo (em pe -> avanco), avanco baixo (agachado -> avanco),
+    # joelhos dobrando (em pe -> agachado) e o balanco solto do meio
+    'passo':    ["....PP.PP....", "....PP..PP...", "...PP...PP...", "...PP....PP..",
+                 "...PP....PP..", "...BB....BB..", "..BBB....BBB."],
+    'avanco_baixo': ["...PP..PPP...", "..PP.....PP..", "..PP......PP.", ".BB.......BB.",
+                     "BBB.......BBB"],
+    'dobra':    ["...PPP.PPP...", "...PP...PP...", "...PP....PP..", "...PP....PP..",
+                 "...BB...BBB..", "..BBB...BBBB."],
+    'solto_meio': ["....PP.PP....", "....PP.PP....", "....PP.PP....", "....PP.PP....",
+                   "...PP...PP...", "...BB...BB...", "...B.....B..."],
 }
+
+# troca de pernas entre duas chaves: passa por um quadro do meio (o corpo
+# desce/sobe junto, sem pular de uma altura para a outra)
+_TRANS_PERNAS = {
+    ('repouso', 'avanco'): 'passo', ('avanco', 'repouso'): 'passo',
+    ('agachado', 'avanco'): 'avanco_baixo', ('avanco', 'agachado'): 'avanco_baixo',
+    ('repouso', 'agachado'): 'dobra', ('agachado', 'repouso'): 'dobra',
+    ('solto', 'solto2'): 'solto_meio', ('solto2', 'solto'): 'solto_meio',
+    ('solto', 'pulo'): 'dobra', ('solto2', 'pulo'): 'dobra',
+    ('avanco', 'pulo'): 'suspenso', ('pulo', 'avanco'): 'suspenso',
+    ('repouso', 'pulo'): 'suspenso', ('pulo', 'repouso'): 'suspenso',
+    ('suspenso', 'agachado'): 'dobra', ('agachado', 'suspenso'): 'dobra',
+    ('suspenso', 'avanco'): 'passo', ('avanco', 'suspenso'): 'passo',
+}
+
+
+def altura(p):
+    """Altura do quadril (em px da grade) acima da sola da bota."""
+    return len(_PERNAS[p['pernas']]) + p['dy']
 
 GW, GH = 80, 72          # grade total (espadas cabem para qualquer lado, ate a fundida erguida)
 _X0 = 25                 # coluna esquerda do tronco/cabeca
@@ -472,7 +502,7 @@ def _emote(px, qual, base_x, topo_cab):
 
 # pose padrao: todos os campos que a montagem entende
 POSE_BASE = dict(dx=0, dy=0, pernas='repouso', olhos='a', cabelo=0.0, capa=0.0,
-                 lift=0.0, fase=0.0, brilho=None, saia=1.0, frente1=False,
+                 lift=0.0, sobe=0.0, fase=0.0, brilho=None, saia=1.0, frente1=False,
                  tipo1=1, fusao=False, emote=None,
                  m1=(3, -5), a1=-40.0, c1=15, s1=None,
                  m2=None, a2=None, c2=15, s2=None)
@@ -481,7 +511,7 @@ POSE_BASE = dict(dx=0, dy=0, pernas='repouso', olhos='a', cabelo=0.0, capa=0.0,
 def montar(p):
     """Pose (dict) -> {(x, y): cor}."""
     px = {}
-    dx, dy = int(p['dx']), int(p['dy'])
+    dx, dy = int(round(p['dx'])), int(round(p['dy']))
     pernas = _PERNAS[p['pernas']]
     topo_tronco = _PES + len(pernas) + len(_TRONCO) - 1 + dy
     base_x = _X0 + dx
@@ -512,21 +542,35 @@ def montar(p):
     if not ergue2:
         _braco_tras()
 
-    # cabelo: mechas continuas que se alongam com o vento e ondulam
+    # cabelo: mechas continuas que se alongam com o vento e ondulam.
+    # `sobe` (0..1): vento de reiatsu vindo de baixo - as mechas curvam para
+    # cima e os fios do topo se arrepiam
     cb = p['cabelo']
-    amp = 0.35 + 0.28 * min(3.0, abs(cb))
+    sobe = max(0.0, min(1.2, p.get('sobe', 0.0) or 0.0))
+    amp = 0.35 + 0.28 * min(3.0, abs(cb)) + 0.35 * sobe
     for linha, base in ((2, 1), (3, 2), (4, 2), (5, 3), (6, 2), (7, 3), (8, 1)):
-        comp = base + int(round(max(0.0, cb) * (0.5 + linha * 0.12)))
+        comp = base + int(round(max(0.0, cb) * (0.5 + linha * 0.12))) + int(round(sobe * 1.4))
         caida = max(0.0, cb) * 0.25 * (linha - 4) / 4.0
         for i in range(comp):
             u = (i + 1) / float(comp)
             onda = amp * u * math.sin(dois_pi * (fase * 1.3 - i / 4.0 - linha * 0.1))
-            y = topo_cab - linha - int(round((caida if i > comp // 2 else 0) + onda))
+            ergue = sobe * (i + 1) * 0.6
+            y = topo_cab - linha - int(round((caida if i > comp // 2 else 0) + onda - ergue))
             px[(base_x - 1 - i, y)] = 'h' if (linha == 5 and i == comp - 1) else 'H'
     # fios espetados no topo que balancam
     for bxx, fx in ((4, 0.0), (8, 0.35)):
         oscila = int(round(0.7 * math.sin(dois_pi * (fase + fx)) - min(1.0, max(0.0, cb) * 0.4)))
         px[(base_x + bxx + oscila, topo_cab + 1)] = 'H'
+        if sobe > 0.3:
+            px[(base_x + bxx + oscila, topo_cab + 2)] = 'H'
+        if sobe > 0.75:
+            px[(base_x + bxx + oscila + (1 if bxx > 6 else -1), topo_cab + 3)] = 'h'
+    if sobe > 0.5:                                   # mais fios arrepiando com a energia
+        for bxx, fx in ((2, 0.2), (6, 0.6), (10, 0.85)):
+            oscila = int(round(0.6 * math.sin(dois_pi * (fase * 1.5 + fx))))
+            px[(base_x + bxx + oscila, topo_cab + 1)] = 'H'
+            if sobe > 0.9:
+                px[(base_x + bxx + oscila, topo_cab + 2)] = 'h'
 
     if ergue2 and not acima2:
         _braco_tras()
@@ -585,8 +629,10 @@ def pose(**kw):
 
 def _chave(p):
     def r(k, v):
-        if k in ('capa', 'cabelo', 'lift'):
+        if k in ('capa', 'cabelo', 'lift', 'sobe'):
             return round(v * 4) / 4.0            # fisica: passos de 0.25
+        if k in ('dx', 'dy'):
+            return int(round(v))                 # a montagem arredonda igual
         if isinstance(v, float):
             return round(v, 1)
         if isinstance(v, tuple):
@@ -598,33 +644,80 @@ def _chave(p):
 # ═══════════════════════════════════════════════════════════════════
 #  SEQUENCIAS (keyframes interpolados a 30fps)
 # ═══════════════════════════════════════════════════════════════════
-_NUM = ('dx', 'dy', 'cabelo', 'capa', 'lift', 'a1', 'a2', 'c1', 'c2', 'saia')
+_NUM = ('dx', 'dy', 'cabelo', 'capa', 'lift', 'sobe', 'a1', 'a2', 'c1', 'c2', 'saia')
 
 
 def _ease(t):
     return t * t * (3 - 2 * t)
 
 
+def _facil(nome, t):
+    """Curvas de tempo de um trecho:
+    suave  - comeca e termina devagar (padrao)
+    out    - arranca rapido e freia (golpes, reacoes)
+    in     - comeca devagar e acelera (preparacao)
+    mola   - chega, passa um pouco do ponto e volta (acomodar depois do golpe)
+    linear - velocidade constante
+    segura - fica parado na chave (tensao antes do golpe)"""
+    if nome == 'segura':
+        return 0.0
+    if nome == 'linear':
+        return t
+    if nome == 'out':
+        return 1 - (1 - t) ** 3
+    if nome == 'in':
+        return t * t
+    if nome == 'mola':
+        c1 = 1.4
+        return 1 + (c1 + 1) * (t - 1) ** 3 + c1 * (t - 1) ** 2
+    return _ease(t)
+
+
+def misturar(p0, p1, t, tl=None):
+    """Pose entre p0 e p1: numeros e maos por `t` (ja com a curva de tempo);
+    se as pernas mudam, passa pelo quadro do meio (escolhido pelo progresso
+    linear `tl`) e o quadril sobe/desce continuo, sem pulo de altura."""
+    tl = t if tl is None else tl
+    q = dict(p0)
+    for k in _NUM:
+        a, b = p0[k], p1[k]
+        if a is not None and b is not None:
+            q[k] = a + (b - a) * t
+    for k in ('m1', 'm2'):
+        a, b = p0[k], p1[k]
+        if a is not None and b is not None:
+            q[k] = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+    l0, l1 = p0['pernas'], p1['pernas']
+    if l0 != l1:
+        cam = [l0, l1]
+        meio = _TRANS_PERNAS.get((l0, l1))
+        if meio is not None:
+            n0, n1, nm = len(_PERNAS[l0]), len(_PERNAS[l1]), len(_PERNAS[meio])
+            if min(n0, n1) <= nm <= max(n0, n1):
+                cam = [l0, meio, l1]
+        q['pernas'] = cam[min(len(cam) - 1, max(0, int(tl * len(cam))))]
+        h = altura(p0) + (altura(p1) - altura(p0)) * t
+        q['dy'] = h - len(_PERNAS[q['pernas']])
+    return q
+
+
 def sequencia(chaves):
-    """chaves: [(quadros, pose), ...] -> lista de poses (1 por quadro).
-    `quadros` = duracao do trecho ate a proxima chave. Campos numericos e
-    posicoes das maos interpolam; os demais trocam na chave."""
+    """chaves: [(quadros, pose) ou (quadros, pose, curva), ...] -> lista de
+    poses (1 por quadro). `quadros` = duracao do trecho ate a proxima chave;
+    `curva` = como o tempo corre nele (ver _facil; padrao 'suave'). Campos
+    numericos e maos interpolam; as pernas passam por um quadro do meio."""
     out = []
-    for i, (n, p0) in enumerate(chaves):
+    for i, ch in enumerate(chaves):
+        n, p0 = ch[0], ch[1]
+        curva = ch[2] if len(ch) > 2 else 'suave'
         p1 = chaves[i + 1][1] if i + 1 < len(chaves) else p0
         n = max(1, int(n))
         for f in range(n):
-            t = _ease(f / float(n)) if p1 is not p0 else 0.0
-            q = dict(p0)
-            for k in _NUM:
-                a, b = p0[k], p1[k]
-                if a is not None and b is not None:
-                    q[k] = a + (b - a) * t
-            for k in ('m1', 'm2'):
-                a, b = p0[k], p1[k]
-                if a is not None and b is not None:
-                    q[k] = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
-            out.append(q)
+            tl = f / float(n)
+            if p1 is p0 or curva == 'segura' or f == 0:
+                out.append(dict(p0))
+            else:
+                out.append(misturar(p0, p1, _facil(curva, tl), tl))
     return out
 
 
@@ -798,8 +891,8 @@ class KiritoPixel(Widget):
     def mao_local(self, qual=1, p=None):
         p = p or self._base
         pernas = _PERNAS[p['pernas']]
-        topo_tronco = _PES + len(pernas) + len(_TRONCO) - 1 + int(p['dy'])
-        base_x = _X0 + int(p['dx'])
+        topo_tronco = _PES + len(pernas) + len(_TRONCO) - 1 + int(round(p['dy']))
+        base_x = _X0 + int(round(p['dx']))
         if qual == 1 and p['m1'] is not None:
             x, y = base_x + 9 + p['m1'][0], topo_tronco - 2 + p['m1'][1]
         elif qual == 2:
@@ -1161,6 +1254,10 @@ POSE_A.update({
     # do alto para baixo (kirioroshi): no ar, as duas acima da cabeca
     'desce_arma':  pose(pernas='pulo', m1=(-1, 12), a1=100.0, m2=(-2, 12), a2=115.0, olhos='s'),
     'desce_corta': pose(pernas='pulo', dy=-1, m1=(6, -4), a1=-60.0, m2=(4, -3), a2=-45.0, olhos='g'),
+    # preparacao do iai: mais baixo, pende para tras, mao firme no cabo
+    'saca0':       pose(pernas='avanco_baixo', dx=-1, m1=(3, -2), a1=_BAINHA_ANG, c1=4, m2=(-3, 0), olhos='s'),
+    # chiburi em dois tempos: ergue as laminas e sacode para baixo
+    'chiburi_a':   pose(pernas='avanco', dx=1, dy=-1, m1=(5, 6), a1=70.0, m2=(4, 2), a2=50.0, olhos='s'),
 })
 
 # golpe final (estilo Bleach): junta as duas espadas acima da cabeca, a
@@ -1181,6 +1278,115 @@ def smear(p, de=None, de2=None):
     q = dict(p)
     q['s1'] = de
     q['s2'] = de2
+    return q
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  MOVIMENTO SOLTO: preparacao, golpe, continuidade e acomodacao
+# ═══════════════════════════════════════════════════════════════════
+def _sentido(a, b):
+    if a is None or b is None or a == b:
+        return 0
+    return 1 if b > a else -1
+
+
+def _passo_mao(m_de, m_para, d, recuar):
+    """Mao `d` px para tras (recuar) ou para a frente do caminho do golpe."""
+    if m_de is None or m_para is None:
+        return m_para if not recuar else m_de
+    vx, vy = m_para[0] - m_de[0], m_para[1] - m_de[1]
+    n = math.hypot(vx, vy) or 1.0
+    if recuar:
+        return (m_de[0] - vx / n * d, m_de[1] - vy / n * d)
+    return (m_para[0] + vx / n * d, m_para[1] + vy / n * d)
+
+
+def golpe(arma, corta, olhos=('s', 'g', 's'), n_arma=3, prende=2, segue=3, volta=6,
+          graus=16.0, lamina_recua=True, seg=None, duplo=True):
+    """Chaves de um corte com cara de animacao desenhada a mao:
+      arma -> preparacao (a lamina recua mais, o corpo abaixa e pende para
+      tras; segura um instante) -> meio do golpe (rastro) -> rastro do golpe
+      inteiro -> impacto que passa do ponto (corpo inclina para a frente) ->
+      volta com uma molinha para a pose do corte.
+    Devolve (chaves, i_rastro): i_rastro = quadro do rastro completo (onde
+    entram o efeito, o som e o hit-stop)."""
+    s1 = _sentido(arma['a1'], corta['a1'])
+    s2 = _sentido(arma['a2'], corta['a2'])
+    arma = dict(arma, olhos=olhos[0])
+    ant = dict(arma)
+    if lamina_recua:
+        if arma['a1'] is not None:
+            ant['a1'] = arma['a1'] - s1 * graus * 0.7
+        if arma['a2'] is not None:
+            ant['a2'] = arma['a2'] - s2 * graus * 0.7
+    ant['m1'] = _passo_mao(arma['m1'], corta['m1'], 1.0, True)
+    if arma['m2'] is not None and corta['m2'] is not None:
+        ant['m2'] = _passo_mao(arma['m2'], corta['m2'], 1.0, True)
+    ant['dx'] = arma['dx'] - 1                       # pende para tras
+    if altura(arma) > 3:
+        ant['dy'] = arma['dy'] - 1                   # e abaixa (se nao estiver agachado)
+    imp = dict(corta, olhos=olhos[1])
+    if seg is None:
+        seg = dict(imp)
+        if corta['a1'] is not None and s1:
+            seg['a1'] = corta['a1'] + s1 * graus
+        if corta['a2'] is not None and s2:
+            seg['a2'] = corta['a2'] + s2 * graus
+        seg['m1'] = _passo_mao(arma['m1'], corta['m1'], 1.0, False)
+        if arma['m2'] is not None and corta['m2'] is not None:
+            seg['m2'] = _passo_mao(arma['m2'], corta['m2'], 1.0, False)
+        seg['dx'] = corta['dx'] + 1                  # inclina para a frente
+    else:
+        seg = dict(seg, olhos=olhos[1])
+    fim = dict(corta, olhos=olhos[2])
+    chaves = [(n_arma, arma, 'suave'), (prende, ant, 'segura')]
+    if duplo:                                         # meio do golpe: 2 quadros de rastro
+        meio = misturar(ant, imp, 0.5, 0.5)
+        meio = smear(meio, ant['a1'] if s1 else None, ant['a2'] if s2 else None)
+        chaves.append((1, meio, 'segura'))
+    rastro = smear(imp, ant['a1'] if s1 else None, ant['a2'] if s2 else None)
+    i_rastro = sum(c[0] for c in chaves)
+    chaves += [(1, rastro, 'segura'), (segue, imp, 'out'), (volta, seg, 'mola'), (1, fim, 'segura')]
+    return chaves, i_rastro
+
+
+# tremor de poder (px no tronco): as pernas ficam firmes, so o tronco treme
+_TREMOR = (0, 1, 1, 0, -1, 0, 1, 0, -1, -1, 0, 1)
+
+
+def poder(base, n=36, forca=1.0, sobe=1.0, lift=1.6, olhos=None, de=0.0):
+    """Quadros de uma pose segurando energia: tronco tremendo, cabelo
+    arrepiando para cima e sobretudo levantando com o vento de reiatsu.
+    `de` = de onde parte a energia (0..1): cresce ate `forca` ao longo dos
+    quadros. Para tocar em loop (loop=True)."""
+    quadros = []
+    for f in range(n):
+        u = de + (1.0 - de) * min(1.0, f / max(1.0, n * 0.35))
+        q = dict(base)
+        if olhos:
+            q['olhos'] = olhos
+        q['sobe'] = sobe * u
+        q['lift'] = base['lift'] + lift * u
+        treme = _TREMOR[(f // 2) % len(_TREMOR)]
+        if forca * u >= 0.5:
+            q['dx'] = base['dx'] + treme
+        quadros.append(q)
+    return quadros
+
+
+def encolhido(p):
+    """A mesma pose com as pernas recolhidas (no alto de um pulo)."""
+    q = dict(p)
+    q['pernas'] = 'pulo'
+    q['dy'] = max(-1, min(3, altura(p) - 4))
+    return q
+
+
+def esticado(p):
+    """A mesma pose com as pernas esticadas (impulso do pulo / indo pousar)."""
+    q = dict(p)
+    q['pernas'] = 'suspenso'
+    q['dy'] = 0
     return q
 
 

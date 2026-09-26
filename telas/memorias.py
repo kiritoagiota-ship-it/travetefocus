@@ -291,6 +291,14 @@ class TelaMemorias(Screen):
         scroll.add_widget(items_box)
         caixa.add_widget(scroll)
 
+        # ── Enviar a producao do turno para o grupo do WhatsApp ──────────
+        btn_zap = BotaoAngular(
+            text=">>  ENVIAR NO WHATSAPP",
+            size_hint_y=None, height=dp(44), font_size="12sp",
+            cor_borda=[0.15, 0.85, 0.42, 0.9], cor_borda_kv=[0.15, 0.85, 0.42, 0.9],
+            cor_fundo=[0.02, 0.13, 0.06, 0.95], cor_texto=[0.35, 1.0, 0.6, 1.0])
+        caixa.add_widget(btn_zap)
+
         # ── Botões ───────────────────────────────────────────────────────
         botoes = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(10))
         btn_f  = BotaoAngular(text=">>  FECHAR",  size_hint_x=0.55)
@@ -338,11 +346,41 @@ class TelaMemorias(Screen):
             btn_a.disabled = True
             kirito_fatiar(caixa, _executar_delete)
 
+        def _whatsapp(*_):
+            try:
+                from exportar import mensagem_turno, enviar_whatsapp
+                ok, aviso = enviar_whatsapp(mensagem_turno(memoria))
+            except Exception as e:
+                print(f"[whatsapp] {e}")
+                ok, aviso = False, "Nao consegui preparar a mensagem."
+            vibrar(40)
+            if aviso:
+                self._aviso(aviso, ok)
+
         _bind_teclado(inp_data, pop)
+        btn_zap.bind(on_release=_whatsapp)
         btn_salvar_data.bind(on_release=_salvar_data)
         btn_f.bind(on_release=lambda *_: pop.dismiss())
         btn_a.bind(on_release=_deletar)
         _abrir_popup(caixa, pop)
+
+    def _aviso(self, msg, ok=True):
+        """Popup curto por cima de tudo (verde = deu certo, ciano = aviso)."""
+        pop, layout = _make_popup()
+        cor = '#5cff9a' if ok else '#00e5ff'
+        cx = BoxLayout(orientation='vertical', padding=[dp(20), dp(18), dp(20), dp(18)],
+                       spacing=dp(10), size_hint=(0.84, None), height=dp(170))
+        aplicar_fundo_holografico(cx, (0.15, 0.85, 0.42, 0.9) if ok else (0, 0.9, 1, 0.9))
+        cx.add_widget(Label(
+            text=f"[color={cor}]{msg}[/color]",
+            markup=True, font_name="rajdhani.ttf", font_size="15sp",
+            halign="center", valign="middle", size_hint_y=None, height=dp(70)))
+        btn = BotaoAngular(text=">>  OK", size_hint_y=None, height=dp(48))
+        btn.bind(on_release=lambda *_: pop.dismiss())
+        cx.add_widget(btn)
+        layout.add_widget(cx)
+        cx.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+        _abrir_popup(cx, pop)
 
     def exportar_historico(self):
         """Exporta o histórico como CSV e compartilha via WhatsApp."""
