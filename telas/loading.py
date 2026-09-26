@@ -52,6 +52,7 @@ class TelaLoading(Screen):
         self._typing_ativo   = False
         self._espadas_widget = None
         self._cena           = None
+        self._kpin           = None
 
     # ── Sessao ─────────────────────────────────────────────────────────────
 
@@ -94,6 +95,9 @@ class TelaLoading(Screen):
             from cenas import limpar_cena
             limpar_cena(self._cena)
             self._cena = None
+        if self._kpin is not None:
+            self._kpin.remover()
+            self._kpin = None
         # Limpar espadas ao sair — evita widget órfão na memória
         try:
             if self._espadas_widget and self._espadas_widget.parent:
@@ -251,6 +255,21 @@ class TelaLoading(Screen):
         layout.add_widget(caixa)
         caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
         tentativas = [3]
+        # Kirito escondido num canto, esperando o PIN
+        try:
+            from cenas import KiritoPin
+            kpin = KiritoPin()
+        except Exception as e:
+            print(f"[loading] kirito do pin: {e}")
+            kpin = None
+        self._kpin = kpin
+
+        def _k(metodo):
+            try:
+                if kpin is not None:
+                    getattr(kpin, metodo)()
+            except Exception as e:
+                print(f"[loading] kirito {metodo}: {e}")
 
         def _verificar(*_):
             pin = inp_pin.text.strip()
@@ -271,11 +290,8 @@ class TelaLoading(Screen):
                 try: som.tocar_retomada()
                 except Exception: pass
                 self._salvar_sessao()
-                try:
-                    from cenas import espiar
-                    Clock.schedule_once(lambda dt: espiar(), 0.25)
-                except Exception as e:
-                    print(f"[loading] espiar: {e}")
+                # acesso liberado: o Kirito pula para fora (volta na cena do titulo)
+                Clock.schedule_once(lambda dt: _k('sumir'), 0.35)
 
                 def _fechar(dt2):
                     def _apos_fade(*_):
@@ -291,6 +307,7 @@ class TelaLoading(Screen):
                 inp_pin.text = ""
                 try: som.tocar_pin_erro()
                 except Exception: pass
+                _k('susto')
                 _safe_treme(12)
                 if tentativas[0] > 0:
                     lbl_status.text = (
@@ -310,6 +327,7 @@ class TelaLoading(Screen):
                     btn.disabled     = True
                     inp_pin.disabled = True
                     def _bloqueado(_dt):
+                        _k('remover')
                         pop.dismiss()
                         _safe_mudar_tela("menu")
                     Clock.schedule_once(_bloqueado, 2.5)
@@ -318,11 +336,21 @@ class TelaLoading(Screen):
         inp_pin.bind(on_text_validate=_verificar)
         # Som de tecla ao digitar o PIN
         def _pin_tecla(inst, val):
+            if not val or val == "****":        # limpeza/mascara nao sao teclas
+                return
             try: som.tocar_pin_tecla()
             except Exception: pass
+            _k('reagir_tecla')
         inp_pin.bind(text=_pin_tecla)
         pop.bind(on_dismiss=lambda *_: inp_pin.unbind(text=_pin_tecla))
+        def _ao_fechar(*_):
+            # IMPORTANTE: nao devolver nada. Se um handler de on_dismiss devolve
+            # algo "verdadeiro" (ex: o evento do Clock), o Kivy CANCELA o fechar
+            # e o popup fica aberto e invisivel por cima do app.
+            Clock.schedule_once(lambda dt: _k('remover'), 0.6)
+        pop.bind(on_dismiss=_ao_fechar)
         _abrir_popup(caixa, pop)
+        Clock.schedule_once(lambda dt: _k('aparecer'), 0.45)
         _bind_teclado(caixa, pop)
         from helpers import anexar_teclado
         # teclado numerico com fechar via _verificar (OK no teclado = verificar PIN)

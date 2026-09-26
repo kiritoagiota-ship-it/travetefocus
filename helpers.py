@@ -197,7 +197,7 @@ def transicao_tela(app, destino):
         _transicao['sentido'] = -sentido
         cor = (0.0, 0.9, 1.0) if sentido > 0 else (0.6, 0.25, 1.0)
         try:
-            som.tocar_corte()
+            som.tocar('transicao')
         except Exception:
             pass
         golpe_tela(on_meio=_trocar, on_fim=_fim, cor=cor, sentido=sentido)
@@ -207,14 +207,22 @@ def transicao_tela(app, destino):
         _trocar()
 
 
-def animar_ganho_xp(quantidade):
+def animar_ganho_xp(quantidade, origem=None):
+    """'+N XP' subindo. Com `origem` (ex: o item recem-adicionado na lista),
+    nasce em cima dele em vez de no meio da tela (onde cobria o botao)."""
     ww = Window.width
     wh = Window.height
-    fs = min(int(wh * 0.07), 42)
+    fs = min(int(wh * 0.055), 34)
 
-    y_base  = wh * 0.66
+    y_base = wh * 0.66
+    if origem is not None:
+        try:
+            _, oy = origem.to_window(origem.x, origem.y)
+            y_base = oy + origem.height / 2.0 - 30
+        except Exception:
+            pass
     y_alto  = y_base + 22
-    y_saida = y_base + wh * 0.20
+    y_saida = y_base + min(wh * 0.12, dp(90))
 
     lbl = Label(
         text=f"[b]+{quantidade} XP[/b]",
@@ -271,11 +279,85 @@ def _abrir_popup(caixa, pop):
                   duration=0.20, transition='out_back').start(caixa)
 
     pop.bind(on_open=_on_open)
+
+    def _on_dismiss(*_):
+        # fecha o teclado SAO dos campos do popup (senao ele ficava aberto
+        # sobre a tela). Nao devolver nada: valor "verdadeiro" cancela o fechar.
+        try:
+            from kivy.uix.textinput import TextInput
+            for w in caixa.walk(restrict=True):
+                if isinstance(w, TextInput) and w.focus:
+                    w.focus = False
+        except Exception as e:
+            print(f"[popup] soltar foco: {e}")
+    pop.bind(on_dismiss=_on_dismiss)
     pop.open()
 
 
 
 # ── Teclado customizado SAO ───────────────────────────────────────────────────
+
+def _caixa_do_popup(inp):
+    """Se `inp` esta num popup, devolve a caixa (filha do conteudo do Popup)."""
+    for pop in list(Window.children):
+        if not isinstance(pop, Popup):
+            continue
+        conteudo = pop.content
+        w = inp
+        while w is not None and w.parent is not None:
+            if w.parent is conteudo:
+                return w
+            w = w.parent
+    return None
+
+
+def _desviar_do_teclado(inp, kb, estado):
+    """O teclado SAO nao informa altura ao Kivy (Window.keyboard_height fica
+    0), entao o proprio teclado sobe o que estiver atras dele: a caixa do
+    popup ou, fora de popup, a tela inteira."""
+    try:
+        _, iy = inp.to_window(inp.x, inp.y)
+        falta = (kb.top + dp(12)) - iy
+        if falta <= 0:
+            return
+        caixa = _caixa_do_popup(inp)
+        if caixa is not None:
+            _, cy = caixa.to_window(caixa.x, caixa.y)
+            topo_max = Window.height - dp(6)
+            novo_cy = cy + falta + caixa.height / 2.0
+            novo_cy = min(novo_cy, topo_max - caixa.height / 2.0) if caixa.height < topo_max - kb.top else novo_cy
+            estado['alvo'], estado['orig'] = caixa, dict(caixa.pos_hint)
+            dica = dict(caixa.pos_hint)
+            # pos_hint e relativo ao conteudo do popup (menor que a janela)
+            pai = caixa.parent
+            _, py = pai.to_window(pai.x, pai.y)
+            dica['center_y'] = (novo_cy - py) / float(max(1, pai.height))
+            Animation.cancel_all(caixa, 'pos_hint')
+            Animation(pos_hint=dica, duration=0.18, transition='out_quad').start(caixa)
+        else:
+            sm = App.get_running_app().root.ids.sm
+            estado['alvo'], estado['orig'] = sm, None
+            Animation.cancel_all(sm, 'y')
+            Animation(y=falta, duration=0.18, transition='out_quad').start(sm)
+    except Exception as e:
+        print(f"[teclado] desviar: {e}")
+
+
+def _voltar_do_teclado(estado):
+    alvo, orig = estado.get('alvo'), estado.get('orig')
+    estado['alvo'] = estado['orig'] = None
+    if alvo is None:
+        return
+    try:
+        if orig is not None:
+            Animation.cancel_all(alvo, 'pos_hint')
+            Animation(pos_hint=orig, duration=0.16, transition='out_quad').start(alvo)
+        else:
+            Animation.cancel_all(alvo, 'y')
+            Animation(y=0, duration=0.16, transition='out_quad').start(alvo)
+    except Exception as e:
+        print(f"[teclado] voltar: {e}")
+
 
 def anexar_teclado(inp, tipo='letras', decimal=False):
     """
@@ -294,11 +376,13 @@ def anexar_teclado(inp, tipo='letras', decimal=False):
     Kls = TecladoLetras if tipo == 'letras' else TecladoNumeros
     ref    = [None]
     _touch = [None]  # binding de toque fora
+    desvio = {'alvo': None, 'orig': None}
 
     def _esconder():
         kb = ref[0]
         if not kb:
             return
+        _voltar_do_teclado(desvio)
         # Remover listener de toque fora
         try:
             Window.unbind(on_touch_down=_touch[0])
@@ -345,6 +429,7 @@ def anexar_teclado(inp, tipo='letras', decimal=False):
             Window.add_widget(kb)
             ref[0] = kb
             _Anim(opacity=1, duration=0.14, transition='out_expo').start(kb)
+            Clock.schedule_once(lambda dt: _desviar_do_teclado(inst, kb, desvio), 0)
 
             # Registrar listener para fechar ao tocar fora
             _touch[0] = _toque_fora

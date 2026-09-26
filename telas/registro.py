@@ -109,7 +109,6 @@ class TelaRegistro(Screen):
         self.ids.qtd_input.text  = ""
         som.tocar_add()
         vibrar(50)
-        animar_ganho_xp(xp_total)
         self.ids.empty_state.opacity = 0
         self.ids.empty_state.height  = 0
         dado = app.registros[-1]
@@ -118,6 +117,8 @@ class TelaRegistro(Screen):
         btn.bind(on_release=lambda x, d=dado, w=btn: self.confirmar_delete(d, w))
         self.ids.lista_container.add_widget(btn)
         entrada_cascata([btn], dy=dp(30))
+        # o '+XP' nasce em cima do item novo (espera 1 frame para ele ter posicao)
+        Clock.schedule_once(lambda dt: animar_ganho_xp(xp_total, origem=btn), 0.05)
         Clock.schedule_once(lambda _: self._focar_nome(), 0.15)
 
     def confirmar_delete(self, dado, btn):

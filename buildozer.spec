@@ -23,6 +23,10 @@ fullscreen   = 0
 # Ícone do app — coloque icon.png na raiz do repositório (512×512 px ideal)
 icon.filename = %(source.dir)s/icon.png
 
+# Tela de abertura (no lugar do "Loading..." padrao do Kivy)
+presplash.filename    = %(source.dir)s/presplash.png
+android.presplash_color = #020204
+
 # ── PERMISSÕES ───────────────────────────────────────────────────────────────
 android.permissions = WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, VIBRATE, POST_NOTIFICATIONS, QUERY_ALL_PACKAGES
 

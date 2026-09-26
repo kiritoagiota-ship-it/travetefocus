@@ -393,10 +393,13 @@ class BarraCircular(FloatLayout):
         self.parar_animacoes()
         self.angulo_preenchimento = 0
         self.valor_display        = 0
-        alvo = (self.valor / self.maximo) * 360 if self.maximo > 0 else 0
+        # limitado a 100% e sem 'out_elastic' (ele passava do alvo e voltava
+        # quicando: o anel mostrava 113% e tremia antes de parar)
+        valor = max(0, min(self.valor, self.maximo)) if self.maximo > 0 else 0
+        alvo = (valor / self.maximo) * 360 if self.maximo > 0 else 0
 
-        Animation(angulo_preenchimento=alvo, valor_display=self.valor,
-                  duration=1.6, transition='out_elastic').start(self)
+        Animation(angulo_preenchimento=alvo, valor_display=valor,
+                  duration=1.4, transition='out_cubic').start(self)
 
         self._anim_giro = Animation(angulo_anel_externo=360, duration=5)
         self._anim_giro.repeat = True

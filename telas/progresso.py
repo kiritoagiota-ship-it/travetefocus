@@ -11,29 +11,19 @@ from animacoes_ui import entrada_cascata, contar, fmt_br
 class TelaProgresso(Screen):
 
     def _animar_xp_ganho(self, xp_ant, xp_novo, xp_max):
-        """Anima a barra de XP com som. Detecta level-up."""
-        app   = App.get_running_app()
-        barra = self.ids.barra_circular
-
+        """Som de XP subindo e fanfarra se subiu de level. O preenchimento do
+        anel e feito uma unica vez no on_enter (antes eram duas animacoes
+        brigando pelo mesmo anel, uma com os valores da visita anterior)."""
         if xp_ant is None:
-            # Sem XP novo — apenas mostrar estado atual
-            barra.animar_progresso()
             return
 
-        # Calcular levels de uma vez — evitar chamar calcular_level 2x
-        level_ant, _,       _     = calcular_level(xp_ant)
-        level_nov, xp_atual, xp_nec = calcular_level(xp_novo)
+        level_ant, _, _ = calcular_level(xp_ant)
+        level_nov, _, _ = calcular_level(xp_novo)
         houve_level_up = level_nov > level_ant
-
-        # Iniciar barra do zero e animar até o novo valor
-        barra.valor  = 0
-        barra.maximo = max(1, xp_nec)
 
         def _start_anim(dt):
             try: som.tocar_xp_subindo()
             except Exception: pass
-            Animation(valor=xp_atual, duration=1.2,
-                      transition="out_expo").start(barra)
             if houve_level_up:
                 Clock.schedule_once(_level_up_fanfare, 1.3)
 
@@ -51,7 +41,7 @@ class TelaProgresso(Screen):
             except Exception:
                 pass
 
-        Clock.schedule_once(_start_anim, 0.4)
+        Clock.schedule_once(_start_anim, 0.1)
 
     def on_leave(self, *_):
         try:
@@ -99,6 +89,10 @@ class TelaProgresso(Screen):
 
         streak = app.streak
         barra  = self.ids.barra_circular
+        # valores do anel antes de qualquer animacao (uma unica, sem estouro)
+        barra.maximo = max(1, xp_necessario)
+        barra.valor  = min(xp_atual, barra.maximo)
+        barra.animar_progresso()
 
         if streak >= 5:
             barra.cor_anel = [1, 0.55, 0, 1]
@@ -117,6 +111,3 @@ class TelaProgresso(Screen):
             self.ids.lbl_streak.text  = f"STREAK  {streak}  DIAS"
             self.ids.lbl_streak.color = (0, 0.9, 1, 0.7)
 
-        barra.valor  = xp_atual
-        barra.maximo = max(1, xp_necessario)
-        barra.animar_progresso()
