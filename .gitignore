@@ -7,3 +7,5 @@ keystore_base64.txt
 bin/
 build.log
 
+keystore_novo_base64.txt
+versao.json

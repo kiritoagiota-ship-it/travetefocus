@@ -110,9 +110,17 @@ class TraveteApp(App):
     registros       = ListProperty([])
     memorias        = ListProperty([])
     periodos_ganhos = ListProperty([])
+    versao          = StringProperty("dev")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        try:                                   # escrito pelo build do GitHub
+            import json
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'versao.json'),
+                      encoding='utf-8') as f:
+                self.versao = str(json.load(f).get('versao', 'dev'))
+        except Exception:
+            pass
         self.config_ganhos = {
             "valor_base":   0.25,
             "valor_bonus":  0.30,
