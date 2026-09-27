@@ -1065,12 +1065,12 @@ def _ps_titulo(th, largura, altura):
     por uma silaba de cada vez, como se ele esculpisse a frase (e par: os
     pixels do boneco ficam todos do mesmo tamanho)."""
     alvo = min(th * 1.7, largura * 0.30, altura * 0.16)
-    return max(2, 2 * int(round(alvo / 26.0 / 2.0)))
+    return max(2, 2 * int(round(alvo / 31.0 / 2.0)))
 
 
 def _ps_para(largura, altura):
     alvo = min(dp(150), largura * 0.37, altura * 0.18)      # altura do boneco (ver os detalhes)
-    return max(2, int(round(alvo / 26.0)))
+    return max(2, int(round(alvo / 31.0)))
 
 
 class _Agenda:
@@ -1992,8 +1992,7 @@ class KiritoPin:
     def _linha_local(self):
         """Altura (local do sprite) da borda: 2 linhas acima do topo do
         tronco da pose sem dy (as poses 'espia*' foram feitas para ela)."""
-        pern = K._PERNAS['repouso']
-        topo = K._PES + len(pern) + len(K._TRONCO) - 1
+        topo = K._PES + K._PERNAS_P['repouso']['H'] + len(K._TRONCO) - 1
         return (topo + 2) * self.k.ps
 
     def _seguir(self, dt=0):
@@ -2381,7 +2380,7 @@ def kirito_fatiar(alvo, on_fim=None):
         camada[0] = cam
         Window.add_widget(cam)
         alt_boneco = max(dp(62), min(rh * 1.7, dp(96), H * 0.15))
-        ps = max(2, int(round(alt_boneco / 26.0)))
+        ps = max(2, int(round(alt_boneco / 31.0)))
         k = K.KiritoPixel(ps=ps)
         faiscas = K.Faiscas()
         cam.add_widget(K.RastroLamina(k, faiscas))
