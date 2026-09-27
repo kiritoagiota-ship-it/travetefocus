@@ -72,9 +72,15 @@ jobs:
       # Garante que TODOS os builds usam o mesmo certificado → APK sempre
       # atualiza sem conflito. Sem esse secret, Android rejeita a instalação.
       - name: Restaurar keystore de assinatura
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           mkdir -p ~/.android
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > ~/.android/debug.keystore
+          if [ -z "$KS_B64" ]; then
+            echo "::error::Falta o secret KEYSTORE_BASE64 (Settings > Secrets and variables > Actions). Sem ele cada APK sai com uma chave diferente e o celular nao atualiza (App nao instalado)."
+            exit 1
+          fi
+          echo "$KS_B64" | base64 -d > ~/.android/debug.keystore
           # Verificar que o keystore tem o alias correto (androiddebugkey, senha android)
           keytool -list -keystore ~/.android/debug.keystore -storepass android 2>&1 | head -5 || true
           echo "[KEYSTORE] $(wc -c < ~/.android/debug.keystore) bytes restaurados"
@@ -123,6 +129,14 @@ jobs:
           sed -i "/^p4a.hook/a p4a.source_dir = $GITHUB_WORKSPACE/p4a-src" buildozer.spec
           grep -n "^p4a" buildozer.spec
 
+      # ── 9c. VERSAO AUTOMATICA ──────────────────────────────────────────────
+      # Cada build ganha um numero de versao maior que o anterior (1.0.<n>),
+      # entao o celular instala por cima como atualizacao.
+      - name: Numero de versao automatico
+        run: |
+          sed -i "s/^version = .*/version = 1.0.${{ github.run_number }}/" buildozer.spec
+          grep -n "^version" buildozer.spec
+
       # ── 10. BUILD ──────────────────────────────────────────────────────────
       # O flag -v força output verboso sem alterar o buildozer.spec,
       # preservando o cache de pacotes (4a). O tee grava tudo em build.log
@@ -132,6 +146,17 @@ jobs:
           set -o pipefail
           buildozer -v android debug 2>&1 | tee build.log
         timeout-minutes: 75
+
+      # ── 10b. ASSINATURA FIXA ───────────────────────────────────────────────
+      # Assina o APK de novo com a chave do secret (a mesma em todo build) e
+      # mostra a impressao digital: tem que ser sempre igual para o celular
+      # aceitar a atualizacao por cima.
+      - name: Assinar o APK sempre com a mesma chave
+        run: |
+          APK=$(ls bin/*.apk | head -n 1)
+          BT=$(ls -d $ANDROID_HOME/build-tools/*/ | sort -V | tail -n 1)
+          "${BT}apksigner" sign --ks ~/.android/debug.keystore --ks-pass pass:android --key-pass pass:android "$APK"
+          "${BT}apksigner" verify --print-certs "$APK" | grep -i "SHA-256"
 
       # ── 11. DIAGNÓSTICO ────────────────────────────────────────────────────
       - name: Exibir últimas 300 linhas do log
