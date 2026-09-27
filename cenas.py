@@ -192,7 +192,7 @@ def _mover(k, de, para, dur, altura=0.0, rot=None, fantasmas=3,
             k.ancorar(x, y)
             while marcas and u >= marcas[0]:
                 marcas.pop(0)
-                k.fantasma(cor=cor_fantasma, alfa=0.42, duracao=0.24)
+                k.fantasma(cor=cor_fantasma)
             if u >= 1:
                 _acabar()
                 return False
@@ -416,9 +416,12 @@ def _textura_coluna():
                 fx = max(0.0, 1 - abs(x - (w - 1) / 2.0) / (w / 2.0)) ** 1.3
                 i = (y * w + x) * 4
                 buf[i] = buf[i + 1] = buf[i + 2] = 255
-                buf[i + 3] = int(255 * fx * fy)
+                a = fx * fy
+                buf[i + 3] = 255 if a > 0.6 else (150 if a > 0.3 else (60 if a > 0.1 else 0))
         dados = bytes(buf)
         tex = Texture.create(size=(w, h), colorfmt='rgba')
+        tex.mag_filter = 'nearest'
+        tex.min_filter = 'nearest'
         tex.wrap = 'clamp_to_edge'
         tex.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte')
         tex.add_reload_observer(
@@ -427,12 +430,80 @@ def _textura_coluna():
     return _TEX_COLUNA
 
 
+_TEX_BRILHO = None
+
+
 def _textura_radial():
+    """Brilho pixel art: miolo forte, aneis intermediarios e pixels de fora,
+    tudo com borda definida (textura pequena ampliada sem suavizar)."""
+    global _TEX_BRILHO
+    if _TEX_BRILHO is None:
+        # comprida (32 x 8) porque a aura acompanha a lamina: os "pixels" do
+        # brilho ficam quase quadrados depois de esticados
+        nw, nh = 32, 8
+        buf = bytearray(nw * nh * 4)
+        cx, cy = (nw - 1) / 2.0, (nh - 1) / 2.0
+        for y in range(nh):
+            for x in range(nw):
+                d = math.hypot((x - cx) / (nw / 2.0), (y - cy) / (nh / 2.0))
+                a = 255 if d < 0.34 else (150 if d < 0.62 else (60 if d < 0.9 else 0))
+                if 0.62 <= d < 0.9 and (x + y) % 2:          # anel de fora pontilhado
+                    a = 0
+                i = (y * nw + x) * 4
+                buf[i] = buf[i + 1] = buf[i + 2] = 255
+                buf[i + 3] = a
+        dados = bytes(buf)
+        tex = Texture.create(size=(nw, nh), colorfmt='rgba')
+        tex.mag_filter = 'nearest'
+        tex.min_filter = 'nearest'
+        tex.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte')
+        tex.add_reload_observer(lambda t: t.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte'))
+        _TEX_BRILHO = tex
+    return _TEX_BRILHO
+
+
+def _estrela(camada, x, y, u, cor=CIANO, raios=5, dur=0.14):
+    """Estrela de impacto em pixels: miolo branco 2x2 e 4 raios (mais 4
+    diagonais curtos) que crescem num instante e somem em degraus."""
     try:
-        from infinito import textura_radial
-        return textura_radial()
-    except Exception:
-        return None
+        w = Widget(size_hint=(None, None), size=(0, 0))
+        pecas = []
+        with w.canvas:
+            c_raio = Color(cor[0], cor[1], cor[2], 1)
+            for dx, dy, n in ((1, 0, raios), (-1, 0, raios), (0, 1, raios), (0, -1, raios),
+                              (1, 1, 2), (-1, 1, 2), (1, -1, 2), (-1, -1, 2)):
+                for j in range(1, n + 1):
+                    pecas.append((Rectangle(size=(0, 0)), dx, dy, j, n))
+            c_miolo = Color(1, 1, 1, 1)
+            miolo = Rectangle(pos=(round(x / u) * u - u, round(y / u) * u - u), size=(2 * u, 2 * u))
+        camada.add_widget(w)
+        x0, y0 = round(x / u) * u, round(y / u) * u
+        t = [0.0]
+
+        def _p(dt):
+            try:
+                t[0] += dt
+                k = t[0] / dur
+                alcance = min(1.0, k * 2.5)                  # cresce rapido
+                for r, dx, dy, j, n in pecas:
+                    if j <= int(round(alcance * n)) and j > int(k * n) - 1:
+                        r.pos = (x0 + dx * j * u - u / 2, y0 + dy * j * u - u / 2)
+                        r.size = (u, u)
+                    else:
+                        r.size = (0, 0)
+                c_raio.a = 1.0 if k < 0.6 else 0.5
+                c_miolo.a = 1.0 if k < 0.5 else 0.0
+                if k >= 1:
+                    if w.parent:
+                        w.parent.remove_widget(w)
+                    return False
+            except Exception:
+                if w.parent:
+                    w.parent.remove_widget(w)
+                return False
+        Clock.schedule_interval(_p, 1 / 60.)
+    except Exception as e:
+        print(f"[cena] estrela: {e}")
 
 
 def _teleporte(k, camada, faiscas, on_fim=None, cor=CIANO, dur=0.55, teto=None):
@@ -579,6 +650,7 @@ class _AuraEspada(Widget):
         super().__init__(**kwargs)
         self.k = k
         self.faiscas = faiscas
+        self.faiscas_fundo = None        # particulas atras do boneco (profundidade)
         self.forca = 0.0
         self.alvo = 0.0
         self._t = 0.0
@@ -602,7 +674,9 @@ class _AuraEspada(Widget):
             if (k.parent is None or k.opacity < 0.05 or p.get('a1') is None
                     or p.get('tipo1', 1) < 3 or self.forca < 0.01):
                 self._c1.a = self._c2.a = 0
+                k.luz = 0.0
                 return
+            k.luz = self.forca                          # a energia ilumina o corpo
             hx, hy = k.ponto_mao(1)
             tx, ty = k.ponta_espada(1)
             comp = math.hypot(tx - hx, ty - hy) or 1.0
@@ -620,9 +694,12 @@ class _AuraEspada(Widget):
             self._c2.a = 0.75 * f * tremor
             if random.random() < f * 0.8:          # reiatsu subindo da lamina
                 s = random.random()
-                self.faiscas.estourar(hx + (tx - hx) * s, hy + (ty - hy) * s,
-                                      random.choice((CIANO, BRANCO, (0.12, 0.25, 0.6))), n=1,
-                                      forca=dp(28), tam=max(2, k.ps * 0.6), gravidade=-dp(240))
+                atras = self.faiscas_fundo is not None and random.random() < 0.45
+                alvo = self.faiscas_fundo if atras else self.faiscas
+                cor = (0.1, 0.3, 0.6) if atras else random.choice((CIANO, BRANCO, (0.12, 0.25, 0.6)))
+                alvo.estourar(hx + (tx - hx) * s, hy + (ty - hy) * s, cor, n=1,
+                              forca=dp(28), tam=max(2, k.ps * (0.5 if atras else 0.6)),
+                              gravidade=-dp(170 if atras else 240))
         except Exception as e:
             print(f"[aura] {e}")
             self._c1.a = self._c2.a = 0
@@ -1246,12 +1323,16 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         camada.add_widget(titulo)
         camada._titulo = titulo
         faiscas = K.Faiscas(n_max=140)
+        fundo_fx = K.Faiscas(n_max=50)                 # particulas atras do Kirito
         ps = _ps_para(W, H)
         kk = K.KiritoPixel(ps=ps)
         kk.opacity = 0
         aura = _AuraEspada(kk, faiscas)
+        aura.faiscas_fundo = fundo_fx
         estado['aura'] = aura
+        camada.add_widget(fundo_fx)
         camada.add_widget(aura)
+        camada.add_widget(K.RastroLamina(kk, faiscas))
         camada.add_widget(kk)
         camada.add_widget(faiscas)
         cam[0] = _Camera(tela)
@@ -1293,9 +1374,11 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                 _som('corte2')
             titulo.revelar(i0, i1, cor=(1, 1, 1) if cor == CIANO else AZUL)
             faiscas.estourar(cx, cy, cor, n=18, forca=dp(170), tam=ps)
+            _estrela(camada, cx, cy, ps, cor)
             _som(som_corte)
             _tremer(6)
             _brilho_tela(camada, 0.10, 0.12)
+            kk.impacto()
             kk.pausar(0.07)                              # hit-stop
             kk.empurrar(capa=16, cabelo=14)
 
@@ -1710,6 +1793,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             # mergulho com a lamina a frente
             corte = _com(M['evo_corte'], sobe=1.0)
             meio = K.smear(K.misturar(M['evo_carga'], corte, 0.5, 0.5), P['evo_carga']['a1'])
+            kk.impacto(forte=True)
             kk.tocar(K.sequencia([(1, meio, 'segura'), (1, K.smear(corte, P['evo_carga']['a1']), 'segura'),
                                   (6, corte, 'segura'), (1, corte)]))
             _som('getsuga')
@@ -2273,6 +2357,7 @@ def kirito_fatiar(alvo, on_fim=None):
         ps = max(2, int(round(alt_boneco / 26.0)))
         k = K.KiritoPixel(ps=ps)
         faiscas = K.Faiscas()
+        cam.add_widget(K.RastroLamina(k, faiscas))
         cam.add_widget(k)
         cam.add_widget(faiscas)
         cy = ry + rh / 2.0
@@ -2319,8 +2404,10 @@ def kirito_fatiar(alvo, on_fim=None):
                 ang_fim=-40 if esquerda else 220, espessura=max(dp(10), rh * 0.55),
                 achat=0.35, rotacao=-8 if esquerda else 8))
             faiscas.estourar(ccx, ccy, CIANO, n=18, forca=dp(170), tam=ps)
+            _estrela(cam, ccx, ccy, ps)
             _som('corte')
             _tremer(8)
+            k.impacto()
             k.pausar(0.07)                                   # hit-stop
             pecas = _metades(cam, alvo, rx, ry, rw, rh)
             alvo.opacity = 0
@@ -2390,6 +2477,7 @@ def kirito_wipe(widgets, on_fim=None, grafico=None, area_lista=None):
         ps = _ps_para(W, H)
         k = K.KiritoPixel(ps=ps)
         faiscas = K.Faiscas(n_max=140)
+        cam.add_widget(K.RastroLamina(k, faiscas))
         cam.add_widget(k)
         cam.add_widget(faiscas)
         bx0, by0, bx1, by1 = _limites()
@@ -2442,8 +2530,10 @@ def kirito_wipe(widgets, on_fim=None, grafico=None, area_lista=None):
                             ang_fim=-35 if lado > 0 else 215, espessura=max(dp(24), hh * 1.2),
                             achat=0.3, rotacao=giro_arco * lado, cor=cor))
                         faiscas.estourar(ccx, cy, cor, n=16, forca=dp(200), tam=ps)
+                        _estrela(cam, ccx, cy, ps, cor)
                         _som('corte2' if cor == AZUL else 'corte')
                         _tremer(8)
+                        k.impacto()
                         k.pausar(0.07)
                         _desintegra(w, talho if lado > 0 else 180 - talho)
                 k.tocar(K.sequencia(chaves), on_quadro=_q, on_fim=lambda: _golpe(i + 1))
@@ -2492,8 +2582,10 @@ def kirito_wipe(widgets, on_fim=None, grafico=None, area_lista=None):
                                 dur_decai=9 / 30.0))
                         faiscas.estourar(gcx, gcy, CIANO, n=60, forca=dp(380), tam=ps)
                         faiscas.estourar(gcx, gcy, BRANCO, n=24, forca=dp(260), tam=ps)
+                        _estrela(cam, gcx, gcy, ps, CIANO, raios=8, dur=0.2)
                         _som('titulo')
                         _tremer(28)
+                        k.impacto(forte=True)
                         k.pausar(0.12)
                         _brilho_tela(cam, 0.35, 0.3)
                         if grafico is not None:

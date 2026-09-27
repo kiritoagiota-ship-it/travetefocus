@@ -67,11 +67,41 @@ _PALETA = {
     'F': (0.62, 0.28, 1.00, 0.95), 'f': (0.28, 0.58, 1.00, 0.95),
     'L': (0.93, 0.86, 1.00, 0.9),                                # ponta clara da chama
     'o': (0.66, 0.36, 1.00, 0.9),                                # contorno roxo
+    'Q': (0.52, 0.80, 0.98, 1),                                  # pixel aceso pela luz da lamina
 }
 _SEM_CONTORNO = set('xX!1FfL')
 # Mugetsu: a roupa escurece (o rosto continua claro, os olhos acendem)
 _SOMBRA = {'C': 'D', 'c': 'd', 'A': 'd', 'q': 'D', 'P': 'D', 'B': 'D', 'M': 'D', 'G': 'd', 'E': 'V'}
 _CORPO_M = set('HhSsDdV')
+# luz dinamica: pixels do corpo perto da lamina acesa clareiam um degrau
+_LAMINA = set('wjRrzY9!')                  # so as partes claras (a bainha usa W/u)
+_ACENDE = {'C': 'c', 'A': 'c', 'q': 'c', 'P': 'c', 'c': 'Q', 'H': 'h', 'h': 'Q', 'B': 'K',
+           'M': 'g', 'G': 'Q', 'D': 'd', 'd': 'o'}
+
+
+def _iluminar(px, luz):
+    """Luz da lamina no corpo: os pixels encostados nela sobem 2 degraus
+    (ate o azul aceso), os de 2 px de distancia sobem 1. Sem blur: so troca
+    de cor em clusters."""
+    lamina = [q for q, ch in px.items() if ch in _LAMINA]
+    if not lamina:
+        return
+    r = 2 if luz >= 0.75 else 1
+    dist = {}
+    for (x, y) in lamina:
+        for ox in range(-r, r + 1):
+            for oy in range(-r, r + 1):
+                d = max(abs(ox), abs(oy))
+                q = (x + ox, y + oy)
+                if d and dist.get(q, 9) > d:
+                    dist[q] = d
+    for q, d in dist.items():
+        ch = px.get(q)
+        if ch in _ACENDE:
+            ch = _ACENDE[ch]
+            if d == 1 and luz >= 0.75 and ch in _ACENDE:
+                ch = _ACENDE[ch]
+            px[q] = ch
 
 _CABECA = [
     "....HHHHH....",
@@ -512,7 +542,7 @@ def _emote(px, qual, base_x, topo_cab):
 # pose padrao: todos os campos que a montagem entende
 POSE_BASE = dict(dx=0, dy=0, pernas='repouso', olhos='a', cabelo=0.0, capa=0.0,
                  lift=0.0, sobe=0.0, fase=0.0, brilho=None, saia=1.0, frente1=False,
-                 tipo1=1, fusao=False, emote=None, mugetsu=False,
+                 tipo1=1, fusao=False, emote=None, mugetsu=False, hx=0, hy=0, luz=0.0,
                  m1=(3, -5), a1=-40.0, c1=15, s1=None,
                  m2=None, a2=None, c2=15, s2=None)
 
@@ -530,10 +560,13 @@ def montar(p):
     fase = p.get('fase', 0.0) or 0.0
     dois_pi = 2 * math.pi
     topo_cab = topo_tronco + len(_CABECA)
+    # camada da cabeca: pode atrasar 1 px em relacao ao tronco (inercia)
+    cab_x = base_x + int(round(p.get('hx', 0) or 0))
+    topo_cab += int(round(p.get('hy', 0) or 0))
 
     mugetsu = p.get('mugetsu', False)
     if mugetsu:                                  # cabelo comprido atras de tudo
-        _cabelo_longo(px, base_x, topo_cab, p['cabelo'], p.get('sobe', 0.0) or 0.0, fase)
+        _cabelo_longo(px, cab_x, topo_cab, p['cabelo'], p.get('sobe', 0.0) or 0.0, fase)
 
     # atras de tudo: cabo da Dark Repulser (bainha nas costas)
     bx, by = _bainha_cintura(base_x, y_cinto)
@@ -569,21 +602,21 @@ def montar(p):
             onda = amp * u * math.sin(dois_pi * (fase * 1.3 - i / 4.0 - linha * 0.1))
             ergue = sobe * (i + 1) * 0.6
             y = topo_cab - linha - int(round((caida if i > comp // 2 else 0) + onda - ergue))
-            px[(base_x - 1 - i, y)] = 'h' if (linha == 5 and i == comp - 1) else 'H'
+            px[(cab_x - 1 - i, y)] = 'h' if (linha == 5 and i == comp - 1) else 'H'
     # fios espetados no topo que balancam
     for bxx, fx in ((4, 0.0), (8, 0.35)):
         oscila = int(round(0.7 * math.sin(dois_pi * (fase + fx)) - min(1.0, max(0.0, cb) * 0.4)))
-        px[(base_x + bxx + oscila, topo_cab + 1)] = 'H'
+        px[(cab_x + bxx + oscila, topo_cab + 1)] = 'H'
         if sobe > 0.3:
-            px[(base_x + bxx + oscila, topo_cab + 2)] = 'H'
+            px[(cab_x + bxx + oscila, topo_cab + 2)] = 'H'
         if sobe > 0.75:
-            px[(base_x + bxx + oscila + (1 if bxx > 6 else -1), topo_cab + 3)] = 'h'
+            px[(cab_x + bxx + oscila + (1 if bxx > 6 else -1), topo_cab + 3)] = 'h'
     if sobe > 0.5:                                   # mais fios arrepiando com a energia
         for bxx, fx in ((2, 0.2), (6, 0.6), (10, 0.85)):
             oscila = int(round(0.6 * math.sin(dois_pi * (fase * 1.5 + fx))))
-            px[(base_x + bxx + oscila, topo_cab + 1)] = 'H'
+            px[(cab_x + bxx + oscila, topo_cab + 1)] = 'H'
             if sobe > 0.9:
-                px[(base_x + bxx + oscila, topo_cab + 2)] = 'h'
+                px[(cab_x + bxx + oscila, topo_cab + 2)] = 'h'
 
     if ergue2 and not acima2:
         _braco_tras()
@@ -602,7 +635,7 @@ def montar(p):
     ergue = p['m1'] is not None and p['m1'][1] > 4 and not p.get('frente1')
     if ergue:
         _braco_frente(px, p, ombro1)
-    _estampar(px, _CABECAS.get(p['olhos'], _CABECA), base_x, topo_cab)
+    _estampar(px, _CABECAS.get(p['olhos'], _CABECA), cab_x, topo_cab)
     if acima2:
         _braco_tras()
     if p['a1'] is None:
@@ -610,8 +643,11 @@ def montar(p):
     if not ergue:
         _braco_frente(px, p, ombro1)
     if p.get('emote'):
-        _emote(px, p['emote'], base_x, topo_cab)
+        _emote(px, p['emote'], cab_x, topo_cab)
 
+    luz = p.get('luz', 0.0) or 0.0
+    if luz > 0.2:
+        _iluminar(px, luz)
     if mugetsu:
         _chamas(px, fase)
     # contorno (rim light ciano; roxo na forma Mugetsu) para ler no fundo escuro
@@ -701,7 +737,7 @@ def _chave(p):
     def r(k, v):
         if k in ('capa', 'cabelo', 'lift', 'sobe'):
             return round(v * 4) / 4.0            # fisica: passos de 0.25
-        if k in ('dx', 'dy'):
+        if k in ('dx', 'dy', 'hx', 'hy'):
             return int(round(v))                 # a montagem arredonda igual
         if isinstance(v, float):
             return round(v, 1)
@@ -843,11 +879,11 @@ def _runs(p, espelhar=False):
     return _bytes(p)
 
 
-def _textura(p, silhueta=False):
+def _textura(p, silhueta=False, xadrez=False):
     """Pose -> Texture pequena (1 retangulo por quadro, em vez de ~250:
     bem mais leve no celular). O espelho e feito por tex_coords."""
     ch, dados = _bytes(p)
-    chave = (ch, silhueta)
+    chave = (ch, silhueta, xadrez)
     tex = _TEX.get(chave)
     if tex is not None:
         _TEX.move_to_end(chave)
@@ -857,6 +893,10 @@ def _textura(p, silhueta=False):
         for i in range(0, len(b), 4):
             if b[i + 3]:
                 b[i] = b[i + 1] = b[i + 2] = 255
+                if xadrez:                   # afterimage: so metade dos pixels (pixel art)
+                    j = i // 4
+                    if ((j % GW) + (j // GW)) % 2:
+                        b[i + 3] = 0
         dados = bytes(b)
     tex = Texture.create(size=(GW, GH), colorfmt='rgba')
     tex.mag_filter = 'nearest'
@@ -922,6 +962,14 @@ class KiritoPixel(Widget):
         self._m_capa = _Mola(95, 9)
         self._m_cab = _Mola(110, 10)
         self._m_lift = _Mola(80, 8)
+        # camadas com inercia propria: cabeca (atrasa 1 px) e as duas laminas
+        # (ficam um pouco para tras no giro e passam do ponto quando param)
+        self._m_hx = _Mola(150, 13)
+        self._m_hy = _Mola(150, 11)
+        self._m_a = {1: None, 2: None}
+        self._ult_base = None
+        self.luz = 0.0                   # luz da lamina (aura), 0..1
+        self._luz_imp = 0.0              # luz de impacto (cai sozinha)
         self._fase = random.random()
         self._t = 0.0
         self._ult = None
@@ -1036,6 +1084,17 @@ class KiritoPixel(Widget):
         q['cabelo'] = b['cabelo'] + self._m_cab.x
         q['lift'] = b['lift'] + self._m_lift.x
         q['fase'] = (int(self._fase * 6) % 6) / 6.0
+        # cabeca: +-1 px de atraso
+        q['hx'] = int(round(max(-1.0, min(1.0, self._m_hx.x))))
+        q['hy'] = int(round(max(-1.0, min(1.0, self._m_hy.x))))
+        # laminas: seguem a pose com um pouquinho de atraso/mola (max 8 graus)
+        for i, ch in ((1, 'a1'), (2, 'a2')):
+            m = self._m_a[i]
+            if m is not None and b[ch] is not None:
+                q[ch] = b[ch] + max(-8.0, min(8.0, round(m.x - b[ch])))
+        # luz: aura da lamina ou clarao de impacto, em 3 degraus
+        luz = max(self.luz, self._luz_imp)
+        q['luz'] = 1.0 if luz >= 0.75 else (0.5 if luz >= 0.3 else 0.0)
         # brilho percorre as laminas a cada ~2,6 s
         ciclo = self._t % 2.6
         q['brilho'] = (round(ciclo / 0.45 * 6) / 6.0) if ciclo < 0.45 else None
@@ -1090,9 +1149,61 @@ class KiritoPixel(Widget):
             self._m_lift.passo(lift, dt)
             vel = math.hypot(frente, cima)
             self._fase = (self._fase + dt * (1.6 + min(3.0, vel / 120.0))) % 1.0
+            self._camadas(dt, frente, cima)
             self._desenhar()
         except Exception as e:
             print(f"[kirito] fisica: {e}")
+
+    def _camadas(self, dt, frente, cima):
+        """Movimento secundario: o que o tronco e as laminas fazem na pose
+        empurra cabeca, cabelo e sobretudo (que chegam depois e passam do
+        ponto), mesmo com o boneco parado no lugar."""
+        b = self._base
+        ub = self._ult_base
+        if ub is not None:
+            ddx = (b['dx'] or 0) - (ub['dx'] or 0)
+            ddy = (b['dy'] or 0) - (ub['dy'] or 0)
+            if abs(ddx) < 4 and abs(ddy) < 4:            # troca brusca de pose nao conta
+                self._m_hx.v -= ddx * 7.0
+                self._m_hy.v -= ddy * 7.0
+                self._m_cab.v += ddx * 5.0
+                self._m_capa.v += ddx * 4.0
+                self._m_lift.v -= ddy * 3.0
+        self._ult_base = b
+        # a cabeca atrasa quando o corpo acelera (sobe -> cabeca fica embaixo)
+        self._m_hx.passo(max(-1.2, min(1.2, -frente / 420.0)), dt)
+        self._m_hy.passo(max(-1.2, min(1.2, -cima / 380.0)), dt)
+        for i, ch in ((1, 'a1'), (2, 'a2')):
+            alvo = b[ch]
+            m = self._m_a[i]
+            if alvo is None:
+                self._m_a[i] = None
+                continue
+            if m is None or abs(alvo - m.x) > 70:        # golpe (salto grande): sem atraso
+                m = _Mola(700, 34)
+                m.x = alvo
+                self._m_a[i] = m
+                continue
+            antes = m.x
+            m.passo(alvo, dt)
+            giro = abs(m.x - antes)
+            if giro > 3:                                  # lamina girando: o sobretudo sente
+                self._m_capa.v += min(6.0, giro * 0.08)
+        if self._luz_imp > 0:
+            self._luz_imp = max(0.0, self._luz_imp - dt / 0.16)
+
+    def impacto(self, forte=False):
+        """Quadro de impacto: a luz da lamina acende o corpo e o boneco
+        pisca claro por 1-2 quadros (sem congelar a cena)."""
+        self._luz_imp = 1.0
+        self.clarao = 0.9 if forte else 0.45
+        t = [0.0]
+
+        def _p(dt):
+            t[0] += dt
+            self.clarao = max(0.0, (0.9 if forte else 0.45) * (1 - t[0] / 0.07))
+            return t[0] < 0.07
+        Clock.schedule_interval(_p, 1 / 60.)
 
     def empurrar(self, capa=0.0, cabelo=0.0, lift=0.0):
         """Tranco nas molas (ex: impacto de um golpe, pouso)."""
@@ -1183,20 +1294,35 @@ class KiritoPixel(Widget):
             self._ev_vida = Clock.schedule_interval(self._vida, 1 / FPS)
 
     def idle(self, base=None, piscar=True):
-        """Respiracao e piscar (o vento no sobretudo/cabelo vem da fisica)."""
+        """Parado, mas vivo: respira (o tronco desce 1 px e as maos vem 3
+        quadros depois), a lamina flutua um pouquinho, pisca de vez em quando
+        (as vezes duas vezes). Cabeca, cabelo e sobretudo reagem sozinhos
+        pela fisica, com atraso."""
         b = dict(base or POSE_A['guarda'])
         quadros = []
-        for f in range(84):                          # 2,8 s
-            t = f / 84.0 * 2 * math.pi
+        n = 120                                      # 4 s
+        for f in range(n):
+            t = f / float(n) * 2 * math.pi
             q = dict(b)
-            q['dy'] = b['dy'] - (1 if math.sin(t) < -0.3 else 0)
-            q['olhos'] = 'f' if (piscar and 58 <= f <= 60) else b['olhos']
+            q['dy'] = b['dy'] - (1 if math.sin(t) < -0.35 else 0)
+            atras = math.sin(t - 0.6)                # maos acompanham com atraso
+            if b['m1'] is not None:
+                q['m1'] = (b['m1'][0], b['m1'][1] - (1 if atras < -0.35 else 0))
+            if b['m2'] is not None:
+                q['m2'] = (b['m2'][0], b['m2'][1] - (1 if atras < -0.35 else 0))
+            if b['a1'] is not None:
+                q['a1'] = b['a1'] + round(2.0 * math.sin(2 * t + 0.8))
+            if b['a2'] is not None:
+                q['a2'] = b['a2'] + round(2.0 * math.sin(2 * t + 2.0))
+            if piscar and (70 <= f <= 72 or 104 <= f <= 105 or 108 <= f <= 109):
+                q['olhos'] = 'f'
             quadros.append(q)
         self.tocar(quadros, loop=True)
 
     # ── afterimage ───────────────────────────────────────────────────
-    def fantasma(self, cor=(0.0, 0.85, 1.0), alfa=0.45, duracao=0.28):
-        """Copia translucida da pose atual que some (rastro de velocidade)."""
+    def fantasma(self, cor=(0.0, 0.85, 1.0), alfa=0.36, duracao=0.16):
+        """Afterimage: silhueta pontilhada (metade dos pixels) da pose atual,
+        bem curta - so uma indicacao de velocidade."""
         try:
             pai = self.parent
             if pai is None:
@@ -1208,7 +1334,7 @@ class KiritoPixel(Widget):
                 Translate(self.x, self.y)
                 Rotate(angle=self.rotacao, origin=orig)
                 cor_sil = Color(cor[0], cor[1], cor[2], alfa)
-                Rectangle(pos=(0, 0), size=self.size, texture=_textura(self._pose, silhueta=True),
+                Rectangle(pos=(0, 0), size=self.size, texture=_textura(self._pose, silhueta=True, xadrez=True),
                           tex_coords=_TC_ESPELHO if self.espelhar else _TC_NORMAL)
                 PopMatrix()
             idx = pai.children.index(self) + 1 if self in pai.children else 0
@@ -1475,7 +1601,10 @@ def esticado(p):
 #  FAISCAS
 # ═══════════════════════════════════════════════════════════════════
 class Faiscas(Widget):
-    """Pool de faiscas quadradas. estourar(x, y, cor, n)."""
+    """Pool de faiscas de pixel. Cada uma tem velocidade, arrasto, gravidade,
+    balanco e tempo de vida proprios; fica sempre na grade de pixels (tam),
+    diminui em degraus, pisca antes de sumir e algumas deixam 1 pixel de
+    rastro. estourar(x, y, cor, n)."""
 
     def __init__(self, n_max=60, **kwargs):
         kwargs.setdefault('size_hint', (None, None))
@@ -1485,13 +1614,17 @@ class Faiscas(Widget):
         self._ins = []
         with self.canvas:
             for _ in range(n_max):
+                c2 = Color(1, 1, 1, 0)
+                r2 = Rectangle(size=(0, 0))          # rastro (1 pixel atras)
                 c = Color(1, 1, 1, 0)
                 r = Rectangle(size=(0, 0))
-                self._ins.append((c, r))
+                self._ins.append((c, r, c2, r2))
         self._livres = list(range(n_max))
         self._ev = None
 
-    def estourar(self, x, y, cor=(0.4, 0.95, 1.0), n=14, forca=260.0, tam=4.0, gravidade=420.0):
+    def estourar(self, x, y, cor=(0.4, 0.95, 1.0), n=14, forca=260.0, tam=4.0, gravidade=420.0,
+                 rastro=0.3):
+        tam = max(1.0, float(tam))
         for _ in range(n):
             if not self._livres:
                 break
@@ -1499,8 +1632,13 @@ class Faiscas(Widget):
             a = random.uniform(0, 2 * math.pi)
             v = forca * random.uniform(0.35, 1.0)
             vida = random.uniform(0.25, 0.55)
-            self._p.append([x, y, math.cos(a) * v, math.sin(a) * v, vida, vida,
-                            tam * random.choice((1, 1, 1.5, 2)), i, cor, gravidade])
+            self._p.append({
+                'x': x, 'y': y, 'vx': math.cos(a) * v, 'vy': math.sin(a) * v,
+                'vida': vida, 'v0': vida, 'u': tam, 'mult': random.choice((1, 1, 1, 2)),
+                'i': i, 'cor': cor, 'g': gravidade, 'arrasto': random.uniform(0.86, 0.93),
+                'bal': random.uniform(0, 0.25) * forca, 'fb': random.uniform(6, 14),
+                'fase': random.uniform(0, 6.3), 't': 0.0, 'trilha': random.random() < rastro,
+                'ult': None})
         if self._ev is None:
             self._ev = Clock.schedule_interval(self._tick, 1 / 60.)
 
@@ -1508,23 +1646,42 @@ class Faiscas(Widget):
         try:
             vivas = []
             for f in self._p:
-                f[4] -= dt
-                c, r = self._ins[f[7]]
-                if f[4] <= 0:
-                    c.a = 0
-                    r.size = (0, 0)
-                    self._livres.append(f[7])
+                f['vida'] -= dt
+                f['t'] += dt
+                c, r, c2, r2 = self._ins[f['i']]
+                if f['vida'] <= 0:
+                    c.a = c2.a = 0
+                    r.size = r2.size = (0, 0)
+                    self._livres.append(f['i'])
                     continue
-                f[0] += f[2] * dt
-                f[1] += f[3] * dt
-                f[2] *= 0.90
-                f[3] = f[3] * 0.90 - f[9] * dt
-                k = f[4] / f[5]
-                s = max(1.0, f[6] * (0.5 + 0.5 * k))
-                r.pos = (int(f[0] - s / 2), int(f[1] - s / 2))
+                arr = f['arrasto'] ** (dt * 60)
+                f['vx'] = f['vx'] * arr + math.sin(f['t'] * f['fb'] + f['fase']) * f['bal'] * dt
+                f['vy'] = f['vy'] * arr - f['g'] * dt
+                f['x'] += f['vx'] * dt
+                f['y'] += f['vy'] * dt
+                k = f['vida'] / f['v0']
+                u = f['u']
+                s = u * (f['mult'] if k > 0.45 else 1)     # diminui em degraus
+                px, py = round(f['x'] / u) * u, round(f['y'] / u) * u
+                cr = f['cor']
+                if k > 0.7:                                 # cor em 3 degraus: branco -> meio -> cor
+                    rgb = (1.0, 1.0, 1.0)
+                elif k > 0.35:
+                    rgb = ((1 + cr[0]) / 2, (1 + cr[1]) / 2, (1 + cr[2]) / 2)
+                else:
+                    rgb = cr
+                a = 1.0 if k > 0.25 else (1.0 if int(f['t'] * 30) % 2 else 0.0)   # pisca e some
+                r.pos = (px - s / 2, py - s / 2)
                 r.size = (s, s)
-                cr = f[8]
-                c.rgba = (cr[0] + (1 - cr[0]) * k, cr[1] + (1 - cr[1]) * k, cr[2] + (1 - cr[2]) * k, k)
+                c.rgba = (rgb[0], rgb[1], rgb[2], a)
+                if f['trilha'] and f['ult'] is not None and f['ult'] != (px, py):
+                    ux, uy = f['ult']
+                    r2.pos = (ux - u / 2, uy - u / 2)
+                    r2.size = (u, u)
+                    c2.rgba = (cr[0], cr[1], cr[2], 0.45 * a)
+                else:
+                    r2.size = (0, 0)
+                f['ult'] = (px, py)
                 vivas.append(f)
             self._p = vivas
             if not vivas:
@@ -1539,3 +1696,90 @@ class Faiscas(Widget):
         if parent is None and self._ev is not None:
             self._ev.cancel()
             self._ev = None
+
+
+class RastroLamina(Widget):
+    """Rastro da ponta da lamina em pixels: quando ela passa rapido, deixa
+    uma trilha de quadradinhos que nasce forte, perde a cor em degraus e
+    alguns viram faiscas. Curto e so no movimento rapido."""
+
+    def __init__(self, k, faiscas=None, n_max=36, **kwargs):
+        kwargs.setdefault('size_hint', (None, None))
+        kwargs.setdefault('size', (0, 0))
+        super().__init__(**kwargs)
+        self.k = k
+        self.faiscas = faiscas
+        self._q = []
+        self._ins = []
+        with self.canvas:
+            for _ in range(n_max):
+                c = Color(1, 1, 1, 0)
+                r = Rectangle(size=(0, 0))
+                self._ins.append((c, r))
+        self._livres = list(range(n_max))
+        self._ult = {1: None, 2: None}
+        self._ev = Clock.schedule_interval(self._tick, 1 / 60.)
+
+    def _tick(self, dt):
+        try:
+            k = self.k
+            if k.parent is None or self.get_root_window() is None:
+                return self.parar()                  # cena acabou: para o relogio
+            u = k.ps
+            p = k._base
+            ativo = k.opacity > 0.5 and k.rotacao == 0 and k._pausa <= 0
+            for qual, cor in ((1, (0.55, 1.0, 1.0)), (2, (0.45, 0.7, 1.0))):
+                if not ativo or p.get('a1' if qual == 1 else 'a2') is None:
+                    self._ult[qual] = None
+                    continue
+                x, y = k.ponta_espada(qual)
+                ult = self._ult[qual]
+                self._ult[qual] = (x, y)
+                if ult is None:
+                    continue
+                dist = math.hypot(x - ult[0], y - ult[1])
+                if dist < 1.8 * u:
+                    continue
+                passos = min(6, int(dist / u))
+                for j in range(passos):
+                    if not self._livres:
+                        break
+                    t = (j + 1) / float(passos)
+                    i = self._livres.pop()
+                    vida = 0.09 + 0.05 * t
+                    self._q.append([ult[0] + (x - ult[0]) * t, ult[1] + (y - ult[1]) * t,
+                                    vida, vida, i, cor])
+            vivos = []
+            for q in self._q:
+                q[2] -= dt
+                c, r = self._ins[q[4]]
+                if q[2] <= 0:
+                    c.a = 0
+                    r.size = (0, 0)
+                    self._livres.append(q[4])
+                    if self.faiscas is not None and random.random() < 0.12:
+                        self.faiscas.estourar(q[0], q[1], q[5], n=1, forca=u * 10, tam=max(2, u * 0.7),
+                                              gravidade=-u * 20, rastro=0)
+                    continue
+                kk = q[2] / q[3]
+                s = u if kk > 0.5 else max(1.0, round(u * 0.6))
+                r.pos = (round(q[0] / u) * u - s / 2, round(q[1] / u) * u - s / 2)
+                r.size = (s, s)
+                cr = q[5]
+                if kk > 0.66:
+                    c.rgba = (1, 1, 1, 0.9)
+                else:
+                    c.rgba = (cr[0], cr[1], cr[2], 0.8 if kk > 0.33 else 0.45)
+                vivos.append(q)
+            self._q = vivos
+        except Exception as e:
+            print(f"[rastro] {e}")
+            return self.parar()
+
+    def parar(self):
+        if self._ev is not None:
+            self._ev.cancel()
+            self._ev = None
+        if self.parent:
+            self.parent.remove_widget(self)
+        return False
