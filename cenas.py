@@ -663,6 +663,12 @@ class _AuraEspada(Widget):
             self._c2 = Color(0.85, 1.0, 1.0, 0)
             self._r2 = Rectangle(texture=tex, size=(0, 0))
             PopMatrix()
+        # forma Mugetsu: nevoa de pixels azul e roxa subindo das bordas da lamina
+        self._fios = []
+        self._lote = K.LotePixels(self.canvas, (
+            ('azul', (0.36, 0.56, 1.0, 0.95)), ('azul2', (0.60, 0.80, 1.0, 0.95)),
+            ('roxo', (0.62, 0.32, 1.0, 0.95)), ('lilas', (0.84, 0.68, 1.0, 0.95)),
+            ('fundo', (0.30, 0.14, 0.62, 0.8))))
         self._ev = Clock.schedule_interval(self._tick, 1 / 60.)
 
     def _tick(self, dt):
@@ -675,8 +681,16 @@ class _AuraEspada(Widget):
                     or p.get('tipo1', 1) < 3 or self.forca < 0.01):
                 self._c1.a = self._c2.a = 0
                 k.luz = 0.0
+                if self._fios:
+                    self._fios = []
+                    self._lote.desenhar({})
                 return
             k.luz = self.forca                          # a energia ilumina o corpo
+            mug = p.get('mugetsu')
+            if mug != getattr(self, '_mug', None):      # Mugetsu: aura roxa por fora, azul por dentro
+                self._mug = mug
+                self._c1.rgb = (0.52, 0.26, 1.0) if mug else (0.2, 0.85, 1.0)
+                self._c2.rgb = (0.55, 0.72, 1.0) if mug else (0.85, 1.0, 1.0)
             hx, hy = k.ponto_mao(1)
             tx, ty = k.ponta_espada(1)
             comp = math.hypot(tx - hx, ty - hy) or 1.0
@@ -686,9 +700,10 @@ class _AuraEspada(Widget):
             tremor = 0.85 + 0.15 * math.sin(self._t * 23) + 0.05 * random.random()
             self._rot.origin = (cx, cy)
             self._rot.angle = ang
-            l1, w1 = comp * 1.3, k.ps * (6 + 6 * f)
+            l1, w1 = comp * 1.3, k.ps * ((8 + 7 * f) if mug else (6 + 6 * f))
             self._r1.pos, self._r1.size = (cx - l1 / 2, cy - w1 / 2), (l1, w1)
-            self._c1.a = 0.55 * f * tremor
+            self._c1.a = (0.75 if mug else 0.55) * f * tremor
+            self._nevoa(dt, k, hx, hy, tx, ty, comp, f if mug else 0.0)
             l2, w2 = comp * 1.08, k.ps * (2 + 2 * f)
             self._r2.pos, self._r2.size = (cx - l2 / 2, cy - w2 / 2), (l2, w2)
             self._c2.a = 0.75 * f * tremor
@@ -696,13 +711,57 @@ class _AuraEspada(Widget):
                 s = random.random()
                 atras = self.faiscas_fundo is not None and random.random() < 0.45
                 alvo = self.faiscas_fundo if atras else self.faiscas
-                cor = (0.1, 0.3, 0.6) if atras else random.choice((CIANO, BRANCO, (0.12, 0.25, 0.6)))
+                if mug:
+                    cor = (0.28, 0.12, 0.55) if atras else random.choice((ROXO, AZUL, (0.85, 0.75, 1.0)))
+                else:
+                    cor = (0.1, 0.3, 0.6) if atras else random.choice((CIANO, BRANCO, (0.12, 0.25, 0.6)))
                 alvo.estourar(hx + (tx - hx) * s, hy + (ty - hy) * s, cor, n=1,
                               forca=dp(28), tam=max(2, k.ps * (0.5 if atras else 0.6)),
                               gravidade=-dp(170 if atras else 240))
         except Exception as e:
             print(f"[aura] {e}")
             self._c1.a = self._c2.a = 0
+
+    def _nevoa(self, dt, k, hx, hy, tx, ty, comp, f):
+        """Aura da espada na forma Mugetsu: fiapos curtos azuis e roxos,
+        misturados, que nascem nas duas bordas da lamina e sobem ondulando
+        (na grade de pixels do Yoru)."""
+        if f < 0.05:
+            if self._fios:
+                self._fios = []
+                self._lote.desenhar({})
+            return
+        te = k.ps / float(K.R)
+        while len(self._fios) < int(30 * f):
+            self._fios.append({'s': random.uniform(0.14, 1.02), 'lado': random.choice((-1, 1)), 't': 0.0,
+                               'vida': random.uniform(0.25, 0.5), 'alt': random.uniform(4, 10),
+                               'fase': random.uniform(0, 6.3),
+                               'cor': random.choice(('azul', 'azul2', 'roxo', 'roxo', 'lilas'))})
+        ux, uy = (tx - hx) / comp, (ty - hy) / comp
+        nx, ny = -uy, ux
+        pontos = {}
+        vivos = []
+        for w in self._fios:
+            w['t'] += dt
+            v = w['t'] / w['vida']
+            if v >= 1.0:
+                continue
+            vivos.append(w)
+            afasta = (7.5 + 2.0 * v) * te * w['lado']
+            bx = hx + (tx - hx) * w['s'] + nx * afasta
+            by = hy + (ty - hy) * w['s'] + ny * afasta
+            alt = w['alt'] * math.sin(math.pi * v)
+            n = int(alt) + 1
+            for i in range(n):
+                u = i / float(max(1, n))
+                x = bx + math.sin(w['fase'] + self._t * 12.0 - u * 3.0) * 1.4 * te * u
+                y = by + i * te
+                X = k.x + math.floor((x - k.x) / te) * te
+                Y = k.y + math.floor((y - k.y) / te) * te
+                larg = 2 if u < 0.35 else 1
+                pontos.setdefault(w['cor'] if u < 0.75 else 'fundo', []).append((X, Y, larg * te, te))
+        self._fios = vivos
+        self._lote.desenhar(pontos, min(1.0, f * 1.3))
 
     def parar(self):
         if self._ev is not None:
@@ -796,6 +855,188 @@ class _Fluxo(Widget):
             self._ev = None
         if self.parent:
             self.parent.remove_widget(self)
+
+
+class _Casulo:
+    """Casulo de fitas roxas da transformacao: fitas de energia (com pixels
+    do tamanho dos do Yoru) nascem no chao e sobem em espiral em volta dele,
+    engrossam e fecham um casulo que o esconde; estourar() racha o casulo em
+    pedacos que voam e somem. Duas camadas: atras e na frente dele."""
+    CORES = (('esc', (0.16, 0.06, 0.30, 1)), ('meio', (0.30, 0.12, 0.56, 1)),
+             ('roxo', (0.52, 0.24, 0.94, 1)), ('lilas', (0.80, 0.62, 1.0, 1)),
+             ('luz', (0.97, 0.93, 1.0, 1)), ('azul', (0.38, 0.55, 1.0, 1)))
+
+    def __init__(self, k, camada, t_sobe=0.8, t_fecha=0.45, n_fitas=7):
+        self.k = k
+        self.t = 0.0
+        self.t_sobe, self.t_fecha = t_sobe, t_fecha
+        self.n = n_fitas
+        self.pedacos = None
+        self.t_estouro = 0.0
+        self._celulas = None
+        self.w_tras = Widget(size_hint=(None, None), size=(0, 0))
+        self.w_frente = Widget(size_hint=(None, None), size=(0, 0))
+        self.l_tras = K.LotePixels(self.w_tras.canvas, self.CORES)
+        self.l_frente = K.LotePixels(self.w_frente.canvas, self.CORES)
+        i = camada.children.index(k) if k in camada.children else 0
+        camada.add_widget(self.w_frente, index=i)          # na frente dele
+        camada.add_widget(self.w_tras, index=i + 2)        # atras dele
+        self._ev = Clock.schedule_interval(self._tick, 1 / 30.)
+
+    def _geometria(self):
+        k = self.k
+        ps = k.ps
+        te = ps / float(K.R)
+        p = k._base
+        yb = k.y + (K._PES - 0.8) * ps
+        yt = k.y + (K._PES + K.altura(p) + len(K._TRONCO) + len(K._CABECA) + 2.0) * ps
+        cx = k.ancora()[0]
+        return te, cx, yb, yt, 9.5 * ps
+
+    def _grade(self, v, o, te):
+        return o + math.floor((v - o) / te) * te
+
+    def _tick(self, dt):
+        try:
+            if self.w_frente.parent is None:
+                return self.parar()
+            self.t += dt
+            te, cx, yb, yt, rx = self._geometria()
+            ox, oy = self.k.x, self.k.y
+            passo = 2 * te
+            frente, tras = {}, {}
+            if self.pedacos is not None:
+                self._voar(dt, frente)
+                self.l_frente.desenhar(frente, max(0.0, 1.0 - self.t_estouro / 0.7))
+                self.l_tras.desenhar({})
+                if self.t_estouro > 0.75:
+                    return self.parar()
+                return
+            u_fecha = max(0.0, min(1.0, (self.t - self.t_sobe) / self.t_fecha))
+            larg = 1 + int(round(u_fecha * 2))                # a fita engrossa ao fechar
+            alt = yt - yb
+            voltas = 1.25
+            vistos = set()
+            for i in range(self.n):
+                h = max(0.0, min(1.0, (self.t - 0.05 * i) / (self.t_sobe * 0.85)))
+                h = 1 - (1 - h) ** 2
+                if h <= 0:
+                    continue
+                th0 = 2 * math.pi * i / self.n
+                n_pts = int((alt * h + 2 * math.pi * voltas * rx * h) / passo * 1.3) + 2
+                corpo = 'azul' if i % 4 == 3 else 'roxo'
+                for s in range(n_pts):
+                    yn = h * s / float(n_pts - 1)
+                    r = rx * (0.35 + 0.65 * math.sin(math.pi * yn) ** 0.6)
+                    ang = th0 + 2 * math.pi * voltas * yn + self.t * 5.0
+                    prof = math.sin(ang)
+                    X = self._grade(cx + r * math.cos(ang), ox, passo)
+                    Y = self._grade(yb + alt * yn, oy, passo)
+                    ponta = yn > h - 0.05
+                    for w in range(larg):
+                        q = (X, Y + w * passo)
+                        if (q, prof > 0) in vistos:
+                            continue
+                        vistos.add((q, prof > 0))
+                        if ponta:
+                            cor = 'luz'
+                        elif prof > 0.75:
+                            cor = 'lilas'
+                        elif prof > 0:
+                            cor = corpo
+                        else:
+                            cor = 'meio' if prof > -0.6 else 'esc'
+                        (frente if prof > 0 else tras).setdefault(cor, []).append((q[0], q[1], passo))
+            if u_fecha > 0:                                  # a casca vai fechando
+                cel = self._casca(te, cx, yb, yt, rx)
+                pulso = 0.5 + 0.5 * math.sin(self.t * 18)
+                for (dx, dy, lim, borda) in cel:
+                    if lim < u_fecha:
+                        X = self._grade(cx + dx, ox, passo)
+                        Y = self._grade(yb + dy, oy, passo)
+                        if borda:
+                            cor = 'lilas' if pulso > 0.5 else 'roxo'
+                        else:
+                            cor = 'roxo' if (int((dx + dy) / passo) % 3 == 0) else 'meio'
+                        frente.setdefault(cor, []).append((X, Y, passo))
+            self.l_frente.desenhar(frente)
+            self.l_tras.desenhar(tras)
+        except Exception as e:
+            print(f"[casulo] {e}")
+            return self.parar()
+
+    def _casca(self, te, cx, yb, yt, rx):
+        """Celulas (2x2 texels) do casulo, com um limiar cada: vao
+        aparecendo em ordem embaralhada ate fechar tudo."""
+        if self._celulas is None:
+            passo = 2 * te
+            alt = yt - yb
+            cel = []
+            ny = int(alt / passo) + 1
+            for gy in range(ny):
+                yn = gy / float(max(1, ny - 1))
+                r = rx * (0.35 + 0.65 * math.sin(math.pi * yn) ** 0.6)
+                nx = int(r / passo)
+                for gx in range(-nx, nx + 1):
+                    hsh = math.sin(gx * 12.9898 + gy * 78.233) * 43758.5453
+                    hsh -= math.floor(hsh)
+                    borda = abs(gx) >= nx - 1 or gy in (0, ny - 1) or (gx + gy * 3) % 11 == 0
+                    cel.append((gx * passo, gy * passo, hsh * 0.92, borda))
+            self._celulas = cel
+        return self._celulas
+
+    def estourar(self):
+        """O casulo racha em pedacos que voam para fora e somem."""
+        try:
+            te, cx, yb, yt, rx = self._geometria()
+            cel = self._casca(te, cx, yb, yt, rx)
+            cy = (yt - yb) / 2.0
+            grupos = {}
+            for (dx, dy, lim, borda) in cel:
+                ang = math.atan2(dy - cy, dx)
+                chave = (int((ang + math.pi) / (2 * math.pi) * 9), int(dy / ((yt - yb) / 4.0 + 1)))
+                grupos.setdefault(chave, []).append((dx, dy, borda))
+            self.pedacos = []
+            for g in grupos.values():
+                mx = sum(c[0] for c in g) / len(g)
+                my = sum(c[1] for c in g) / len(g) - cy
+                d = math.hypot(mx, my) or 1.0
+                vel = dp(random.uniform(220, 420))
+                self.pedacos.append({'cel': g, 'x': 0.0, 'y': 0.0, 'vx': mx / d * vel,
+                                     'vy': my / d * vel + dp(120), 'cor': random.choice(('roxo', 'meio', 'lilas'))})
+            self._base_estouro = (cx, yb)
+            self.t_estouro = 0.0
+        except Exception as e:
+            print(f"[casulo] estourar: {e}")
+            self.parar()
+
+    def _voar(self, dt, frente):
+        self.t_estouro += dt
+        te = self.k.ps / float(K.R)
+        passo = 2 * te
+        cx, yb = self._base_estouro
+        ox, oy = self.k.x, self.k.y
+        for pd in self.pedacos:
+            pd['x'] += pd['vx'] * dt
+            pd['y'] += pd['vy'] * dt
+            pd['vy'] -= dp(700) * dt
+            pd['vx'] *= 0.96
+            some = self.t_estouro / 0.7                     # os pedacos se desfazem
+            for (dx, dy, borda) in pd['cel']:
+                if (math.sin(dx * 3.1 + dy * 1.7) * 0.5 + 0.5) < some:
+                    continue
+                X = self._grade(cx + dx + pd['x'], ox, passo)
+                Y = self._grade(yb + dy + pd['y'], oy, passo)
+                frente.setdefault('lilas' if borda else pd['cor'], []).append((X, Y, passo))
+
+    def parar(self):
+        if self._ev is not None:
+            self._ev.cancel()
+            self._ev = None
+        for w in (self.w_frente, self.w_tras):
+            if w.parent is not None:
+                w.parent.remove_widget(w)
+        return False
 
 
 class _OndaGetsuga(Widget):
@@ -1025,6 +1266,41 @@ class TituloLuz(Widget):
                 return False
         Clock.schedule_interval(_p, 1 / 60.)
 
+    def gravar(self, i0, i1, cor=(0.78, 0.55, 1.0), dur=0.45):
+        """O corte do golpe final passa por estas letras: elas saltam um
+        pouco e acendem branco, puxam para o roxo e voltam ao normal (a
+        lamina 'grava' a frase)."""
+        try:
+            ox, oy = self._origem()
+            x0, x1 = self._larg[i0], self._larg[i1]
+            w = max(1.0, x1 - x0)
+            with self.canvas.after:
+                c = Color(1, 1, 1, 1)
+                r = Rectangle(texture=self._tex.get_region(x0, 0, w, self.th), size=(w, self.th))
+        except Exception:
+            return
+        t = [0.0]
+
+        def _p(dt):
+            try:
+                t[0] += dt
+                u = min(1.0, t[0] / dur)
+                esc = 1.0 + 0.15 * (1 - u) ** 2              # salta e assenta
+                ox2, oy2 = self._origem()
+                cxl, cyl = ox2 + x0 + w / 2.0, oy2 + self.th / 2.0
+                r.size = (w * esc, self.th * esc)
+                r.pos = (cxl - w * esc / 2.0, cyl - self.th * esc / 2.0)
+                k = min(1.0, u * 2.5)
+                c.rgba = (1 + (cor[0] - 1) * k, 1 + (cor[1] - 1) * k, 1 + (cor[2] - 1) * k,
+                          1.0 if u < 0.5 else max(0.0, (1 - u) * 2))
+                if u >= 1:
+                    self.canvas.after.remove(c)
+                    self.canvas.after.remove(r)
+                    return False
+            except Exception:
+                return False
+        Clock.schedule_interval(_p, 1 / 60.)
+
     def pulsar(self, dur=0.85):
         """So as letras ja escritas pulsam (brancas) enquanto o golpe final
         carrega. O brilho da textura inteira revelaria o trecho que falta."""
@@ -1061,16 +1337,16 @@ _TRECHOS = [(0, 3), (3, 5), (5, 8), (8, 10), (10, 13)]      # TRA|VE|TE |FO|CUS
 
 
 def _ps_titulo(th, largura, altura):
-    """Abertura: o Kirito tem a altura de ~2 letras do logo - a espada passa
-    por uma silaba de cada vez, como se ele esculpisse a frase (e par: os
-    pixels do boneco ficam todos do mesmo tamanho)."""
-    alvo = min(th * 2.2, largura * 0.34, altura * 0.18)
-    return max(2, 2 * int(round(alvo / 31.0 / 2.0)))
+    """Abertura: o Yoru tem a altura de ~2 letras do logo (+12%) - a espada
+    passa por uma silaba de cada vez, como se ele esculpisse a frase
+    (multiplo de K.R: os pixels do boneco ficam todos do mesmo tamanho)."""
+    alvo = min(th * 2.2 * 1.12, largura * 0.38, altura * 0.2)
+    return K.ps_inteiro(alvo / 31.0)
 
 
-def _ps_para(largura, altura):
-    alvo = min(dp(150), largura * 0.37, altura * 0.18)      # altura do boneco (ver os detalhes)
-    return max(2, int(round(alvo / 31.0)))
+def _ps_para(largura, altura, extra=1.0):
+    alvo = min(dp(150), largura * 0.37, altura * 0.18) * extra  # altura do boneco (ver os detalhes)
+    return K.ps_inteiro(alvo / 31.0)
 
 
 class _Agenda:
@@ -1343,11 +1619,11 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         aura.faiscas_fundo = fundo_fx
         estado['aura'] = aura
         camada.add_widget(fundo_fx)
-        camada.add_widget(K.ChamasReiatsu(kk, n_max=640, linguas=42))   # fogo da Bankai (atras)
+        camada.add_widget(K.ChamasReiatsu(kk, linguas=52))   # fogo da Bankai (atras)
         camada.add_widget(aura)
         camada.add_widget(K.RastroLamina(kk, faiscas))
         camada.add_widget(kk)
-        camada.add_widget(K.ChamasReiatsu(kk, n_max=160, linguas=24, frente=True))
+        camada.add_widget(K.ChamasReiatsu(kk, linguas=24, frente=True))
         camada.add_widget(faiscas)
         cam[0] = _Camera(tela)
         try:
@@ -1689,29 +1965,69 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         def _flash_fusao():
             hx2, hy2 = kk.ponto_mao(1)
             jx, jy = hx2, hy2 + 6 * ps                 # onde as laminas se encontram
-            # segura a espada fundida no alto, tremendo com o reiatsu (loop
-            # ate absorver o infinito)
-            # BANKAI: fica todo branco um instante e volta na forma Mugetsu
-            kk.tocar(K.poder(_com(M['fund_alto'], olhos='s'), n=36, de=0.9), loop=True)
-            kk.clarao = 1.0
-            ag.depois(0.12, lambda: _clarao_boneco(kk, 0.5))
-            ax_m, ay_m = kk.ancora()
-            faiscas.estourar(ax_m, ay_m, ROXO, n=30, forca=dp(200), tam=ps, gravidade=-dp(120))
-            _anel(camada, (ax_m, ay_m), ps * 3, ps * 30, 0.6, ROXO, esp=dp(5))
+            # as laminas se fundem (clarao na juncao) e ele segura a espada
+            # fundida no alto, tremendo com o reiatsu
+            kk.tocar(K.poder(_com(P['fund_alto'], olhos='s'), n=36, de=0.9), loop=True)
             faiscas.estourar(jx, jy, BRANCO, n=26, forca=dp(220), tam=ps)
             faiscas.estourar(jx, jy, AZUL, n=16, forca=dp(160), tam=ps)
             _anel(camada, (jx, jy), ps * 2, ps * 22, 0.45, CIANO, esp=dp(4))
-            _brilho_tela(camada, 0.45, 0.25)
+            _brilho_tela(camada, 0.3, 0.2)
             _som('fusao')
-            _tremer(12)
-            kk.pausar(0.1)
-            kk.empurrar(cabelo=10, lift=8)
+            _tremer(10)
+            kk.pausar(0.08)
+            kk.empurrar(cabelo=8, lift=6)
             aura.alvo = 0.35
             nome = estado.get('nome')
             if nome is not None:
                 nome.parte2()
                 ag.depois(1.1, nome.sumir)
-            ag.depois(0.7, _sugar)
+            # o reiatsu roxo sobe do chao em fitas que giram em volta dele e
+            # fecham um casulo
+            estado['casulo'] = _Casulo(kk, camada, t_sobe=0.7, t_fecha=0.32)
+            _som('carga')
+            t = [0.0]
+
+            def _vento(dt):
+                t[0] += dt
+                if t[0] > 1.25:
+                    return False
+                kk.empurrar(lift=1.8, cabelo=1.5, capa=-1.2)
+                if random.random() < 0.5:
+                    ax2, ay2 = kk.ancora()
+                    faiscas.estourar(ax2 + random.uniform(-1, 1) * 9 * ps, ay2 - 10 * ps, ROXO, n=1,
+                                     forca=dp(30), tam=max(2, ps * 0.6), gravidade=-dp(260))
+                return True
+            ag.cada(0.06, _vento)
+            ag.depois(1.3, _estoura_casulo)
+
+        def _estoura_casulo():
+            # BANKAI: o casulo estoura em pedacos e ele aparece na forma
+            # Mugetsu (sobretudo longo rasgado, ombreira, faixas e chamas
+            # roxas), com o cabelo crescendo em etapas ate os joelhos
+            c = estado.get('casulo')
+            if c is not None:
+                c.estourar()
+            base = _com(M['fund_alto'], olhos='s')
+            etapas = (0.12, 0.12, 0.12, 0.3, 0.3, 0.3, 0.48, 0.48, 0.48, 0.64, 0.64, 0.78, 0.78, 0.9, 1.0)
+            seq = []
+            for i, q in enumerate(K.poder(base, n=len(etapas), de=0.9)):
+                q = dict(q)
+                q['cresce'] = etapas[i]
+                seq.append(q)
+            kk.tocar(seq, on_fim=lambda: kk.tocar(K.poder(base, n=36, de=0.9), loop=True))
+            kk.clarao = 1.0
+            ag.depois(0.12, lambda: _clarao_boneco(kk, 0.5))
+            ax_m, ay_m = kk.ancora()
+            faiscas.estourar(ax_m, ay_m, ROXO, n=30, forca=dp(220), tam=ps, gravidade=-dp(120))
+            faiscas.estourar(ax_m, ay_m + alt * 0.3, BRANCO, n=14, forca=dp(180), tam=ps)
+            _anel(camada, (ax_m, ay_m), ps * 3, ps * 32, 0.6, ROXO, esp=dp(5))
+            _brilho_tela(camada, 0.45, 0.25, (0.85, 0.75, 1.0))
+            _som('absorve')
+            _tremer(14)
+            kk.pausar(0.1)
+            kk.empurrar(cabelo=12, lift=8, capa=-10)
+            aura.alvo = 0.7                              # a espada acende: roxo e azul
+            ag.depois(0.9, _sugar)
 
         def _sugar():
             reator = estado['reator']
@@ -1841,6 +2157,18 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             frac = max(0.0, min(1.0, (cx5 - xr0) / max(1.0, xr1 - xr0)))
             ag.depois(0.42 * frac, lambda: (titulo.revelar(i0, i1, dur=0.06),
                                             faiscas.estourar(cx5, cy, BRANCO, n=24, forca=dp(260), tam=ps)))
+            # a lamina "grava" a frase: cada letra acende quando o corte passa
+            # por ela (branco -> roxo) e solta faisquinhas
+            ox_g, _ = titulo._origem()
+            for li, letra in enumerate(texto):
+                if not letra.strip():
+                    continue
+                xl = ox_g + (titulo._larg[li] + titulo._larg[li + 1]) / 2.0
+                fr = max(0.0, min(1.0, (xl - xr0) / max(1.0, xr1 - xr0)))
+                ag.depois(0.42 * fr + 0.02, lambda li=li, xl=xl: (
+                    titulo.gravar(li, li + 1),
+                    faiscas.estourar(xl, cy, random.choice((ROXO, BRANCO, AZUL)), n=4,
+                                     forca=dp(120), tam=max(2, ps * 0.7), gravidade=dp(200))))
             _mover(kk, (ax, ay), (x_fim, y_fim), dur, linear=True, fantasmas=6,
                    cor_fantasma=CIANO, on_fim=_para, limite=(area, m))
 
@@ -2080,10 +2408,10 @@ class KiritoPin:
                 return
             W, H = Window.size
             x0, topo, x1 = self._borda()
-            ps = _ps_para(x1 - x0, H) + 1
+            ps = _ps_para(x1 - x0, H, extra=1.08)
             espaco = H - topo
             ps = min(ps, int(espaco / 15.0))         # cabeca inteira acima da caixa
-            if ps < 2:
+            if ps < K.R:
                 return                               # sem espaco (tela muito baixa)
             self.lado = random.choice((-1, 1))       # -1 canto esquerdo, 1 direito
             self.clip = StencilView(size_hint=(None, None), size=(W, 0), pos=(0, topo))
@@ -2388,7 +2716,7 @@ def kirito_fatiar(alvo, on_fim=None):
         camada[0] = cam
         Window.add_widget(cam)
         alt_boneco = max(dp(62), min(rh * 1.7, dp(96), H * 0.15))
-        ps = max(2, int(round(alt_boneco / 31.0)))
+        ps = K.ps_inteiro(alt_boneco * 1.12 / 31.0)
         k = K.KiritoPixel(ps=ps)
         faiscas = K.Faiscas()
         cam.add_widget(K.RastroLamina(k, faiscas))

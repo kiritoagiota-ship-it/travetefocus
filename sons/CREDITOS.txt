@@ -21,6 +21,9 @@ CC0 nao exige credito; fica registrado por gentileza aos autores.
 
 Voz "Starburst Stream" (voz_starburst, voz_stream)
 --------------------------------------------------
-Gerada pela voz de leitura do proprio Windows ("Microsoft Zira") e
-tratada aqui: tom mais grave, voz dobrada e um eco curto. Para usar uma
-voz gravada, basta trocar esses dois arquivos (mesmo nome, formato WAV).
+Gerada no PC com o Piper (sintese de voz neural de codigo aberto,
+gratuita), modelo masculino en_US "hfc_male" (base Hi-Fi-CAPTAIN; o
+modelo e para uso nao comercial - se um dia o app for vendido, trocar a
+voz). Tratada aqui: tom um pouco mais grave, voz dobrada, presenca e eco
+curto. Para usar uma voz gravada, basta trocar esses dois arquivos (mesmo
+nome, formato WAV).
