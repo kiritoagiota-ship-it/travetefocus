@@ -81,11 +81,13 @@ _PALETA = {
     'T': (0.62, 0.30, 0.34, 1),                                  # dentro da boca
     'Z': (0.15, 0.72, 0.95, 1),                                  # costura ciano da roupa (acende nos golpes)
     'N': (0.02, 0.03, 0.07, 1),                                  # contorno escuro
+    'p': (0.30, 0.33, 0.46, 1),                                  # brilho cinza-azulado da calca
+    'b': (0.17, 0.18, 0.26, 1),                                  # bota: meio-tom
 }
 _SEM_CONTORNO = set('xX!1FfL')
 # Mugetsu: a roupa escurece (o rosto continua claro, os olhos acendem)
 _SOMBRA = {'C': 'D', 'c': 'd', 'A': 'd', 'q': 'D', 'P': 'D', 'B': 'D', 'M': 'D', 'G': 'd', 'E': 'V',
-           '2': 'D', '4': 'D', '7': 'D', 'e': 'V', 'n': 'L', 'K': 'D', 'Z': 'o'}
+           '2': 'D', '4': 'D', '7': 'D', 'e': 'V', 'n': 'L', 'K': 'D', 'Z': 'o', 'p': 'd', 'b': 'D'}
 _CORPO_M = set('HhSsDdVJIeT')
 # luz dinamica: pixels do corpo perto da lamina acesa clareiam um degrau
 _LAMINA = set('wjRrzY9!')                  # so as partes claras (a bainha usa W/u)
@@ -179,6 +181,10 @@ _PERNAS_P = {
     'avanco_baixo': dict(H=8.6, ar=False, f=(5.8, 0.0), b=(-6.8, 0.0)),
     'agachado':     dict(H=6.6, ar=False, f=(4.0, 0.0), b=(-3.2, 0.0)),
     'dobra':        dict(H=10.2, ar=False, f=(2.8, 0.0), b=(-2.2, 0.0)),
+    # bases de espadachim: pes afastados e joelhos soltos
+    'base':         dict(H=11.2, ar=False, f=(3.9, 0.0), b=(-3.5, 0.0)),
+    'base_larga':   dict(H=10.3, ar=False, f=(5.0, 0.0), b=(-5.2, 0.0)),
+    'recua':        dict(H=10.4, ar=False, f=(3.2, 0.0), b=(-4.8, 0.0)),     # peso na perna de tras
     'pulo':         dict(H=11.0, ar=True, f=(2.8, -6.6), b=(-0.4, -6.0)),
     'suspenso':     dict(H=12.3, ar=True, f=(1.8, -12.2), b=(-1.4, -11.7)),
     'solto':        dict(H=12.4, ar=True, f=(1.0, -12.4), b=(-1.1, -12.2)),
@@ -258,7 +264,7 @@ def _emote(px, qual, base_x, topo_cab):
 POSE_BASE = dict(dx=0, dy=0, pernas='repouso', olhos='a', cabelo=0.0, capa=0.0,
                  lift=0.0, sobe=0.0, fase=0.0, brilho=None, saia=1.0, frente1=False,
                  tipo1=1, fusao=False, emote=None, mugetsu=False, hx=0, hy=0, luz=0.0, incl=0,
-                 pernas_b=None, pt=0.0,
+                 pernas_b=None, pt=0.0, vista='lado',
                  m1=(3, -5), a1=-40.0, c1=15, s1=None,
                  m2=None, a2=None, c2=15, s2=None)
 
@@ -777,38 +783,159 @@ def _perna3(px, quad, joelho, pe, frente, no_ar):
     P = (pe[0] * R, pe[1] * R)
 
     def calca(j, t):
-        if frente:
-            return 'C' if j >= 2 else ('P' if j >= -1 else '7')
-        return 'P' if j >= 2 else '7'
+        if frente:                                # luz / meio / base / sombra
+            return 'p' if j >= 2 else ('C' if j >= 1 else ('P' if j >= -1 else '7'))
+        return 'C' if j >= 2 else ('P' if j >= 0 else '7')
 
     def canela(j, t):
-        if t > 0.42:                              # cano da bota
-            if 0.46 < t < 0.56:
-                return 'k' if j >= 1 else 'G'     # fivela
-            return 'K' if (j >= 1 and frente) else 'B'
+        if t > 0.38:                              # cano alto da bota
+            if 0.44 < t < 0.54:
+                return 'k' if j >= 1 else 'G'     # fivela prateada
+            if frente:
+                return 'K' if j >= 2 else ('b' if j >= 0 else 'B')
+            return 'b' if j >= 2 else 'B'
         return calca(j, t)
     _tubo(px, Q, J, 2.5, calca)
-    _tubo(px, J, P, 2.0, canela)
-    if frente:                                    # joelho com um brilho
-        px[(int(round(J[0])) + 1, int(round(J[1])) + 1)] = 'c'
+    _tubo(px, J, P, 2.3, canela)
+    jx, jy = int(round(J[0])), int(round(J[1]))
+    if frente:                                    # joelho marcado
+        px[(jx + 1, jy + 1)] = 'p'
+        px[(jx + 2, jy)] = 'p'
     # pe
     if no_ar:
-        ang = math.radians(-70)
-        fim = (P[0] + math.cos(ang) * 4, P[1] + math.sin(ang) * 4)
-        _tubo(px, P, fim, 1.5, lambda j, t: 'K' if (j >= 1 and t > 0.5) else 'B')
+        ang = math.radians(-65)
+        fim = (P[0] + math.cos(ang) * 5, P[1] + math.sin(ang) * 5)
+        _tubo(px, P, fim, 1.8, lambda j, t: 'k' if t > 0.8 else ('K' if j >= 1 else 'B'))
     else:
-        x0, y0 = int(round(P[0])) - 2, int(round(P[1]))
-        for xx in range(x0, x0 + 7):
-            for yy in (y0, y0 + 1, y0 + 2):
-                if yy == y0 + 2 and xx > x0 + 3:
-                    continue                      # peito do pe mais baixo na ponta
+        x0, y0 = int(round(P[0])) - 3, int(round(P[1]))
+        for xx in range(x0, x0 + 9):
+            for yy in (y0, y0 + 1, y0 + 2, y0 + 3):
+                if yy >= y0 + 2 and xx > x0 + 4:
+                    continue                      # peito do pe desce ate a ponta
                 if yy == y0:
-                    ch = 'N' if xx < x0 + 6 else 'B'   # sola
-                elif xx >= x0 + 5:
-                    ch = 'K'                      # biqueira
+                    ch = 'g'                      # sola clara (le no fundo escuro)
+                elif xx >= x0 + 7:
+                    ch = 'k' if yy == y0 + 1 and xx == x0 + 8 else 'G'   # biqueira de metal
+                elif yy == y0 + 3 or (yy == y0 + 2 and xx == x0 + 4):
+                    ch = 'K'
                 else:
-                    ch = 'B'
+                    ch = 'b' if frente else 'B'
                 px[(xx, yy)] = ch
+
+
+# ── vistas para o giro do corpo nos golpes: de frente (rosto e peito para
+#    quem olha) e de costas (cabelo por tras, costura ciano nas costas)
+_CAB_FRENTE = [
+    "..........JH....HJ........",
+    "........JJHHJ..JHHJJ......",
+    "......JJHHHHHJJHHHHHJJ....",
+    "....JJHHHHHHHHHHHHHHHHJ...",
+    "...JHHHHHHHIIhhIIHHHHHHJ..",
+    "..JHHHHHHIIhhhhhhIIHHHHHJ.",
+    "..JHHHHHIHHHHHHHHHHIHHHHJ.",
+    ".JHHHHHHHHHHHHHHHHHHHHHHHJ",
+    ".JHHHHHHHHHHHHHHHHHHHHHHHJ",
+    ".JHHHHHHHHHHHHHHHHHHHHIHHJ",
+    ".JHHHHHHHHHHHHHHHHHHHIhHHJ",
+    ".JHHHHHHHHHHHHHHHHHHHHHHHJ",
+    ".JHHHHHsHHHHHsHHHHHsHHHHHJ",
+    ".JHHHsSSHHHsSSSHHHsSSHHHHJ",
+    ".JHHsSSSSSSSSSSSSSSSSSsHHJ",
+    ".JHHsSSSSSSSSSSSSSSSSSsHHJ",
+    ".JHHsSSSSSSSSSSSSSSSSSsHJ.",
+    "..JHsSSSSSSSSsSSSSSSSSsHJ.",
+    "..JHHsSSSSSSSSSSSSSSSsHJ..",
+    "...JHsSSSSSSSssSSSSSSsJ...",
+    "....JHsSSSSSSSSSSSSSsJ....",
+    "......JHsssSSSSSsssJ......",
+]
+_CAB_COSTAS = [
+    "..........JH....HJ........",
+    "........JJHHJ..JHHJJ......",
+    "......JJHHHHHJJHHHHHJJ....",
+    "....JJHHHHHHHHHHHHHHHHJ...",
+    "...JHHHHHHHIIhhIIHHHHHHJ..",
+    "..JHHHHHHIIhhhhhhIIHHHHHJ.",
+    "..JHHHHHIHHHHHHHHHHIHHHHJ.",
+    ".JHHHHHHHHHHHHHHHHHHHHHHHJ",
+    ".JHHHJHHHHHHJHHHHHHJHHHHHJ",
+    ".JHHHJHHHHHHJHHHHHHJHHHHHJ",
+    ".JHHHHJHHHHHJHHHHHJHHHHHHJ",
+    ".JHHHHJHHHHHHJHHHHJHHHHHHJ",
+    "sJHHHHHJHHHHHJHHHJHHHHHHJs",
+    "sJHHHHHJHHHHHJHHHJHHHHHHJs",
+    ".JHHHHJHHHHHHJHHHHJHHHHHJ.",
+    ".JHHHJHHHHHHJHHHHHJHHHHHJ.",
+    "..JHHJHHHHHJHHHHHHJHHHHJ..",
+    "..JHJHHHHHJHHHHHHHJHHHJ...",
+    "...JHHHHJHHHHHHJHHHHJJ....",
+    "....JHJ.JHHsSSsHHJ.JHJ....",
+    "......J..JHsSSsHJ.........",
+    "..........sSSSs...........",
+]
+_TOR_COSTAS = [
+    "......2CCCCCCCCCcc........",
+    "......2CCCCCCCCCAcc.......",
+    "......2CCCCCZZCCAcc.......",
+    "......2CCCCCZZCCAAcc......",
+    "....22CCCCCCZZCCCCAAcc....",
+    "....2CCCCCCCZZCCCCAAAc....",
+    "....2CCcCCCCZZCCCCAAAc....",
+    "....2CCcCC2CZZC2CCAAAc....",
+    "....22CcC2CCZZCC2CAAAc....",
+    "....2CCcCCCCZZCCCCAAAc....",
+    "..22CCCcCCCCZZCCCCCAAAcc..",
+    "..2CCCCcCCCCZZCCCCCAAAcc..",
+    "..2MMMMMMMMMMMMMMMMMMMMc..",
+    "..2MMMMMMMMMMMMMMMMMMMMc..",
+    "..22CCCCCCCCCCCCCCCCAAcc..",
+    "..22CCCCCCCCCCCCCCCCAAcc..",
+]
+
+
+def _cab_f(trocas):
+    c = [list(linha) for linha in _CAB_FRENTE]
+    for r in (14, 15, 16):
+        for col in (6, 7, 8, 9, 16, 17, 18, 19):
+            c[r][col] = 'S'
+    for (col, r), ch in trocas.items():
+        c[r][col] = ch
+    return [''.join(linha) for linha in c]
+
+
+def _dois_olhos(linhas):
+    """linhas = {r: 'xxxx'} -> mesmos olhos nos dois lados (de frente)."""
+    out = {}
+    for r, txt in linhas.items():
+        out.update(_linha_olho(r, 6, txt))
+        out.update(_linha_olho(r, 16, txt[::-1]))
+    return out
+
+
+_SOB_F = _junta(_linha_olho(12, 5, "E"), _linha_olho(13, 6, "EEEE"),
+                _linha_olho(13, 16, "EEEE"), _linha_olho(12, 20, "E"))
+_CABECAS_F = {
+    'a': _cab_f(_dois_olhos({14: "EEEE", 15: "eEne", 16: "emme"})),
+    'f': _cab_f(_dois_olhos({15: "EEEE"})),
+    'b': _cab_f(_dois_olhos({15: "EEEE", 16: "eEne"})),
+    's': _cab_f(_junta(_SOB_F, _dois_olhos({14: "EEEE", 15: "eEne"}))),
+    'g': _cab_f(_junta(_SOB_F, _dois_olhos({14: "EEEE", 15: "eEne"}),
+                       _linha_olho(19, 12, "EEEE"), _linha_olho(20, 12, "ETTE"))),
+    'l': _cab_f(_junta(_SOB_F, _dois_olhos({14: "9999", 15: "9!!9"}))),
+    'u': _cab_f(_junta(_dois_olhos({13: "EEEE", 14: "enee", 15: "eEEe", 16: "meem"}),
+                       _linha_olho(19, 13, "EE"), _linha_olho(20, 13, "EE"))),
+    'e': _cab_f(_junta(_dois_olhos({14: ".EE.", 15: "E..E"}), _linha_olho(19, 12, "s..s"),
+                       _linha_olho(20, 13, "ss"))),
+    # vitoria: olhos semicerrados (confiante) e meio sorriso de lado
+    'v': _cab_f(_junta(_dois_olhos({14: "EEEE", 15: "eEne"}), _linha_olho(19, 13, "sS"),
+                       _linha_olho(18, 15, "s"))),
+}
+_CABECAS2['v'] = _cab2(_junta(_linha_olho(14, 14, "EEEE"), _linha_olho(15, 14, "eEne"),
+                              _linha_olho(14, 22, "EE"), _linha_olho(15, 22, "eE"),
+                              _linha_olho(19, 19, "sS"), _linha_olho(18, 21, "s")))
+for _m in (_CAB_FRENTE, _CAB_COSTAS, _TOR_COSTAS) + tuple(_CABECAS_F.values()):
+    assert all(len(_l) == 26 for _l in _m), 'vista com largura errada'
+
 
 
 def _pernas3(px, p, hip_x, hip_y):
@@ -827,8 +954,15 @@ def _pernas3(px, p, hip_x, hip_y):
     (pf, pb), ar = pes(nome)
     if nome_b:
         (pf2, pb2), ar2 = pes(nome_b)
-        pf = (pf[0] + (pf2[0] - pf[0]) * pt, pf[1] + (pf2[1] - pf[1]) * pt)
-        pb = (pb[0] + (pb2[0] - pb[0]) * pt, pb[1] + (pb2[1] - pb[1]) * pt)
+
+        def passo(a, b):
+            x = a[0] + (b[0] - a[0]) * pt
+            y = a[1] + (b[1] - a[1]) * pt
+            anda = abs(b[0] - a[0])
+            if anda > 0.8 and not ar and not ar2:          # levanta o pe no meio do passo
+                y += math.sin(math.pi * pt) * min(2.2, anda * 0.45)
+            return (x, y)
+        pf, pb = passo(pf, pf2), passo(pb, pb2)
         ar = ar2 if pt >= 0.5 else ar
     frente_primeiro = lambda c1, c2: c1 if c1[0] >= c2[0] else c2      # joelho para a frente
     for (qx, pe, frente) in ((hip_x - 1.3, pb, False), (hip_x + 1.3, pf, True)):
@@ -857,7 +991,7 @@ def _casaco3(px, base, y0, capa, lift, fase, saia, parte):
     parte='frente': a aba da frente ate o joelho, aberta (as pernas aparecem).
     Bordas com costura ciano, forro, dobras que andam com o pano, barra."""
     dois_pi = 2 * math.pi
-    amp = 0.55 + 0.25 * min(3.0, abs(capa))
+    amp = 0.75 + 0.25 * min(3.0, abs(capa))       # balanca um pouco mesmo sem vento
     vento = max(-1.0, min(1.6, capa))
     mv = int(fase * 8)
     top = _t(y0) + R - 1
@@ -905,23 +1039,30 @@ def _casaco3(px, base, y0, capa, lift, fase, saia, parte):
         if kk < n1:
             linhas_ext.append((y, _t(x_esq), _t(x_dir) + 1, kk, n_ext))
         else:
-            meio = x_esq + (x_dir - x_esq) * 0.48
-            linhas_ext.append((y, _t(x_esq), _t(meio), kk, n_ext))
+            abre = min(1.0, (k - 3.5) / 2.0)          # o vao entre as caudas abre para baixo
+            meio = x_esq + (x_dir - x_esq) * 0.46
+            linhas_ext.append((y, _t(x_esq), _t(meio - 0.5 * abre), kk, n_ext))
             if kk < n_int:
                 y2 = top - kk + int(round(lift * k * 0.22 * R))
-                linhas_int.append((y2, _t(meio + 0.6 - onda2 * 0.6 + ven * 0.15), _t(x_dir - onda2 * 0.3) + 1,
-                                   kk, n_int))
+                linhas_int.append((y2, _t(meio + 0.7 * abre - onda2 * 0.6 + ven * 0.15),
+                                   _t(x_dir - onda2 * 0.3) + 1, kk, n_int))
 
     def cor_tras(x, y, a, b, kk, total):
         if kk >= total - 2:
             return 'Z' if kk == total - 2 else '2'   # barra com friso ciano
         if x == a:
             return 'c'
-        if x == b and kk >= n1:
-            return '2'
+        if kk >= n1 and x >= b - 1:
+            return 'q'                             # forro aparecendo no vao
         d = dobra(x, kk)
         return '2' if d == 0 else 'C'
-    _painel(px, linhas_int, cor_tras)             # a cauda de dentro fica atras
+    def cor_int(x, y, a, b, kk, total):
+        if kk >= total - 2:
+            return 'Z' if kk == total - 2 else '2'
+        if x <= a + 1:
+            return 'q'                             # forro da cauda de dentro
+        return '2' if dobra(x, kk) == 0 else 'C'
+    _painel(px, linhas_int, cor_int)              # a cauda de dentro fica atras
     _painel(px, linhas_ext, cor_tras)
 
 
@@ -1051,15 +1192,21 @@ def montar(p):
     _pernas3(px, p, _X0 + 6.5, hip_y)
     _bainha2(px, boca[0], boca[1])
     _casaco3(px, base, topo - len(_TRONCO), p['capa'], p['lift'], fase, saia, 'frente')
-    for r, linha in enumerate(_TOR2):
+    vista = p.get('vista', 'lado')
+    tronco = _TOR_COSTAS if vista == 'costas' else _TOR2
+    for r, linha in enumerate(tronco):
         desl = 2 * incl if r < 6 else (incl if r < 10 else 0)
         y = top_t - r
         for c, ch in enumerate(linha):
             if ch != '.':
                 px[(bx_t + desl + c, y)] = ch
-    t = {}
-    _alca_peito(t, int(round(base + incl)), int(round(topo)))
-    _up(px, t)
+    if vista == 'costas':
+        if p['a2'] is None and not p.get('fusao'):
+            _bainha_costas(px, base + 5.5 + incl, topo + 0.5)   # a espada nas costas, a mostra
+    else:
+        t = {}
+        _alca_peito(t, int(round(base + incl)), int(round(topo)))
+        _up(px, t)
 
     m1 = p['m1']
     ergue = m1 is not None and m1[1] > 4 and not p.get('frente1')
@@ -1075,7 +1222,13 @@ def montar(p):
         _mao(px, h1[0], h1[1], metal=True)
     if ergue:
         _braco_frente()
-    _carimbo(px, _CABECAS2.get(p['olhos'], _CABECAS2['a']), cab_x, cab_ty)
+    if vista == 'costas':
+        cabeca = _CAB_COSTAS
+    elif vista == 'frente':
+        cabeca = _CABECAS_F.get(p['olhos'], _CABECAS_F['a'])
+    else:
+        cabeca = _CABECAS2.get(p['olhos'], _CABECAS2['a'])
+    _carimbo(px, cabeca, cab_x, cab_ty)
     if acima2:
         _braco_tras()
     if p['a1'] is None:
@@ -1784,9 +1937,11 @@ class KiritoPixel(Widget):
 # ═══════════════════════════════════════════════════════════════════
 POSE_A = {
     # uma espada, em guarda
-    'guarda':     pose(m1=(3, -5), a1=-40.0),
+    'guarda':     pose(pernas='base', m1=(3, -5), a1=-40.0),
     # guardado: mao no cabo da Elucidator (na cintura), como um samurai em repouso
-    'guardado':   pose(m1=(2, -3), a1=None),
+    'guardado':   pose(pernas='base', m1=(2, -3), a1=None),
+    # vitoria: base firme, mao no cabo, vira o rosto para quem olha
+    'vitoria':    pose(pernas='base', m1=(2, -3), a1=None, olhos='v', vista='frente'),
     'fim':        pose(m1=(2, -3), a1=None),
     # tela do PIN: espiando por cima da borda da caixa, as duas maos apoiadas
     # nela e os olhos no codigo sendo digitado (o corpo fica escondido atras)
@@ -1813,15 +1968,15 @@ POSE_A = {
     'corta1':     pose(pernas='avanco', dx=2, dy=-1, m1=(8, 0), a1=370.0, m2=(-4, 1)),
     'segue1':     pose(pernas='avanco', dx=2, dy=-1, m1=(6, 3), a1=395.0, m2=(-4, 1)),
     # golpe de cima para baixo (mini Kirito ao apagar)
-    'arma1':      pose(pernas='avanco', dx=-1, m1=(0, 9), a1=112.0, m2=(4, 1)),
+    'arma1':      pose(pernas='recua', dx=-1, m1=(0, 9), a1=112.0, m2=(4, 1)),
     'corta_desce': pose(pernas='avanco', dx=2, dy=-1, m1=(7, -2), a1=-38.0, m2=(-4, 2)),
     'segue_desce': pose(pernas='avanco', dx=2, dy=-1, m1=(4, -6), a1=-70.0, m2=(-4, 1)),
     # saca a Dark Repulser (mao de tras sobe ate o cabo nas costas)
-    'pega2':      pose(pernas='avanco', dx=1, m1=(5, -4), a1=-40.0, m2=(-1, 8), a2=None),
+    'pega2':      pose(pernas='base', dx=1, m1=(5, -4), a1=-40.0, m2=(-1, 8), a2=None),
     'saca2':      pose(pernas='avanco', dx=1, m1=(5, -4), a1=-40.0, m2=(-3, 8), a2=100.0, c2=14),
-    'dupla':      pose(pernas='avanco', dy=-1, m1=(6, 3), a1=40.0, m2=(-5, -1), a2=205.0),
+    'dupla':      pose(pernas='base_larga', m1=(6, 3), a1=40.0, m2=(-5, -1), a2=205.0),
     # combo samurai com as duas
-    'c2_arma':    pose(pernas='avanco', dx=-1, m1=(-1, 9), a1=120.0, m2=(-4, -2), a2=200.0),
+    'c2_arma':    pose(pernas='recua', dx=-1, m1=(-1, 9), a1=120.0, m2=(-4, -2), a2=200.0),
     'c2_corta':   pose(pernas='avanco', dx=2, dy=-1, m1=(7, -2), a1=-45.0, m2=(-5, -3), a2=215.0),
     'c3_arma':    pose(pernas='avanco', m1=(5, -4), a1=-60.0, m2=(-5, -4), a2=225.0),
     'c3_corta':   pose(pernas='avanco', dx=2, m1=(-3, 3), a1=160.0, m2=(5, 8), a2=75.0),
@@ -1831,19 +1986,19 @@ POSE_A = {
     'iai_carga':  pose(pernas='agachado', dx=-1, dy=-3, m1=(-3, -1), a1=192.0, m2=(-5, -2), a2=202.0),
     'iai_corte':  pose(pernas='avanco', dx=3, dy=-2, m1=(8, 0), a1=-5.0, c1=17, m2=(7, -4), a2=-28.0, c2=17),
     'iai_fim':    pose(pernas='avanco', dx=3, dy=-3, m1=(8, -1), a1=-12.0, c1=17, m2=(7, -5), a2=-35.0, c2=17),
-    'chiburi':    pose(pernas='avanco', dx=2, dy=-2, m1=(6, 3), a1=30.0, m2=(5, -1), a2=10.0),
+    'chiburi':    pose(pernas='base_larga', dx=2, m1=(6, 3), a1=30.0, m2=(5, -1), a2=10.0),
     # embainhar (noto): a ponta da preta entra na boca da bainha da cintura e
     # desliza ate o clique; a azul volta para as costas
     # (angulo -138 = 222 - 360: vindo do chiburi a lamina desce pela frente
     # ate a boca da bainha, em vez de dar a volta por cima da cabeca)
-    'embainha_a': pose(pernas='repouso', m1=(6, 1), a1=_BAINHA_ANG - 360, c1=8, m2=(-2, 9), a2=268.0, c2=10),
-    'embainha_b': pose(pernas='repouso', m1=(3, -2), a1=_BAINHA_ANG - 360, c1=4, m2=(-2, 6), a2=268.0, c2=5),
-    'embainha_c': pose(pernas='repouso', m1=(2, -3), a1=_BAINHA_ANG - 360, c1=0, m2=(-2, 5), a2=268.0, c2=0),
+    'embainha_a': pose(pernas='base', m1=(6, 1), a1=_BAINHA_ANG - 360, c1=8, m2=(-2, 9), a2=268.0, c2=10),
+    'embainha_b': pose(pernas='base', m1=(3, -2), a1=_BAINHA_ANG - 360, c1=4, m2=(-2, 6), a2=268.0, c2=5),
+    'embainha_c': pose(pernas='base', m1=(2, -3), a1=_BAINHA_ANG - 360, c1=0, m2=(-2, 5), a2=268.0, c2=0),
     # compatibilidade com cenas antigas
     'embainha':   pose(pernas='repouso', m1=(3, -2), a1=_BAINHA_ANG - 360, c1=4, m2=(-2, 6), a2=268.0, c2=5),
     'espreita':   pose(dy=1, m1=(3, 3), a1=None, m2=(-3, 3), a2=None, frente1=True),
     'espreita2':  pose(dy=3, m1=(3, 1), a1=None, m2=(-3, 1), a2=None, frente1=True),
-    'x_arma':     pose(pernas='avanco', dx=-1, m1=(-3, 6), a1=135.0, m2=(-5, 6), a2=160.0),
+    'x_arma':     pose(pernas='recua', dx=-1, m1=(-3, 6), a1=135.0, m2=(-5, 6), a2=160.0),
     'x_corta':    pose(pernas='avanco', dx=2, dy=-1, m1=(7, 0), a1=-20.0, m2=(6, -3), a2=-40.0),
     'final_arma': pose(pernas='agachado', dy=-2, m1=(-4, 7), a1=120.0, m2=(-6, 7), a2=140.0),
     'final':      pose(pernas='avanco', dx=3, dy=-1, m1=(7, -2), a1=-25.0, m2=(7, -5), a2=-50.0, c1=16, c2=16),
@@ -1948,9 +2103,10 @@ def golpe(arma, corta, olhos=('s', 'g', 's'), n_arma=3, prende=2, segue=3, volta
         ant['m2'] = _passo_mao(arma['m2'], corta['m2'], 1.0, True)
     ant['dx'] = arma['dx'] - 1                       # pende para tras
     ant['incl'] = -1                                 # ombros e cabeca vao para tras
+    ant['vista'] = 'costas'                          # torce o corpo: mostra as costas
     if altura(arma) > 3:
         ant['dy'] = arma['dy'] - 1                   # e abaixa (se nao estiver agachado)
-    imp = dict(corta, olhos=olhos[1], incl=1)       # o peso vai para a frente no corte
+    imp = dict(corta, olhos=olhos[1], incl=1, vista='frente')   # corta de frente, peso a frente
     if seg is None:
         seg = dict(imp)
         if corta['a1'] is not None and s1:
@@ -1962,8 +2118,9 @@ def golpe(arma, corta, olhos=('s', 'g', 's'), n_arma=3, prende=2, segue=3, volta
             seg['m2'] = _passo_mao(arma['m2'], corta['m2'], 1.0, False)
         seg['dx'] = corta['dx'] + 1                  # inclina para a frente
         seg['incl'] = 1
+        seg['vista'] = 'lado'                        # volta de perfil na acomodacao
     else:
-        seg = dict(seg, olhos=olhos[1], incl=1)
+        seg = dict(seg, olhos=olhos[1], incl=1, vista='lado')
     fim = dict(corta, olhos=olhos[2])
     chaves = [(n_arma, arma, 'suave'), (prende, ant, 'segura')]
     if duplo:                                         # meio do golpe: 2 quadros de rastro

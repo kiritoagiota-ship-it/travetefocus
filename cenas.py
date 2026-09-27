@@ -1910,6 +1910,13 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             _tremer(26)
             _brilho_tela(camada, 0.3, 0.3)
             titulo.clarao_final()
+            # pose de vitoria: vira o rosto para quem olha com um meio sorriso,
+            # o sobretudo assenta e um brilho passa no olho
+            vit = P['vitoria']
+            kk.tocar(K.sequencia(_de_agora(kk, 4, 'out') +
+                                 [(12, vit, 'segura'), (7, _com(vit, emote='brilho'), 'segura'), (1, vit)]),
+                     on_fim=lambda: kk.idle(base=vit))
+            kk.empurrar(capa=-8, cabelo=-6)
             ag.depois(1.4, _sai)
 
         def _sai():
