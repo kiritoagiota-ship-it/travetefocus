@@ -77,26 +77,28 @@ _PALETA = {
     '+': (0.90, 0.94, 1.00, 1),                                  # reflexo no aco
     '0': (0.00, 0.42, 0.64, 0.85),                               # contorno do lado da sombra
     '8': (0.36, 0.17, 0.60, 0.85),                               # contorno roxo do lado da sombra
+    'm': (0.42, 0.50, 0.72, 1),                                  # iris (parte clara, embaixo)
+    'T': (0.62, 0.30, 0.34, 1),                                  # dentro da boca
 }
 _SEM_CONTORNO = set('xX!1FfL')
 # Mugetsu: a roupa escurece (o rosto continua claro, os olhos acendem)
 _SOMBRA = {'C': 'D', 'c': 'd', 'A': 'd', 'q': 'D', 'P': 'D', 'B': 'D', 'M': 'D', 'G': 'd', 'E': 'V',
            '2': 'D', '4': 'D', '7': 'D', 'e': 'V', 'n': 'L', 'K': 'D'}
-_CORPO_M = set('HhSsDdVJI')
+_CORPO_M = set('HhSsDdVJIeT')
 # luz dinamica: pixels do corpo perto da lamina acesa clareiam um degrau
 _LAMINA = set('wjRrzY9!')                  # so as partes claras (a bainha usa W/u)
 _ACENDE = {'C': 'c', 'A': 'c', 'q': 'c', 'P': 'c', 'c': 'Q', 'H': 'h', 'h': 'Q', 'B': 'K',
            'M': 'g', 'G': 'Q', 'D': 'd', 'd': 'o', '2': 'C', '4': 'C', '7': 'P', 'J': 'H', 'I': 'h'}
 
 
-def _iluminar(px, luz):
+def _iluminar(px, luz, esc=1):
     """Luz da lamina no corpo: os pixels encostados nela sobem 2 degraus
     (ate o azul aceso), os de 2 px de distancia sobem 1. Sem blur: so troca
     de cor em clusters."""
     lamina = [q for q, ch in px.items() if ch in _LAMINA]
     if not lamina:
         return
-    r = 2 if luz >= 0.75 else 1
+    r = (2 if luz >= 0.75 else 1) * esc
     dist = {}
     for (x, y) in lamina:
         for ox in range(-r, r + 1):
@@ -109,7 +111,7 @@ def _iluminar(px, luz):
         ch = px.get(q)
         if ch in _ACENDE:
             ch = _ACENDE[ch]
-            if d == 1 and luz >= 0.75 and ch in _ACENDE:
+            if d <= esc and luz >= 0.75 and ch in _ACENDE:
                 ch = _ACENDE[ch]
             px[q] = ch
 
@@ -219,23 +221,6 @@ _X0 = 25                 # coluna esquerda do tronco/cabeca
 _PES = 14                # linha dos pes (sobra embaixo para espadas apontando p/ baixo)
 
 
-def _estampar_pernas(px, mapa, x0, y_topo):
-    """Pernas com volume: o primeiro pixel de cada perna (lado de tras) fica
-    na sombra e a ponta de cada bota (ultima linha) ganha um brilho."""
-    ult = len(mapa) - 1
-    for r, linha in enumerate(mapa):
-        for c, ch in enumerate(linha):
-            if ch == '.':
-                continue
-            antes = linha[c - 1] if c > 0 else '.'
-            depois = linha[c + 1] if c + 1 < len(linha) else '.'
-            if ch == 'P' and antes != 'P':
-                ch = '7'
-            elif ch == 'B' and r == ult and depois != 'B':
-                ch = 'K'
-            px[(x0 + c, y_topo - r)] = ch
-
-
 def _estampar(px, mapa, x0, y_topo):
     for r, linha in enumerate(mapa):
         for c, ch in enumerate(linha):
@@ -243,197 +228,15 @@ def _estampar(px, mapa, x0, y_topo):
                 px[(x0 + c, y_topo - r)] = ch
 
 
-def _linha(px, x0, y0, x1, y1, ch, grossura=1):
-    passos = max(abs(x1 - x0), abs(y1 - y0), 1)
-    for i in range(passos + 1):
-        x = round(x0 + (x1 - x0) * i / passos)
-        y = round(y0 + (y1 - y0) * i / passos)
-        px[(x, y)] = ch
-        if grossura > 1:
-            px[(x, y - 1)] = ch
-
-
 _CORPO = set('CcAqGPBMSsHhE24JIen7')           # cores de corpo/roupa (para o contorno do braco)
-
-
-def _braco(px, x0, y0, x1, y1, luva=True, frente=False):
-    """Braco com manga do sobretudo: 3 px de espessura, brilho num lado,
-    punho prateado perto da mao e luva 2x2. O braco da frente tem a manga
-    mais clara e um contorno escuro onde passa por cima do corpo (senao se
-    perde no sobretudo preto)."""
-    dx, dy = x1 - x0, y1 - y0
-    passos = max(abs(dx), abs(dy), 1)
-    horizontal = abs(dx) >= abs(dy)
-    base = 'A' if frente else 'C'
-    sombra = 'C' if frente else '2'
-    meu = {}
-    for i in range(passos + 1):
-        x = round(x0 + dx * i / passos)
-        y = round(y0 + dy * i / passos)
-        punho = i >= passos - 1 and passos > 3
-        if horizontal:                      # luz em cima, sombra embaixo
-            meu[(x, y + 1)] = 'G' if punho else 'c'
-            meu[(x, y)] = 'G' if punho else base
-            meu[(x, y - 1)] = 'G' if punho else sombra
-        else:                               # luz na frente, sombra atras
-            meu[(x - 1, y)] = 'G' if punho else sombra
-            meu[(x, y)] = 'G' if punho else base
-            meu[(x + 1, y)] = 'G' if punho else 'c'
-    for vx in (0, 1):                      # ombro arredondado
-        for vy in (0, -1):
-            meu[(x0 + vx, y0 + vy)] = base
-    meu[(x0 + 1, y0)] = 'c'                 # brilho no alto do ombro
-    if luva:
-        for vx in (0, 1):
-            for vy in (0, 1):
-                meu[(x1 + vx, y1 + vy)] = 'M'
-        meu[(x1 + 1, y1 + 1)] = 'g'         # brilho nos nos dos dedos
-    if frente:
-        for (x, y) in meu:
-            for vx, vy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                q = (x + vx, y + vy)
-                if q not in meu and px.get(q) in _CORPO:
-                    px[q] = 'B'
-    px.update(meu)
 
 
 def _p(x, y):
     return (round(x), round(y))
 
 
-def _espada(px, mx, my, ang, comp, tipo, smear_de=None, brilho=None):
-    """tipo 1 = Elucidator (katana preta), 2 = Dark Repulser (cristal azul),
-    3 = as duas fundidas numa so, 4 = a fundida depois de absorver o
-    infinito (evoluida). (mx, my) = mao; a lamina aponta para `ang`."""
-    a = math.radians(ang)
-    ux, uy = math.cos(a), math.sin(a)
-    nx, ny = -uy, ux
-    # rastro (smear) antes da lamina, para ficar por baixo
-    if smear_de is not None and abs(smear_de - ang) > 8:
-        passo = 7 if smear_de < ang else -7
-        g = smear_de
-        while (passo > 0 and g < ang) or (passo < 0 and g > ang):
-            ga = math.radians(g)
-            for k in range(int(comp * 0.45), comp + 1):
-                q = (round(mx + math.cos(ga) * k), round(my + math.sin(ga) * k))
-                if q not in px:
-                    px[q] = 'x' if k < comp * 0.75 else 'X'
-            g += passo
-    if tipo == 1:
-        _katana(px, mx, my, ux, uy, nx, ny, comp, brilho if smear_de is None else None)
-    elif tipo == 2:
-        _repulser(px, mx, my, ux, uy, nx, ny, comp, brilho if smear_de is None else None)
-    else:
-        _fundida(px, mx, my, ux, uy, nx, ny, comp, brilho if smear_de is None else None, tipo == 4)
-
-
-def _cabo_trancado(px, mx, my, ux, uy, nx, ny, n, escuro, claro, pomo):
-    """Tsuka: cabo com a fita trancada em losangos (2 px), pomo na ponta."""
-    for k in range(1, n + 1):
-        cx, cy = mx - ux * k, my - uy * k
-        px[_p(cx, cy)] = escuro if k % 2 else claro
-        px[_p(cx - nx, cy - ny)] = claro if k % 2 else escuro
-    px[_p(mx - ux * (n + 1), my - uy * (n + 1))] = pomo
-    px[_p(mx - ux * (n + 1) - nx, my - uy * (n + 1) - ny)] = pomo
-
-
-def _katana(px, mx, my, ux, uy, nx, ny, comp, brilho):
-    """Elucidator como katana: cabo longo trancado, tsuba curta e grossa,
-    habaki, lamina curva (sori) preta com fio prateado e hamon ondulado,
-    ponta (kissaki) afiada."""
-    _cabo_trancado(px, mx, my, ux, uy, nx, ny, 5, 'K', 'g', 'k')
-    if comp < 1:
-        return
-    for j, ch in ((-2, 'g'), (-1, 'k'), (0, 'k'), (1, 'k'), (2, 'g')):     # tsuba
-        px[_p(mx + ux + nx * j, my + uy + ny * j)] = ch
-    if comp < 2:
-        return
-    for j in (-1, 0, 1):                                                   # habaki
-        px[_p(mx + ux * 2 + nx * j, my + uy * 2 + ny * j)] = 'k'
-    sori = max(1.0, comp * 0.13)                     # curvatura da katana
-    ini = 3
-    for k in range(ini, comp + 1):
-        u = (k - ini) / float(max(1, comp - ini))
-        off = -sori * u * u                          # curva para as costas
-        bx, by = mx + ux * k + nx * off, my + uy * k + ny * off
-        hamon = (k % 4) in (1, 2)
-        px[_p(bx, by)] = 'j' if hamon else 'W'
-        reflexo = comp > 6 and (k - ini) in (int((comp - ini) * 0.3), int((comp - ini) * 0.3) + 1)
-        px[_p(bx + nx, by + ny)] = '+' if reflexo else 'w'
-        if k < comp:
-            px[_p(bx - nx, by - ny)] = 'u'
-    off = -sori
-    px[_p(mx + ux * (comp + 1) + nx * (off + 0.4), my + uy * (comp + 1) + ny * (off + 0.4))] = '+'
-    if brilho is not None:
-        k = ini + int(brilho * (comp - ini))
-        u = (k - ini) / float(max(1, comp - ini))
-        off = -sori * u * u
-        bx, by = mx + ux * k + nx * off, my + uy * k + ny * off
-        px[_p(bx + nx, by + ny)] = '!'
-        px[_p(bx + nx - ux, by + ny - uy)] = '1'
-        px[_p(bx, by)] = '1'
-
-
-def _repulser(px, mx, my, ux, uy, nx, ny, comp, brilho):
-    """Dark Repulser: lamina reta de cristal (3 tons), guarda em cruz com
-    pontas de cristal e uma gema no centro, cabo curto."""
-    for k in (1, 2):
-        px[_p(mx - ux * k, my - uy * k)] = 'K'
-    px[_p(mx - ux * 3, my - uy * 3)] = 'Y'
-    for j in (-2, -1, 0, 1, 2):
-        ch = 'Y' if abs(j) == 2 else ('r' if j == 0 else 'y')
-        px[_p(mx + ux + nx * j, my + uy + ny * j)] = ch
-    for k in range(2, comp + 1):
-        bx, by = mx + ux * k, my + uy * k
-        px[_p(bx, by)] = 'r' if k % 5 == 3 else 'R'          # faceta clara no miolo
-        reflexo = comp > 6 and k in (2 + int((comp - 2) * 0.35), 3 + int((comp - 2) * 0.35))
-        px[_p(bx + nx, by + ny)] = '+' if reflexo else 'r'
-        if k < comp - 1:
-            px[_p(bx - nx, by - ny)] = 'z'
-    px[_p(mx + ux * (comp + 1), my + uy * (comp + 1))] = 'r'
-    if brilho is not None:
-        k = 2 + int(brilho * (comp - 2))
-        px[_p(mx + ux * k + nx, my + uy * k + ny)] = '!'
-        px[_p(mx + ux * (k - 1) + nx, my + uy * (k - 1) + ny)] = '1'
-        px[_p(mx + ux * k, my + uy * k)] = '1'
-
-
-# simbolo de infinito (guarda da espada evoluida): (eixo, lado)
 _GUARDA_INF = [(0, -2), (0, -1), (0, 1), (0, 2), (1, -3), (1, 0), (1, 3),
                (2, -2), (2, -1), (2, 1), (2, 2)]
-
-
-def _fundida(px, mx, my, ux, uy, nx, ny, comp, brilho, evo):
-    """As duas espadas fundidas: lamina larga (4 px) preta com fio de
-    cristal e veios azuis. Evoluida (depois de absorver o infinito): fio
-    branco, veios acesos e a guarda vira o simbolo do infinito."""
-    _cabo_trancado(px, mx, my, ux, uy, nx, ny, 6, 'K', 'y', 'Y')
-    if evo:
-        for (e, j) in _GUARDA_INF:
-            px[_p(mx + ux * (1 + e) + nx * j, my + uy * (1 + e) + ny * j)] = '!' if (e, j) == (1, 0) else 'Y'
-        ini = 4
-    else:
-        for j, ch in ((-2, 'Y'), (-1, 'y'), (0, 'r'), (1, 'y'), (2, 'Y')):
-            px[_p(mx + ux + nx * j, my + uy + ny * j)] = ch
-        for j in (-1, 0, 1):
-            px[_p(mx + ux * 2 + nx * j, my + uy * 2 + ny * j)] = 'y'
-        ini = 3
-    fio, veio, costas = ('!', '9', '9') if evo else ('r', 'z', 'R')
-    for k in range(ini, comp + 1):
-        bx, by = mx + ux * k, my + uy * k
-        px[_p(bx + nx, by + ny)] = fio
-        px[_p(bx, by)] = veio if (k % 3 == 0) else 'W'
-        if k < comp:
-            px[_p(bx - nx, by - ny)] = costas
-        if k < comp - 1:
-            px[_p(bx - 2 * nx, by - 2 * ny)] = 'W'
-    px[_p(mx + ux * (comp + 1), my + uy * (comp + 1))] = fio
-    px[_p(mx + ux * (comp + 2) - nx * 0.4, my + uy * (comp + 2) - ny * 0.4)] = fio
-    if brilho is not None:
-        k = ini + int(brilho * (comp - ini))
-        px[_p(mx + ux * k + nx, my + uy * k + ny)] = '!'
-        px[_p(mx + ux * (k - 1) + nx, my + uy * (k - 1) + ny)] = '1'
-        px[_p(mx + ux * k, my + uy * k)] = '1'
 
 
 def _cabo_nas_costas(px, x, y, tipo):
@@ -455,103 +258,11 @@ _BAINHA_ANG = 222.0
 _BAINHA_COMP = 11
 
 
-def _bainha_cintura(base_x, y_cinto):
-    """Boca da bainha da Elucidator (na cintura, estilo katana)."""
-    return base_x + 9, y_cinto
-
-
-def _bainha(px, bx, by):
-    """Bainha (saya) presa no cinto, reta e rigida: laca escura com filete
-    claro e ponteira de metal. Vai por cima da aba de tras do sobretudo
-    (o cinto e por fora dele), mas por tras das pernas e do tronco."""
-    a = math.radians(_BAINHA_ANG)
-    ux, uy = math.cos(a), math.sin(a)
-    nx, ny = -uy, ux
-    comp = _BAINHA_COMP
-
-    def pinta(q, ch):
-        if px.get(q) not in ('P', 'B'):
-            px[q] = ch
-    for k in range(0, comp):
-        x, y = bx + ux * k, by + uy * k
-        pinta((round(x), round(y)), 'W')
-        pinta((round(x - nx), round(y - ny)), 'v')                    # filete de cima
-    for k in (comp, comp + 1):                                         # ponteira (kojiri)
-        pinta((round(bx + ux * k), round(by + uy * k)), 'k')
-        pinta((round(bx + ux * k - nx), round(by + uy * k - ny)), 'g')
-
-
-def _cabo_cintura(px, bx, by):
-    """Cabo da Elucidator guardada, saindo da bainha para a frente e para
-    cima: tsuba, cabo trancado em losangos e pomo (o mesmo da katana)."""
-    a = math.radians(_BAINHA_ANG)                    # direcao da lamina (dentro da bainha)
-    ux, uy = math.cos(a), math.sin(a)
-    nx, ny = -uy, ux
-    for j, ch in ((-1, 'g'), (0, 'k'), (1, 'g')):    # tsuba
-        px[(round(bx + nx * j), round(by + ny * j))] = ch
-    _cabo_trancado(px, bx, by, ux, uy, nx, ny, 5, 'K', 'g', 'k')
-
-
-def _sobretudo(px, base_x, y0, n, capa, lift, fase, pernas, saia=1.0):
-    """Saia do sobretudo presa na cintura toda, aberta na frente (as pernas
-    aparecem no meio), com barra, forro e friso prateado. Com vento as abas
-    esvoacam para tras sem se soltar do corpo."""
-    ultima = pernas[-1]
-    xs = [x for x, ch in enumerate(ultima) if ch != '.']
-    perna_min, perna_max = base_x + min(xs), base_x + max(xs)
-    amp = 0.55 + 0.25 * min(3.0, abs(capa))
-    dois_pi = 2 * math.pi
-    for k in range(n):
-        u = k / float(max(1, n - 1))
-        onda = amp * u * math.sin(dois_pi * (fase - k / float(n)))
-        y = y0 - k + int(round(lift * k * 0.28))
-        abre = 0.45 * k * saia
-        vento = max(-1.0, min(1.6, capa)) * 0.45 * k     # aba abre pouco: e casaco, nao capa
-        xe0 = base_x + 1 - int(round(abre + vento + onda))
-        xe1 = base_x + 4 - int(round(vento * 0.30))
-        xd0 = base_x + 8 - int(round(vento * 0.45))
-        xd1 = base_x + 11 + int(round(abre)) - int(round(vento * 0.55 + onda * 0.5))
-        barra = (k == n - 1)
-        nas_botas = (k == len(pernas) - 1)
-        for (a, b, lado) in ((xe0, xe1, 'e'), (xd0, xd1, 'd')):
-            if b < a:
-                a, b = b, a
-            for x in range(a, b + 1):
-                if nas_botas and perna_min <= x <= perna_max:
-                    continue                     # a barra contorna as botas
-                if barra:
-                    ch = 'c'
-                elif (lado == 'e' and x == a) or (lado == 'd' and x == b):
-                    ch = 'c'                     # borda externa (brilho)
-                elif (lado == 'e' and x == b) or (lado == 'd' and x == a):
-                    ch = 'q' if vento > 1.2 else 'G'     # forro com vento / friso
-                else:
-                    # dobras na diagonal que andam com a fase (o pano mexe);
-                    # aba de tras mais escura, a da frente pega luz
-                    dobra = ((x - base_x) * 2 + k + int(fase * 4)) % 5 == 0
-                    if lado == 'e':
-                        ch = '2' if (dobra or x == a + 1) else 'C'
-                    else:
-                        ch = 'A' if dobra else 'C'
-                px[(x, y)] = ch
-
-
 def _alca_peito(px, base_x, topo):
     """Alca diagonal que prende a bainha da Dark Repulser nas costas, com
     fivela prateada (detalhe do sobretudo do Kirito)."""
     for i, (x, y) in enumerate(((3, 0), (4, -1), (5, -2), (6, -3), (7, -3), (8, -4), (9, -5))):
         px[(base_x + x, topo + y)] = 'G' if i == 3 else 'B'
-
-
-def _fivelas_botas(px):
-    """Fivela prateada no cano de cada bota (linha de cima das botas)."""
-    botas = [q for q, ch in px.items() if ch == 'B' and q[1] < _PES + 4]
-    if not botas:
-        return
-    topo = max(y for _, y in botas)
-    for (x, y) in botas:
-        if y == topo and px.get((x - 1, y)) == 'B' and px.get((x + 1, y)) != 'B':
-            px[(x, y)] = 'G'
 
 
 def _emote(px, qual, base_x, topo_cab):
@@ -586,114 +297,659 @@ POSE_BASE = dict(dx=0, dy=0, pernas='repouso', olhos='a', cabelo=0.0, capa=0.0,
                  m2=None, a2=None, c2=15, s2=None)
 
 
-def montar(p):
-    """Pose (dict) -> {(x, y): cor}."""
-    px = {}
-    dx, dy = int(round(p['dx'])), int(round(p['dy']))
-    pernas = _PERNAS[p['pernas']]
-    topo_tronco = _PES + len(pernas) + len(_TRONCO) - 1 + dy
-    base_x = _X0 + dx
-    # peso: o tronco de cima (ombros, bracos e cabeca) inclina `incl` px
-    # sobre a cintura - pende para tras na preparacao, vai a frente no golpe
-    incl = int(round(p.get('incl', 0) or 0))
-    ombro1 = (base_x + 9 + incl, topo_tronco - 2)
-    ombro2 = (base_x + 3 + incl, topo_tronco - 2)
-    y_cinto = topo_tronco - 6
-    fase = p.get('fase', 0.0) or 0.0
+# ═══════════════════════════════════════════════════════════════════
+#  MONTAGEM EM DOBRO DE PIXELS
+#  As poses continuam na grade de sempre (unidades). O desenho e feito em
+#  texels, 2 por unidade: o mesmo tamanho na tela, com o dobro de detalhe
+#  (rosto, mechas, dobras, maos e laminas) e contorno mais fino.
+# ═══════════════════════════════════════════════════════════════════
+R = 2
+TW, TH = GW * R, GH * R
+
+
+def _t(v):
+    """Unidade de pose -> texel (canto de baixo/esquerda da unidade)."""
+    return int(math.floor(v * R + 1e-6))
+
+
+def _dobrar(mapa):
+    return [''.join(ch * R for ch in linha) for linha in mapa for _ in range(R)]
+
+
+def _up(px, t):
+    """Desenho feito na grade de unidades -> blocos de 2x2 texels."""
+    for (x, y), ch in t.items():
+        X, Y = x * R, y * R
+        for a in range(R):
+            for b in range(R):
+                px[(X + a, Y + b)] = ch
+
+
+def _carimbo(px, mapa, x0, y_topo):
+    for r, linha in enumerate(mapa):
+        y = y_topo - r
+        for c, ch in enumerate(linha):
+            if ch != '.':
+                px[(x0 + c, y)] = ch
+
+
+# ── cabeca 26 x 22: cabelo em 4 tons com mechas, franja em pontas,
+#    olho grande com cilio, iris em 2 tons e brilho; sombra e maxilar
+_CAB2 = [
+    "..........................",
+    "........JJHHJJJHHHJJ......",
+    ".....JJJHHHHHHHHHHHHHJ....",
+    "....JHHHHHHHHHHHHHHHHHJ...",
+    "..JJHHHHHHHHHHHHHHHHHHHJ..",
+    "..JHHHHHHIIhhhhIIHHHHHHJ..",
+    ".JHHHHHIIHHHHHHHHIIHHHHHJ.",
+    "JHHHHHHHHHHHHHHHHHHHHHHHHJ",
+    "JHHJHHHHHHHHHHHHHHHHIHHHHJ",
+    "JHJHHHHHHHHHHHHHHHHIhHHHHH",
+    "JHHJHHHHHHHHHHHHHHHHHHHHHH",
+    "JJHHJHHHHHHHsHHHHsHHHHsHHH",
+    "JHHHJHHHHHsSsHHHsSsHHsSSHH",
+    "JHHHHJHHHHsSSSSHSSSSSsHSSs",
+    "JHHHHHHHHsSSSSEEEESSSSEESS",
+    ".JHHHHHHHsSSSSeEneSSSSeESs",
+    ".JHHHHHHsSSSSSemmeSSSSmeSs",
+    "..JHHHHHsSSSSSSssSSSSSSSsS",
+    "..JHHHHsSSSSSSSSSSSSSSsS..",
+    "...JHHHsSSSSSSSSSSSssSS...",
+    "....JHHHsSSSSSSSSSSSSs....",
+    "......JHHsssSSSSSss.......",
+]
+_OLHOS = [(c, r) for r in (14, 15, 16) for c in (14, 15, 16, 17, 22, 23)]
+
+
+def _cab2(trocas):
+    c = [list(linha) for linha in _CAB2]
+    for (col, r) in _OLHOS:                    # olhos limpos (pele)
+        c[r][col] = 'S'
+    for (col, r), ch in trocas.items():
+        c[r][col] = ch
+    return [''.join(linha) for linha in c]
+
+
+def _linha_olho(r, c0, texto):
+    return {(c0 + i, r): ch for i, ch in enumerate(texto) if ch != '.'}
+
+
+def _junta(*ds):
+    out = {}
+    for d in ds:
+        out.update(d)
+    return out
+
+
+_OLHO_ABERTO = _junta(_linha_olho(14, 14, "EEEE"), _linha_olho(15, 14, "eEne"), _linha_olho(16, 14, "emme"),
+                      _linha_olho(14, 22, "EE"), _linha_olho(15, 22, "eE"), _linha_olho(16, 22, "me"))
+_SOBRANCELHA = _junta(_linha_olho(12, 13, "E"), _linha_olho(13, 14, "EEEE"),
+                      _linha_olho(13, 21, "EE"), _linha_olho(12, 23, "E"))
+_CABECAS2 = {
+    'a': _cab2(_OLHO_ABERTO),
+    'f': _cab2(_junta(_linha_olho(15, 14, "EEEE"), _linha_olho(15, 22, "EE"))),
+    'b': _cab2(_junta(_linha_olho(15, 14, "EEEE"), _linha_olho(16, 14, "eEne"), _linha_olho(17, 14, "emme"),
+                      _linha_olho(15, 22, "EE"), _linha_olho(16, 22, "eE"), _linha_olho(17, 22, "me"))),
+    's': _cab2(_junta(_SOBRANCELHA, _linha_olho(14, 14, "EEEE"), _linha_olho(15, 14, "eEne"),
+                      _linha_olho(14, 22, "EE"), _linha_olho(15, 22, "eE"))),
+    'g': _cab2(_junta(_SOBRANCELHA, _linha_olho(14, 14, "EEEE"), _linha_olho(15, 14, "eEne"),
+                      _linha_olho(14, 22, "EE"), _linha_olho(15, 22, "eE"),
+                      _linha_olho(19, 18, "EEE"), _linha_olho(20, 18, "ETE"))),
+    'l': _cab2(_junta(_SOBRANCELHA, _linha_olho(14, 14, "9999"), _linha_olho(15, 14, "9!!9"),
+                      _linha_olho(14, 22, "99"), _linha_olho(15, 22, "9!"))),
+    'u': _cab2(_junta(_linha_olho(13, 14, "EEEE"), _linha_olho(14, 14, "enee"), _linha_olho(15, 14, "eEEe"),
+                      _linha_olho(16, 14, "meem"), _linha_olho(13, 22, "EE"), _linha_olho(14, 22, "ne"),
+                      _linha_olho(15, 22, "eE"), _linha_olho(16, 22, "me"),
+                      _linha_olho(19, 19, "EE"), _linha_olho(20, 19, "EE"))),
+    'e': _cab2(_junta(_linha_olho(14, 15, "EE"), _linha_olho(15, 14, "E..E"), _linha_olho(14, 22, "EE"),
+                      _linha_olho(19, 18, "sSSs"), _linha_olho(20, 19, "ss"))),
+}
+
+# ── tronco 26 x 16: gola alta, pescoco, abertura em V com a camisa preta,
+#    friso prateado, dobras, cinto com fivela vazada
+_TOR2 = [
+    "......2CCcsSSSsCcc........",
+    "......2CCcsSSSsCAcc.......",
+    "......2CCCGG44GGAcc.......",
+    "......2CCCGk44kGAAcc......",
+    "....22CCCCCG44GCCCAAcc....",
+    "....2CCCCCCGk4GCCCAAAc....",
+    "....2CCcCCCCGGCCCCAAAc....",
+    "....2CCcCCCCGkCCC2AAAc....",
+    "....22CcCCCCGGCC2CAAAc....",
+    "....2CCcCCCCGkC2CCAAAc....",
+    "..22CCCcCCCCGGC2CCCAAAcc..",
+    "..2CCCCcCCCCGkCC2CCAAAcc..",
+    "..2MMMMMMMMgkkgMMMMMMMMc..",
+    "..2MMMMMMMMgMMgMMMMMMMMc..",
+    "..22CCCCCCPPPPPPCCCCAAcc..",
+    "..22CCCCCC7PPPP7CCCCAAcc..",
+]
+for _m in (_CAB2, _TOR2) + tuple(_CABECAS2.values()):
+    assert all(len(_l) == 26 for _l in _m), 'mapa 2x com largura errada'
+
+
+def _pernas2(px, mapa, x0, y_topo):
+    """Pernas em texels: lado de tras na sombra, brilho na ponta da bota."""
+    m2 = _dobrar(mapa)
+    ult = len(m2) - 1
+    for r, linha in enumerate(m2):
+        for c, ch in enumerate(linha):
+            if ch == '.':
+                continue
+            antes = linha[c - 1] if c > 0 else '.'
+            depois = linha[c + 1] if c + 1 < len(linha) else '.'
+            if ch == 'P' and antes != 'P':
+                ch = '7'
+            elif ch == 'B' and r == ult - 1 and depois != 'B':
+                ch = 'K'                             # biqueira da bota
+            px[(x0 + c, y_topo - r)] = ch
+
+
+def _sobretudo2(px, bx, y0, n, capa, lift, fase, pernas, saia):
+    """Saia do sobretudo em texels: abas com borda de luz, friso e forro,
+    dobras em diagonal (sombra + luz) que andam com o pano, barra com
+    espessura. Mesma forma da versao de unidades, so que mais fina."""
+    ultima = pernas[-1]
+    xs = [x for x, ch in enumerate(ultima) if ch != '.']
+    p_min, p_max = R * (_X0 + min(xs)), R * (_X0 + max(xs)) + R - 1
+    amp = 0.55 + 0.25 * min(3.0, abs(capa))
     dois_pi = 2 * math.pi
-    topo_cab = topo_tronco + len(_CABECA)
-    # camada da cabeca: pode atrasar 1 px em relacao ao tronco (inercia)
-    cab_x = base_x + incl + int(round(p.get('hx', 0) or 0))
-    topo_cab += int(round(p.get('hy', 0) or 0))
+    nb0 = R * (len(pernas) - 1)
+    total = R * n
+    mv = int(fase * 8)
+    for kk in range(total):
+        k = kk / float(R)
+        u = k / float(max(1, n - 1))
+        onda = amp * u * math.sin(dois_pi * (fase - k / float(n)))
+        y = _t(y0) + R - 1 - kk + int(round(lift * k * 0.28 * R))
+        abre = 0.45 * k * saia
+        vento = max(-1.0, min(1.6, capa)) * 0.45 * k
+        xe0 = _t(bx + 1 - (abre + vento + onda))
+        xe1 = _t(bx + 4 - vento * 0.30) + R - 1
+        xd0 = _t(bx + 8 - vento * 0.45)
+        xd1 = _t(bx + 11 + abre - (vento * 0.55 + onda * 0.5)) + R - 1
+        barra = kk >= total - 2
+        nas_botas = nb0 <= kk < nb0 + R
+        for (a, b, lado) in ((xe0, xe1, 'e'), (xd0, xd1, 'd')):
+            if b < a:
+                a, b = b, a
+            for x in range(a, b + 1):
+                if nas_botas and p_min <= x <= p_max:
+                    continue
+                if barra:
+                    ch = 'c' if kk == total - 2 else '2'
+                elif (lado == 'e' and x == a) or (lado == 'd' and x == b):
+                    ch = 'c'
+                elif (lado == 'e' and x == b) or (lado == 'd' and x == a):
+                    ch = 'q' if vento > 1.2 else 'G'
+                elif (lado == 'e' and x == b - 1) or (lado == 'd' and x == a + 1):
+                    ch = 'q' if vento > 0.6 else '2'     # forro / sombra junto do friso
+                else:
+                    d = (x + kk + mv) % 7
+                    if lado == 'e':
+                        ch = '2' if (d == 0 or x == a + 1) else 'C'
+                    else:
+                        ch = '2' if d == 0 else ('A' if d == 1 else 'C')
+                px[(x, y)] = ch
 
-    mugetsu = p.get('mugetsu', False)
-    if mugetsu:                                  # cabelo comprido atras de tudo
-        _cabelo_longo(px, cab_x, topo_cab, p['cabelo'], p.get('sobe', 0.0) or 0.0, fase)
 
-    # atras de tudo: cabo da Dark Repulser (bainha nas costas)
-    bx, by = _bainha_cintura(base_x, y_cinto)
-    if p['a2'] is None and not p.get('fusao'):
-        _cabo_nas_costas(px, base_x + 1 + incl, topo_tronco + 1, 2)
-
-    # braco/espada de tras (atras do corpo); sem pose = braco relaxado.
-    # Erguido (pendurado, sacando das costas) ele fica na frente do cabelo.
-    m2 = p['m2'] if p['m2'] is not None else (-1, -6)
-    mx2, my2 = ombro2[0] + int(round(m2[0])), ombro2[1] + int(round(m2[1]))
-    ergue2 = m2[1] > 4
-    acima2 = m2[1] > 10              # acima da cabeca (pendurado): desenhado depois dela
-
-    def _braco_tras():
-        _braco(px, ombro2[0], ombro2[1], mx2, my2, frente=ergue2)
-        if p['a2'] is not None:
-            _espada(px, mx2, my2, p['a2'], int(p['c2']), 2, p['s2'], p.get('brilho'))
-            px[(mx2, my2)] = 'M'                 # a mao por cima do cabo
-    if not ergue2:
-        _braco_tras()
-
-    # cabelo: mechas continuas que se alongam com o vento e ondulam.
-    # `sobe` (0..1): vento de reiatsu vindo de baixo - as mechas curvam para
-    # cima e os fios do topo se arrepiam
-    cb = p['cabelo']
-    sobe = max(0.0, min(1.2, p.get('sobe', 0.0) or 0.0))
+def _cabelo_tras2(px, cx, ty, cb, sobe, fase):
+    """Mechas de tras em texels: 2 texels cada (luz em cima, sombra embaixo),
+    afinando na ponta; as de cima pegam brilho."""
+    dois_pi = 2 * math.pi
     amp = 0.35 + 0.28 * min(3.0, abs(cb)) + 0.35 * sobe
     for linha, base in ((2, 1), (3, 2), (4, 2), (5, 3), (6, 2), (7, 3), (8, 1)):
         comp = base + int(round(max(0.0, cb) * (0.5 + linha * 0.12))) + int(round(sobe * 1.4))
         caida = max(0.0, cb) * 0.25 * (linha - 4) / 4.0
-        for i in range(comp):
-            u = (i + 1) / float(comp)
-            onda = amp * u * math.sin(dois_pi * (fase * 1.3 - i / 4.0 - linha * 0.1))
+        n2 = comp * R
+        for i2 in range(n2):
+            i = i2 / float(R)
+            uu = (i + 1) / float(comp)
+            onda = amp * uu * math.sin(dois_pi * (fase * 1.3 - i / 4.0 - linha * 0.1))
             ergue = sobe * (i + 1) * 0.6
-            y = topo_cab - linha - int(round((caida if i > comp // 2 else 0) + onda - ergue))
-            px[(cab_x - 1 - i, y)] = 'h' if (linha == 5 and i == comp - 1) else 'H'
-    # fios espetados no topo que balancam
-    for bxx, fx in ((4, 0.0), (8, 0.35)):
-        oscila = int(round(0.7 * math.sin(dois_pi * (fase + fx)) - min(1.0, max(0.0, cb) * 0.4)))
-        px[(cab_x + bxx + oscila, topo_cab + 1)] = 'H'
-        if sobe > 0.3:
-            px[(cab_x + bxx + oscila, topo_cab + 2)] = 'H'
-        if sobe > 0.75:
-            px[(cab_x + bxx + oscila + (1 if bxx > 6 else -1), topo_cab + 3)] = 'h'
-    if sobe > 0.5:                                   # mais fios arrepiando com a energia
-        for bxx, fx in ((2, 0.2), (6, 0.6), (10, 0.85)):
-            oscila = int(round(0.6 * math.sin(dois_pi * (fase * 1.5 + fx))))
-            px[(cab_x + bxx + oscila, topo_cab + 1)] = 'H'
-            if sobe > 0.9:
-                px[(cab_x + bxx + oscila, topo_cab + 2)] = 'h'
+            yy = -linha - ((caida if i > comp // 2 else 0) + onda - ergue)
+            x = cx - 1 - i2
+            y = ty + int(round(yy * R))
+            ponta = i2 >= n2 - 2
+            if linha <= 3 and 1 <= i2 <= 3:
+                cima = 'I'
+            elif ponta and linha in (3, 5):
+                cima = 'h'
+            else:
+                cima = 'H'
+            px[(x, y)] = cima
+            if not ponta:
+                px[(x, y - 1)] = 'J' if linha >= 5 else 'H'
+
+
+def _espetos2(px, cx, ty, cb, sobe, fase):
+    """Fios espetados no topo: pontas que afinam, cada uma de uma altura,
+    balancando; com o reiatsu elas crescem e deitam para tras (vento)."""
+    dois_pi = 2 * math.pi
+    fios = [(4, 0.0, 3), (8, 0.35, 2)]
+    if sobe > 0.5:
+        fios += [(2, 0.2, 2), (6, 0.6, 4), (10, 0.85, 3)]
+    for bxx, fx, alto in fios:
+        osc = 0.7 * math.sin(dois_pi * (fase + fx)) - min(1.0, max(0.0, cb) * 0.4)
+        x = cx + int(round((bxx + osc) * R))
+        alto = alto + int(round(sobe * 3 * (0.6 + 0.4 * math.sin(dois_pi * (fase * 1.5 + fx)))))
+        deita = 0.35 + 0.5 * sobe                        # tomba para tras com o vento
+        for h in range(alto):
+            xx = x - int(round(h * deita))
+            larg = 2 if h < alto // 2 else 1              # afina na ponta
+            for w in range(larg):
+                px[(xx + w, ty + 1 + h)] = 'J' if h == alto - 1 else ('I' if (w == 1 and h == 0) else 'H')
+
+
+def _cabelo_longo2(px, cx, ty, cb, sobe, fase, y_joelho):
+    """Mugetsu: cabelao preto ate os joelhos, solto em mechas, ondulando;
+    com o reiatsu ele levanta e voa para tras."""
+    dois_pi = 2 * math.pi
+    vento = min(0.9, max(0.0, cb) * 0.2 + sobe * 0.5)
+    fios = ((4, -4), (6, -6), (2, -7), (5, -9), (1, -10), (3, -12), (7, -11), (0, -14), (4, -16))
+    for fio, (x0, y0) in enumerate(fios):
+        n = max(12, int(((ty + y0) - y_joelho) * (1.0 - vento * 0.25)))
+        for k in range(n):
+            u = k / float(n - 1)
+            onda = (1.4 + 1.8 * sobe) * u * math.sin(dois_pi * (fase * 1.2 - k / 14.0 - fio * 0.19))
+            x = cx + x0 - int(round(k * (0.34 + vento * 0.95) + onda))
+            y = ty + y0 - int(round(k * (1.0 - vento * 0.75)))
+            if fio in (0, 4, 8):
+                ch = 'J'
+            elif (k + fio * 3) % 12 == 0:
+                ch = 'I'
+            else:
+                ch = 'H'
+            px[(x, y)] = ch
+            if k < n - 4:
+                px[(x - 1, y)] = 'J' if fio % 2 else 'H'
+
+
+def _braco2(px, x0, y0, x1, y1, luva=True, frente=False):
+    """Braco com manga em texels (5 de largura): luz, meio-tom, base e
+    sombra; ombro arredondado, punho prateado e luva com brilho."""
+    dx, dy = x1 - x0, y1 - y0
+    L = max(1.0, math.hypot(dx, dy))
+    ux, uy = dx / L, dy / L
+    nx, ny = -uy, ux
+    if nx * 0.6 + ny * 0.8 < 0:                  # normal apontando para a luz
+        nx, ny = -nx, -ny
+    tons = ({2: 'c', 1: 'A', 0: 'A', -1: 'C', -2: '2'} if frente
+            else {2: 'c', 1: 'C', 0: 'C', -1: '2', -2: '2'})
+    meu = {}
+    passos = int(L * 2) + 1
+    for i in range(passos + 1):
+        t = i / 2.0
+        punho = t >= L - 3.5 and L > 6
+        for j in (-2, -1, 0, 1, 2):
+            q = (int(round(x0 + ux * t + nx * j)), int(round(y0 + uy * t + ny * j)))
+            if punho:
+                meu[q] = 'k' if j == 2 else 'G'
+            else:
+                meu[q] = tons[j]
+    for ox in (-2, -1, 0, 1, 2):                   # ombro arredondado
+        for oy in (-2, -1, 0, 1, 2):
+            if ox * ox + oy * oy <= 5:
+                meu[(x0 + ox, y0 + oy)] = 'c' if (ox + oy) >= 2 else ('A' if frente else 'C')
+    if luva:
+        for ox in (-1, 0, 1, 2):
+            for oy in (-1, 0, 1, 2):
+                meu[(x1 + ox, y1 + oy)] = 'M'
+        meu[(x1 + 2, y1 + 2)] = 'g'
+        meu[(x1 + 1, y1 + 2)] = 'g'
+        meu[(x1 + 2, y1 + 1)] = 'K'
+    if frente:                                    # contorno escuro por cima do corpo
+        for (x, y) in meu:
+            for vx, vy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                q = (x + vx, y + vy)
+                if q not in meu and px.get(q) in _CORPO:
+                    px[q] = 'B'
+    px.update(meu)
+
+
+def _rastro2(px, hx, hy, de, ang, comp):
+    """Smear em texels: leque de pixels do angulo `de` ate a lamina."""
+    passo = 4 if de < ang else -4
+    g = de
+    L = comp * R
+    while (passo > 0 and g < ang) or (passo < 0 and g > ang):
+        ga = math.radians(g)
+        c, sn = math.cos(ga), math.sin(ga)
+        for k in range(int(L * 0.45), L + 1):
+            q = (int(round(hx + c * k)), int(round(hy + sn * k)))
+            if q not in px:
+                px[q] = 'x' if k < L * 0.75 else 'X'
+        g += passo
+
+
+def _katana2(px, hx, hy, ux, uy, nx, ny, comp, brilho):
+    """Elucidator: cabo trancado em losangos, kashira, tsuba oval, habaki e
+    lamina curva com costas, miolo preto, hamon ondulado, fio e reflexos."""
+    def pp(k, j, ch):
+        px[(int(round(hx + ux * k + nx * j)), int(round(hy + uy * k + ny * j)))] = ch
+    for k in range(1, 11):
+        for j in (-1, 0, 1):
+            pp(-k, j, 'k' if (k + 2 * j) % 4 == 0 else ('g' if j == 1 else 'K'))
+    for j in (-1, 0, 1):
+        pp(-11, j, 'k')
+        pp(-12, j, 'g')
+    L = comp * R
+    if L < 2:
+        return
+    for k in (1, 2):
+        for j in range(-4, 5):
+            pp(k, j, 'k' if (j >= 2 and k == 1) else ('g' if abs(j) >= 3 else 'K'))
+    if L < 4:
+        return
+    for j in (-1, 0, 1, 2):
+        pp(3, j, '+' if j == 2 else 'k')
+    sori = max(1.5, L * 0.13)
+    ini = 4
+    ref = ini + int((L - ini) * 0.3)
+    for k in range(ini, L + 1):
+        u = (k - ini) / float(max(1, L - ini))
+        off = -sori * u * u
+        corta = max(0, k - (L - 4))              # afina no kissaki
+        for j in range(-2 + corta, 3):
+            if j == 2:
+                ch = '+' if (ref <= k <= ref + 2 or k >= L - 1) else 'w'
+            elif j == 1:
+                ch = 'w' if ref <= k <= ref + 2 else ('j' if math.sin(k * 0.8) > 0 else 'W')
+            elif j == -2 or j == -2 + corta:
+                ch = 'u'
+            else:
+                ch = 'W'
+            pp(k, off + j, ch)
+    if brilho is not None:
+        k = ini + int(brilho * (L - ini))
+        u = (k - ini) / float(max(1, L - ini))
+        off = -sori * u * u
+        for kk in (k, k - 1):
+            pp(kk, off + 2, '!')
+            pp(kk, off + 1, '1')
+
+
+def _repulser2(px, hx, hy, ux, uy, nx, ny, comp, brilho):
+    """Dark Repulser: lamina reta de cristal com facetas, fio claro, reflexo;
+    guarda em cruz com pontas de cristal e gema; cabo curto com pomo."""
+    def pp(k, j, ch):
+        px[(int(round(hx + ux * k + nx * j)), int(round(hy + uy * k + ny * j)))] = ch
+    for k in range(1, 7):
+        for j in (-1, 0, 1):
+            pp(-k, j, 'y' if (k % 3 == 0) else 'K')
+    for j in (-1, 0, 1):
+        pp(-7, j, 'Y')
+    L = comp * R
+    for k in (1, 2):
+        for j in range(-5, 6):
+            pp(k, j, 'Y' if abs(j) >= 4 else ('r' if abs(j) <= 1 else 'y'))
+    pp(1, 1, 'n')
+    ref = 3 + int((L - 3) * 0.35)
+    for k in range(3, L + 1):
+        corta = max(0, k - (L - 3))
+        for j in range(-2 + corta, 3 - corta):
+            if j == 2 or (j == 2 - corta and corta):
+                ch = '+' if ref <= k <= ref + 2 else 'r'
+            elif j == -2 + corta:
+                ch = 'z'
+            elif j == 0:
+                ch = 'r' if k % 6 in (1, 2) else 'R'
+            elif j == 1:
+                ch = 'Y' if k % 6 in (2, 3) else 'r'
+            else:
+                ch = 'R'
+            pp(k, j, ch)
+    pp(L + 1, 0, 'r')
+    if brilho is not None:
+        k = 3 + int(brilho * (L - 3))
+        for kk in (k, k - 1):
+            pp(kk, 1, '!')
+            pp(kk, 0, '1')
+
+
+_INF = []
+for _i in range(96):                             # simbolo do infinito (lemniscata)
+    _a = 2 * math.pi * _i / 96.0
+    _d = 1 + math.sin(_a) ** 2
+    _INF.append((math.cos(_a) / _d, math.sin(_a) * math.cos(_a) / _d))
+
+
+def _fundida2(px, hx, hy, ux, uy, nx, ny, comp, brilho, evo, fase):
+    """As duas espadas fundidas: lamina larga e pesada (9 texels) preta, com
+    costas de aco, fio aceso (cristal azul; evoluida: roxo-azul e branco),
+    veios de energia que correm pela lamina e guarda em cruz (evoluida: o
+    simbolo do infinito). Cabo longo trancado."""
+    def pp(k, j, ch):
+        px[(int(round(hx + ux * k + nx * j)), int(round(hy + uy * k + ny * j)))] = ch
+    fita = 'F' if evo else 'y'
+    for k in range(1, 13):
+        for j in (-1, 0, 1):
+            pp(-k, j, fita if (k + 2 * j) % 4 == 0 else ('g' if j == 1 else 'K'))
+    for j in (-2, -1, 0, 1, 2):
+        pp(-13, j, 'L' if evo else 'Y')
+    pp(-14, 0, 'L' if evo else 'Y')
+    L = comp * R
+    if evo:
+        for (cx, cy) in _INF:
+            pp(2.5 + cy * 4.0, cx * 7.0, 'Y')
+        for j in (-4, 4):
+            pp(2.5, j, '9')
+        pp(2.5, 0, '!')
+        ini = 6
+    else:
+        for k in (1, 2, 3):
+            for j in range(-6, 7):
+                if k == 2 or abs(j) <= 4:
+                    pp(k, j, 'Y' if abs(j) >= 5 else ('r' if abs(j) <= 1 else ('k' if k == 1 else 'y')))
+        ini = 4
+    fio, fio2, fio3 = ('!', 'f', 'F') if evo else ('r', 'R', 'z')
+    mv = int(fase * 12)
+    for k in range(ini, L + 1):
+        corta = max(0, k - (L - 6))
+        veia = int(round(math.sin(k * 0.35 + 1.3))) - 1
+        for j in range(-4 + corta, 5):
+            if j == 4:
+                ch = fio
+            elif j == 3:
+                ch = fio2
+            elif j == 2:
+                ch = fio3
+            elif j == -4 + corta:
+                ch = 'u'
+            elif j == veia and (k + mv) % 9 < (5 if evo else 3):
+                ch = ('9' if (k + mv) % 9 < 2 else 'V') if evo else 'z'
+            elif j == 1:
+                ch = 'K'                                   # aresta central (shinogi)
+            elif j == -3 + corta:
+                ch = '2'                                   # chanfro das costas
+            else:
+                ch = 'W'
+            pp(k, j, ch)
+    pp(L + 1, 4, fio)
+    pp(L + 2, 4, fio)
+    if brilho is not None:
+        k = ini + int(brilho * (L - ini))
+        for j in range(0, 5):
+            pp(k, j, '!' if j >= 2 else '1')
+
+
+def _espada2(px, hx, hy, ang, comp, tipo, smear_de=None, brilho=None, fase=0.0):
+    a = math.radians(ang)
+    ux, uy = math.cos(a), math.sin(a)
+    nx, ny = -uy, ux
+    if smear_de is not None and abs(smear_de - ang) > 8:
+        _rastro2(px, hx, hy, smear_de, ang, comp)
+    b = brilho if smear_de is None else None
+    if tipo == 1:
+        _katana2(px, hx, hy, ux, uy, nx, ny, comp, b)
+    elif tipo == 2:
+        _repulser2(px, hx, hy, ux, uy, nx, ny, comp, b)
+    else:
+        _fundida2(px, hx, hy, ux, uy, nx, ny, comp, b, tipo == 4, fase)
+
+
+def _bainha2(px, bx, by):
+    """Bainha (saya) da cintura: laca escura com filete claro em cima,
+    sombra embaixo e ponteira de metal. Nao passa por cima das pernas."""
+    a = math.radians(_BAINHA_ANG)
+    ux, uy = math.cos(a), math.sin(a)
+    nx, ny = -uy, ux
+    L = _BAINHA_COMP * R
+
+    def pinta(k, j, ch):
+        q = (int(round(bx + ux * k + nx * j)), int(round(by + uy * k + ny * j)))
+        if px.get(q) not in ('P', 'B', '7', 'K'):
+            px[q] = ch
+    for k in range(0, L):
+        pinta(k, -1, 'v')
+        pinta(k, 0, 'W')
+        pinta(k, 1, 'u')
+    for k in range(L, L + 4):
+        for j in (-1, 0, 1):
+            pinta(k, j, 'k' if j == -1 else 'g')
+
+
+def _cabo_cintura2(px, bx, by):
+    """Cabo da Elucidator guardada: tsuba e cabo trancado para fora."""
+    a = math.radians(_BAINHA_ANG)
+    ux, uy = math.cos(a), math.sin(a)
+    nx, ny = -uy, ux
+
+    def pp(k, j, ch):
+        px[(int(round(bx + ux * k + nx * j)), int(round(by + uy * k + ny * j)))] = ch
+    for j in range(-3, 4):
+        pp(0, j, 'k' if j <= -2 else ('g' if abs(j) >= 2 else 'K'))
+    for k in range(1, 11):
+        for j in (-1, 0, 1):
+            pp(-k, j, 'k' if (k + 2 * j) % 4 == 0 else ('g' if j == -1 else 'K'))
+    for j in (-1, 0, 1):
+        pp(-11, j, 'k')
+
+
+def _fivelas2(px):
+    botas = [q for q, ch in px.items() if ch in ('B', 'K') and q[1] < R * (_PES + 4)]
+    if not botas:
+        return
+    topo = max(y for _, y in botas)
+    for (x, y) in botas:
+        if y == topo and px.get((x - 1, y)) in ('B', 'K') and px.get((x + 1, y)) not in ('B', 'K'):
+            px[(x, y)] = 'k'
+            px[(x - 1, y)] = 'G'
+
+
+def _meia(v):
+    return round(v * 2) / 2.0
+
+
+def montar(p):
+    """Pose (dict, em unidades) -> {(x, y) em texels: cor}."""
+    px = {}
+    dx, dy = _meia(p['dx']), _meia(p['dy'])
+    pernas = _PERNAS[p['pernas']]
+    topo = _PES + len(pernas) + len(_TRONCO) - 1 + dy       # linha de cima do tronco (unidades)
+    base = _X0 + dx
+    incl = int(round(p.get('incl', 0) or 0))
+    fase = p.get('fase', 0.0) or 0.0
+    cb = p['cabelo']
+    sobe = max(0.0, min(1.2, p.get('sobe', 0.0) or 0.0))
+    top_t = _t(topo) + R - 1                                 # texel de cima do tronco
+    bx_t = _t(base)
+    # ombros e cabeca vao com a inclinacao (peso)
+    o1 = (_t(base + 9 + incl) + 1, _t(topo - 2) + 1)
+    o2 = (_t(base + 3 + incl) + 1, _t(topo - 2) + 1)
+    cab_x = _t(base + incl) + int(round(p.get('hx', 0) or 0))
+    cab_ty = _t(topo + len(_CABECA)) + R - 1 + int(round(p.get('hy', 0) or 0))
+    y_cinto = topo - 6
+    boca = (_t(base + 9) + 1, _t(y_cinto) + 1)                 # boca da bainha
+    mugetsu = p.get('mugetsu', False)
+
+    def mao(ombro_u, m, t_o):
+        return (int(round(R * (ombro_u[0] + m[0]))) + 1, int(round(R * (ombro_u[1] + m[1]))) + 1)
+
+    if mugetsu:
+        _cabelo_longo2(px, cab_x, cab_ty, cb, sobe, fase, R * (_PES + 3))
+
+    if p['a2'] is None and not p.get('fusao'):
+        t = {}
+        _cabo_nas_costas(t, int(round(base + 1 + incl)), int(round(topo + 1)), 2)
+        _up(px, t)
+
+    m2 = p['m2'] if p['m2'] is not None else (-1, -6)
+    h2 = mao((base + 3 + incl, topo - 2), m2, o2)
+    ergue2 = m2[1] > 4
+    acima2 = m2[1] > 10
+
+    def _braco_tras():
+        _braco2(px, o2[0], o2[1], h2[0], h2[1], frente=ergue2)
+        if p['a2'] is not None:
+            _espada2(px, h2[0], h2[1], p['a2'], int(p['c2']), 2, p['s2'], p.get('brilho'), fase)
+            for ox in (0, 1):
+                for oy in (0, 1):
+                    px[(h2[0] + ox, h2[1] + oy)] = 'M'
+    if not ergue2:
+        _braco_tras()
+
+    _cabelo_tras2(px, cab_x, cab_ty, cb, sobe, fase)
+    _espetos2(px, cab_x, cab_ty, cb, sobe, fase)
 
     if ergue2 and not acima2:
         _braco_tras()
 
-    # pernas e, por cima, a saia do sobretudo (aberta na frente); a bainha
-    # da cintura passa por cima da aba de tras
-    _estampar_pernas(px, pernas, _X0, _PES + len(pernas) - 1)
-    _sobretudo(px, base_x, topo_tronco - len(_TRONCO), len(pernas) - 2 if len(pernas) > 4 else len(pernas) - 1,
-               p['capa'], p['lift'], fase, pernas, p.get('saia', 1.0))
-    _bainha(px, bx, by)
-    _estampar(px, _TRONCO[:4], base_x + incl, topo_tronco)       # peito e ombros
-    _estampar(px, _TRONCO[4:], base_x, topo_tronco - 4)         # cintura fica
-    _alca_peito(px, base_x + incl, topo_tronco)
-    _fivelas_botas(px)
+    _pernas2(px, pernas, R * _X0, R * (_PES + len(pernas) - 1) + R - 1)
+    _sobretudo2(px, base, topo - len(_TRONCO), len(pernas) - 2 if len(pernas) > 4 else len(pernas) - 1,
+                p['capa'], p['lift'], fase, pernas, p.get('saia', 1.0))
+    _bainha2(px, boca[0], boca[1])
+    # tronco: peito/ombros inclinam mais que a barriga (a cintura fica)
+    for r, linha in enumerate(_TOR2):
+        desl = 2 * incl if r < 6 else (incl if r < 10 else 0)
+        y = top_t - r
+        for c, ch in enumerate(linha):
+            if ch != '.':
+                px[(bx_t + desl + c, y)] = ch
+    t = {}
+    _alca_peito(t, int(round(base + incl)), int(round(topo)))
+    _up(px, t)
+    _fivelas2(px)
 
-    # braco da frente: erguido acima do ombro passa por tras da cabeca
-    ergue = p['m1'] is not None and p['m1'][1] > 4 and not p.get('frente1')
+    m1 = p['m1']
+    ergue = m1 is not None and m1[1] > 4 and not p.get('frente1')
+
+    def _braco_frente():
+        if m1 is None:
+            return
+        h1 = mao((base + 9 + incl, topo - 2), m1, o1)
+        _braco2(px, o1[0], o1[1], h1[0], h1[1], frente=True)
+        if p['a1'] is not None:
+            _espada2(px, h1[0], h1[1], p['a1'], int(p['c1']), p.get('tipo1', 1), p['s1'],
+                     p.get('brilho'), fase)
+            for ox in (-1, 0, 1, 2):
+                for oy in (0, 1):
+                    px[(h1[0] + ox, h1[1] + oy)] = 'M'
+            px[(h1[0] + 2, h1[1] + 1)] = 'g'
     if ergue:
-        _braco_frente(px, p, ombro1)
-    _estampar(px, _CABECAS.get(p['olhos'], _CABECA), cab_x, topo_cab)
+        _braco_frente()
+    _carimbo(px, _CABECAS2.get(p['olhos'], _CABECAS2['a']), cab_x, cab_ty)
     if acima2:
         _braco_tras()
     if p['a1'] is None:
-        _cabo_cintura(px, bx, by)                  # espada guardada na cintura
+        _cabo_cintura2(px, boca[0], boca[1])
     if not ergue:
-        _braco_frente(px, p, ombro1)
+        _braco_frente()
     if p.get('emote'):
-        _emote(px, p['emote'], cab_x, topo_cab)
+        t = {}
+        _emote(t, p['emote'], int(round(base + incl)), int(round(topo + len(_CABECA))))
+        _up(px, t)
 
     luz = p.get('luz', 0.0) or 0.0
     if luz > 0.2:
-        _iluminar(px, luz)
+        _iluminar(px, luz, R)
     if mugetsu:
-        _chamas(px, fase)
-    # contorno (rim light ciano; roxo na forma Mugetsu) para ler no fundo escuro
+        for q, ch in list(px.items()):
+            if ch in _SOMBRA:
+                px[q] = _SOMBRA[ch]
+    # contorno de 1 texel: luz em cima/na frente, sombra embaixo/atras
     aro, aro_sombra = ('o', '8') if mugetsu else ('O', '0')
     novos = {}
     for (x, y) in list(px.keys()):
@@ -702,7 +958,6 @@ def montar(p):
         for vx, vy in ((1, 0), (0, 1), (-1, 0), (0, -1)):
             q = (x + vx, y + vy)
             if q not in px:
-                # lado da luz (em cima / na frente) ganha do lado da sombra
                 ch = aro if (vx == 1 or vy == 1) else aro_sombra
                 if novos.get(q) != aro:
                     novos[q] = ch
@@ -710,69 +965,15 @@ def montar(p):
     return px
 
 
-def _cabelo_longo(px, base_x, topo_cab, cb, sobe, fase):
-    """Mugetsu: cabelo comprido ate a cintura, solto para tras e ondulando;
-    com vento (reiatsu) ele levanta e voa para tras."""
-    dois_pi = 2 * math.pi
-    vento = min(0.9, max(0.0, cb) * 0.2 + sobe * 0.5)
-    n = 18
-    for fio, (x0, y0) in enumerate(((1, -2), (2, -3), (0, -4), (1, -5), (0, -7), (1, -8))):
-        for k in range(n):
-            u = k / float(n - 1)
-            onda = (0.9 + 0.8 * sobe) * u * math.sin(dois_pi * (fase * 1.2 - k / 7.0 - fio * 0.17))
-            x = base_x + x0 - int(round(k * (0.3 + vento * 0.9) + onda))
-            y = topo_cab + y0 - int(round(k * (1.0 - vento * 0.8)))
-            px[(x, y)] = 'h' if (k + fio) % 7 == 0 else 'H'
-
-
-def _chamas(px, fase):
-    """Forma Mugetsu: a roupa escurece e o corpo todo fica envolto em chamas
-    roxas e azuis que sobem tremulando (mudam com a `fase`)."""
-    for q, ch in list(px.items()):
-        if ch in _SOMBRA:
-            px[q] = _SOMBRA[ch]
-    passo = int(fase * 6) % 6
-    corpo = [q for q, ch in px.items() if ch in _CORPO_M]
-    if not corpo:
-        return
-    ocup = set(corpo)
-    topo = max(y for _, y in corpo)
-    novos = {}
+def bordas(px):
+    """Pontos do contorno do corpo (em texels) de onde o fogo da Bankai sobe:
+    as bordas de cima e dos lados (sem as laminas)."""
+    corpo = set(q for q, ch in px.items() if ch in _CORPO_M)
+    out = []
     for (x, y) in corpo:
-        if (x, y + 1) in ocup:
-            continue                              # so onde o corpo tem a borda de cima
-        h = (x * 7919 + y * 104729 + passo * 1543) % 97
-        if h % 4 == 0:
-            continue
-        alto = 1 + h % 5 + (2 if y >= topo - 7 else 0)   # mais altas na cabeca e ombros
-        for i in range(1, alto + 1):
-            desvio = -1 if (i > 2 and (h + i + passo) % 3 == 0) else 0
-            q = (x + desvio, y + i)
-            if q in ocup:
-                break
-            novos[q] = 'f' if i <= alto * 0.4 else ('F' if i < alto else 'L')
-    for (x, y) in corpo:                          # fiapos para tras (lado das costas)
-        if (x - 1, y) in ocup:
-            continue
-        h = (x * 3571 + y * 2749 + passo * 911) % 53
-        if h % 5 == 0:
-            novos.setdefault((x - 1, y), 'F')
-            if h % 2:
-                novos.setdefault((x - 2, y + 1), 'f')
-    for q, ch in novos.items():
-        if q not in px:
-            px[q] = ch
-
-
-def _braco_frente(px, p, ombro1):
-    if p['m1'] is None:
-        return
-    mx, my = ombro1[0] + int(round(p['m1'][0])), ombro1[1] + int(round(p['m1'][1]))
-    _braco(px, ombro1[0], ombro1[1], mx, my, frente=True)
-    if p['a1'] is not None:
-        _espada(px, mx, my, p['a1'], int(p['c1']), p.get('tipo1', 1), p['s1'], p.get('brilho'))
-        px[(mx, my)] = 'M'
-        px[(mx + 1, my)] = 'M'
+        if (x, y + 1) not in corpo or (x - 1, y) not in corpo or (x + 1, y) not in corpo:
+            out.append((x, y))
+    return out
 
 
 def pose(**kw):
@@ -785,12 +986,14 @@ def _chave(p):
     def r(k, v):
         if k in ('capa', 'cabelo', 'lift', 'sobe'):
             return round(v * 4) / 4.0            # fisica: passos de 0.25
-        if k in ('dx', 'dy', 'hx', 'hy', 'incl'):
-            return int(round(v))                 # a montagem arredonda igual
+        if k in ('dx', 'dy'):
+            return round(v * 2) / 2.0            # meio passo (1 texel)
+        if k in ('hx', 'hy', 'incl'):
+            return int(round(v))
         if isinstance(v, float):
             return round(v, 1)
         if isinstance(v, tuple):
-            return tuple(int(round(x)) for x in v)
+            return tuple(round(x * 2) / 2.0 for x in v)
         return v
     return tuple((k, r(k, p[k])) for k in sorted(p))
 
@@ -879,7 +1082,7 @@ def sequencia(chaves):
 #  CACHE
 # ═══════════════════════════════════════════════════════════════════
 _CACHE = OrderedDict()     # chave_pose -> (bytes RGBA (GW x GH), caixa)
-_CACHE_MAX = 900
+_CACHE_MAX = 500
 _TEX = OrderedDict()       # (chave_pose, silhueta) -> Texture
 _TEX_MAX = 220
 _RGBA = {c: bytes(int(round(v * 255)) for v in cor) for c, cor in _PALETA.items()}
@@ -893,17 +1096,22 @@ def _gerar_imagem(p):
     if item is not None:
         _CACHE.move_to_end(ch)
         return ch, item
-    buf = bytearray(GW * GH * 4)
+    buf = bytearray(TW * TH * 4)
     x0 = y0 = 10 ** 6
     x1 = y1 = -10 ** 6
-    for (x, y), c in montar(p).items():
-        if 0 <= x < GW and 0 <= y < GH:
-            i = (y * GW + x) * 4
+    px = montar(p)
+    for (x, y), c in px.items():
+        if 0 <= x < TW and 0 <= y < TH:
+            i = (y * TW + x) * 4
             buf[i:i + 4] = _RGBA[c]
             if c not in 'xX':                 # rastro nao conta para o enquadramento
                 x0, x1 = min(x0, x), max(x1, x)
                 y0, y1 = min(y0, y), max(y1, y)
-    item = (bytes(buf), (x0, y0, x1, y1) if x1 >= x0 else (_X0, _PES, _X0 + 12, _PES + 26))
+    # caixa em unidades da grade (as cenas trabalham nelas)
+    cx = ((x0 / float(R), y0 / float(R), (x1 + 1) / float(R) - 1, (y1 + 1) / float(R) - 1)
+          if x1 >= x0 else (_X0, _PES, _X0 + 12, _PES + 26))
+    borda = bordas(px) if p.get('mugetsu') else None
+    item = (bytes(buf), cx, borda)
     _CACHE[ch] = item
     while len(_CACHE) > _CACHE_MAX:
         _CACHE.popitem(last=False)
@@ -918,8 +1126,13 @@ def _bytes(p):
 
 
 def caixa(p):
-    """Retangulo ocupado pela pose (x0, y0, x1, y1), em pixels da grade."""
+    """Retangulo ocupado pela pose (x0, y0, x1, y1), em unidades da grade."""
     return _gerar_imagem(p)[1][1]
+
+
+def bordas_pose(p):
+    """Contorno do corpo (texels) da pose na forma Mugetsu (ou None)."""
+    return _gerar_imagem(p)[1][2]
 
 
 def _runs(p, espelhar=False):
@@ -943,10 +1156,10 @@ def _textura(p, silhueta=False, xadrez=False):
                 b[i] = b[i + 1] = b[i + 2] = 255
                 if xadrez:                   # afterimage: so metade dos pixels (pixel art)
                     j = i // 4
-                    if ((j % GW) + (j // GW)) % 2:
+                    if ((j % TW) + (j // TW)) % 2:
                         b[i + 3] = 0
         dados = bytes(b)
-    tex = Texture.create(size=(GW, GH), colorfmt='rgba')
+    tex = Texture.create(size=(TW, TH), colorfmt='rgba')
     tex.mag_filter = 'nearest'
     tex.min_filter = 'nearest'
     tex.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte')
@@ -991,7 +1204,7 @@ class KiritoPixel(Widget):
     def __init__(self, ps=4, **kwargs):
         kwargs.setdefault('size_hint', (None, None))
         super().__init__(**kwargs)
-        self.ps = max(1, int(ps))
+        self.ps = max(2, int(ps) - int(ps) % 2)      # texel = ps/2 (pixels todos iguais)
         self.size = (GW * self.ps, GH * self.ps)
         self.pivo = None
         self._base = pose()               # pose da sequencia (sem fisica)
@@ -1068,8 +1281,8 @@ class KiritoPixel(Widget):
     def mao_local(self, qual=1, p=None):
         p = p or self._base
         pernas = _PERNAS[p['pernas']]
-        topo_tronco = _PES + len(pernas) + len(_TRONCO) - 1 + int(round(p['dy']))
-        base_x = _X0 + int(round(p['dx'])) + int(round(p.get('incl', 0) or 0))
+        topo_tronco = _PES + len(pernas) + len(_TRONCO) - 1 + _meia(p['dy'])
+        base_x = _X0 + _meia(p['dx']) + int(round(p.get('incl', 0) or 0))
         if qual == 1 and p['m1'] is not None:
             x, y = base_x + 9 + p['m1'][0], topo_tronco - 2 + p['m1'][1]
         elif qual == 2:
@@ -1824,6 +2037,113 @@ class RastroLamina(Widget):
             self._q = vivos
         except Exception as e:
             print(f"[rastro] {e}")
+            return self.parar()
+
+    def parar(self):
+        if self._ev is not None:
+            self._ev.cancel()
+            self._ev = None
+        if self.parent:
+            self.parent.remove_widget(self)
+        return False
+
+
+class ChamasReiatsu(Widget):
+    """Fogo roxo e azul da forma Mugetsu, com pixels do mesmo tamanho dos
+    do Kirito. O fogo e feito de LINGUAS: cada uma nasce num ponto do
+    contorno do corpo (mais na cabeca e nos ombros) e solta pixels um atras
+    do outro, que sobem ondulando juntos - uma coluna de fogo que balanca,
+    tomba para tras com o vento e esfria em degraus (branco -> ciano ->
+    azul -> roxo -> roxo escuro). Acompanha o corpo. Liga sozinho quando a
+    pose esta na forma Mugetsu. `frente=True`: camada fina por cima."""
+    DEGRAUS = (((0.97, 0.93, 1.00), 1.0), ((0.55, 0.86, 1.00), 1.0), ((0.34, 0.55, 1.00), 0.95),
+               ((0.60, 0.30, 1.00), 0.9), ((0.36, 0.15, 0.64), 0.72))
+
+    def __init__(self, k, n_max=520, linguas=30, frente=False, **kwargs):
+        kwargs.setdefault('size_hint', (None, None))
+        kwargs.setdefault('size', (0, 0))
+        super().__init__(**kwargs)
+        self.k = k
+        self.frente = frente
+        self.n_linguas = linguas
+        self._linguas = []
+        self._p = []
+        self._ins = []
+        with self.canvas:
+            for _ in range(n_max):
+                c = Color(1, 1, 1, 0)
+                r = Rectangle(size=(0, 0))
+                self._ins.append((c, r))
+        self._livres = list(range(n_max))
+        self._ev = Clock.schedule_interval(self._tick, 1 / 30.)
+
+    def _nova_lingua(self, bordas):
+        topo = max(y for _, y in bordas)
+        a = random.choice(bordas)
+        b = random.choice(bordas)
+        tx, ty = a if a[1] >= b[1] else b            # prefere as bordas de cima
+        alto = ty >= topo - 16
+        vida = random.uniform(0.25, 0.5) * (1.3 if alto else 1.0)
+        return {'tx': tx, 'ty': ty, 'vida': vida, 'fase': random.uniform(0, 6.3),
+                'f': random.uniform(8, 14), 'amp': random.uniform(1.5, 3.5),
+                'vy': random.uniform(30, 48) * (1.25 if alto else 1.0),
+                'vida_p': random.uniform(0.32, 0.55) * (1.35 if alto else 1.0)}
+
+    def _tick(self, dt):
+        try:
+            k = self.k
+            if k.parent is None or self.get_root_window() is None:
+                return self.parar()
+            te = k.ps / float(R)
+            pose = k._pose
+            ativo = pose.get('mugetsu') and k.opacity > 0.3
+            bordas = bordas_pose(pose) if ativo else None
+            if bordas:
+                while len(self._linguas) < self.n_linguas:
+                    self._linguas.append(self._nova_lingua(bordas))
+            vivas = []
+            for L in self._linguas:
+                L['vida'] -= dt
+                if L['vida'] <= 0 or not bordas:
+                    continue
+                vivas.append(L)
+                if self.frente and random.random() < 0.7:
+                    continue
+                if not self._livres:
+                    continue
+                i = self._livres.pop()
+                vida = L['vida_p'] * (0.5 if self.frente else 1.0)
+                self._p.append({'i': i, 'x': L['tx'] + random.uniform(-0.6, 0.6), 'y': float(L['ty']),
+                                'vy': L['vy'], 'vida': vida, 'v0': vida, 'fase': L['fase'],
+                                'f': L['f'], 'amp': L['amp'], 'esp': k.espelhar})
+            self._linguas = vivas
+            vivos = []
+            ox, oy = k.x, k.y
+            for f in self._p:
+                f['vida'] -= dt
+                c, r = self._ins[f['i']]
+                if f['vida'] <= 0:
+                    c.a = 0
+                    r.size = (0, 0)
+                    self._livres.append(f['i'])
+                    continue
+                u = 1 - f['vida'] / f['v0']
+                f['y'] += f['vy'] * dt
+                f['vy'] *= 0.985
+                # a lingua ondula (mais na ponta) e tomba para tras
+                lx = f['x'] + math.sin(f['fase'] + u * f['f']) * f['amp'] * u - 5.0 * u
+                tx = (TW - 1 - lx) if f['esp'] else lx
+                cor, alfa = self.DEGRAUS[min(4, int(u * 5))]
+                tam = 2 if (u < 0.4 and not self.frente) else 1
+                X = ox + round(tx) * te
+                Y = oy + round(f['y']) * te
+                r.pos = (X, Y)
+                r.size = (tam * te, tam * te)
+                c.rgba = (cor[0], cor[1], cor[2], alfa * (0.8 if self.frente else 1.0))
+                vivos.append(f)
+            self._p = vivos
+        except Exception as e:
+            print(f"[chamas] {e}")
             return self.parar()
 
     def parar(self):

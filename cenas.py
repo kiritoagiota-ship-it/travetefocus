@@ -717,10 +717,13 @@ class _Fluxo(Widget):
     da espada (o reiatsu da tela)."""
     _N = 110
 
-    def __init__(self, reator, alvo_fn, dur, **kwargs):
+    def __init__(self, reator, alvo_fn, dur, px_tam=None, **kwargs):
         kwargs.setdefault('size_hint', (None, None))
         kwargs.setdefault('size', (0, 0))
         super().__init__(**kwargs)
+        # fios na escala do Kirito (nao mais grossos que os pixels dele)
+        self._larg = max(1.0, px_tam * 0.5) if px_tam else dp(1.5)
+        self._comp_max = px_tam * 5 if px_tam else dp(30)
         self.reator = reator
         self.alvo_fn = alvo_fn
         self._dur = dur
@@ -731,7 +734,7 @@ class _Fluxo(Widget):
         with self.canvas:
             for _ in range(self._N):
                 c = Color(1, 1, 1, 0)
-                ln = Line(points=[0, 0, 0, 0], width=dp(1.5), cap='round')
+                ln = Line(points=[0, 0, 0, 0], width=self._larg, cap='none')
                 self._ins.append((c, ln))
         self._livres = list(range(self._N))
         self._ev = Clock.schedule_interval(self._tick, 1 / 60.)
@@ -774,7 +777,7 @@ class _Fluxo(Widget):
                 q[0] += q[2] * dt
                 q[1] += q[3] * dt
                 vn = math.hypot(q[2], q[3]) or 1.0
-                comp = min(dp(30), vn * 0.035)
+                comp = min(self._comp_max, vn * 0.035)
                 ln.points = [q[0], q[1], q[0] - q[2] / vn * comp, q[1] - q[3] / vn * comp]
                 c.rgba = (q[4][0], q[4][1], q[4][2], 0.9 * min(1.0, (1.4 - q[6]) / 0.3))
                 vivas.append(q)
@@ -1057,6 +1060,14 @@ class TituloLuz(Widget):
 _TRECHOS = [(0, 3), (3, 5), (5, 8), (8, 10), (10, 13)]      # TRA|VE|TE |FO|CUS
 
 
+def _ps_titulo(th, largura, altura):
+    """Abertura: o Kirito tem a altura de ~2 letras do logo - a espada passa
+    por uma silaba de cada vez, como se ele esculpisse a frase (e par: os
+    pixels do boneco ficam todos do mesmo tamanho)."""
+    alvo = min(th * 1.7, largura * 0.30, altura * 0.16)
+    return max(2, 2 * int(round(alvo / 26.0 / 2.0)))
+
+
 def _ps_para(largura, altura):
     alvo = min(dp(150), largura * 0.37, altura * 0.18)      # altura do boneco (ver os detalhes)
     return max(2, int(round(alvo / 26.0)))
@@ -1324,16 +1335,19 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         camada._titulo = titulo
         faiscas = K.Faiscas(n_max=140)
         fundo_fx = K.Faiscas(n_max=50)                 # particulas atras do Kirito
-        ps = _ps_para(W, H)
+        ps = _ps_titulo(titulo.th, W, H)
         kk = K.KiritoPixel(ps=ps)
+        ps = kk.ps
         kk.opacity = 0
         aura = _AuraEspada(kk, faiscas)
         aura.faiscas_fundo = fundo_fx
         estado['aura'] = aura
         camada.add_widget(fundo_fx)
+        camada.add_widget(K.ChamasReiatsu(kk, n_max=640, linguas=42))   # fogo da Bankai (atras)
         camada.add_widget(aura)
         camada.add_widget(K.RastroLamina(kk, faiscas))
         camada.add_widget(kk)
+        camada.add_widget(K.ChamasReiatsu(kk, n_max=160, linguas=24, frente=True))
         camada.add_widget(faiscas)
         cam[0] = _Camera(tela)
         try:
@@ -1563,6 +1577,36 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             kk.espelhar = True                         # 'direita': virado para a esquerda
             return quadro(ox_t + titulo._larg[i1] + th * 0.9, cy - th * 0.1, poses)
 
+        def _blitz(pontos, cor, on_fim, pose_meio=None, pose_fim=None):
+            """Speed blitz: deixa uma imagem parada onde estava, some num piscar
+            e reaparece no proximo ponto ja pronto para o golpe."""
+            def _salto(n):
+                if not ag.vivo:
+                    return
+                ax0, ay0 = kk.ancora()
+                kk.fantasma(cor=cor, alfa=0.6, duracao=0.45)           # imagem que fica
+                faiscas.estourar(ax0, ay0, cor, n=4, forca=dp(50), tam=max(2, ps // 2), gravidade=0)
+                kk.opacity = 0
+
+                def _aparece():
+                    x, y = pontos[n]
+                    ultimo = n == len(pontos) - 1
+                    if ultimo and pose_fim is not None:
+                        kk.mostrar(pose_fim)
+                    elif not ultimo and pose_meio is not None:
+                        kk.mostrar(pose_meio)
+                    kk.ancorar(x, y)
+                    kk._ult = None                     # o salto nao conta como velocidade
+                    kk.opacity = 1
+                    _clarao_boneco(kk, 0.12, 0.7)
+                    if not ultimo:
+                        ag.depois(0.07, lambda: _salto(n + 1))
+                    else:
+                        on_fim()
+                ag.depois(0.05, _aparece)
+            _som('pulo')
+            _salto(0)
+
         def _combo(i):
             if i > 3:
                 _final()
@@ -1574,37 +1618,20 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             poses_g = K.sequencia(chaves)            # todos os quadros cabem no quadro
             ax, ay = kk.ancora()
             alvo = _alvo_golpe(lado, i, poses_g)
-            teto = area[3] - m - _ext(kk, poses_g)[3]
             arma = _com(P[p_arma], olhos='s')
-            voo = None
-            if lado == 'baixo':
-                h, giro, dur = 0.0, None, 0.2                # desliza agachado por baixo
-            elif lado == 'cima':
-                h, giro, dur = _arco(ay, alvo[1], th * 1.1, teto), None, 0.26   # salta
-                voo = _voo(kk, K.esticado(arma), K.encolhido(arma), arma, (0.2, 0.7))
-            else:
-                h, giro, dur = _arco(ay, alvo[1], th * 0.6, teto), (0, 360), 0.3   # roda de espadas
-                voo = _giro(kk, _com(P['giro_a'], olhos='s'), _com(P['giro_b'], olhos='s'), arma)
-            kk.mostrar(arma)
-            if lado != 'baixo':
-                _som('pulo')
-            else:
-                pe = kk.extensao(arma)[1]                    # poeira nos pes ao deslizar
-
-                def _rastro_chao(u, _ult=[0.0]):
-                    if u - _ult[0] >= 0.3:
-                        _ult[0] = u
-                        bx, by = kk.ancora()
-                        poeira(bx, by - pe, n=4)
-                voo = _rastro_chao
+            # speed blitz: um ponto no caminho (acima/abaixo, alternando) e o
+            # ponto do golpe; em cada lugar por onde passou fica uma imagem
+            sinal = 1 if i % 2 else -1
+            guarda = _com(P['dupla'], olhos='s')
+            meio = quadro((ax + alvo[0]) / 2.0 + dp(8) * sinal, (ay + alvo[1]) / 2.0 + th * 1.4 * sinal,
+                          [guarda])
 
             def _ataca():
                 kk.rotacao = 0
                 kk.tocar(K.sequencia(chaves), on_quadro=lambda q: q == i_r and corte_trecho(
                     i, cor, 1, som_c, cor2, arco=arco, achat=0.5 if lado != 'direita' else 0.42),
                     on_fim=lambda: _combo(i + 1))
-            _mover(kk, (ax, ay), alvo, dur, altura=h, rot=giro, cor_fantasma=cor,
-                   on_fim=_ataca, limite=(area, m), on_passo=voo)
+            _blitz([meio, alvo], cor, _ataca, guarda, arma)
 
         # ── 6. golpe final (estilo Bleach) ───────────────────────────
         p_fim = [M['evo_corte'], M['evo_fim'], 'dupla', 'chiburi_a', 'chiburi', 'embainha_a', 'embainha_b',
@@ -1694,7 +1721,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             _fundo(tela, reator=1.0, barra=0.1, dur=0.35)    # o infinito acende enquanto e puxado
             _som('reiatsu')
             aura.alvo = 0.7
-            fluxo = _Fluxo(reator, ponta, dur=2.4)
+            fluxo = _Fluxo(reator, ponta, dur=2.4, px_tam=ps)
             estado['fluxo'] = fluxo
             camada.add_widget(fluxo, index=1)
             reator.sugar(ponta, dur=2.4, on_fim=lambda: ag.depois(0.0, _absorveu))
