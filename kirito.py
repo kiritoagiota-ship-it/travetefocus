@@ -68,15 +68,25 @@ _PALETA = {
     'L': (0.93, 0.86, 1.00, 0.9),                                # ponta clara da chama
     'o': (0.66, 0.36, 1.00, 0.9),                                # contorno roxo
     'Q': (0.52, 0.80, 0.98, 1),                                  # pixel aceso pela luz da lamina
+    # sprite premium: degraus de volume
+    'J': (0.07, 0.075, 0.13, 1), 'I': (0.23, 0.25, 0.40, 1),    # cabelo: sombra profunda / brilho medio
+    'e': (0.24, 0.30, 0.47, 1), 'n': (0.94, 0.97, 1.00, 1),     # iris / brilho do olho
+    '2': (0.10, 0.10, 0.155, 1),                                 # sobretudo: sombra profunda
+    '4': (0.055, 0.055, 0.085, 1),                               # camisa preta (abertura do casaco)
+    '7': (0.06, 0.06, 0.10, 1),                                  # calca: lado da sombra
+    '+': (0.90, 0.94, 1.00, 1),                                  # reflexo no aco
+    '0': (0.00, 0.42, 0.64, 0.85),                               # contorno do lado da sombra
+    '8': (0.36, 0.17, 0.60, 0.85),                               # contorno roxo do lado da sombra
 }
 _SEM_CONTORNO = set('xX!1FfL')
 # Mugetsu: a roupa escurece (o rosto continua claro, os olhos acendem)
-_SOMBRA = {'C': 'D', 'c': 'd', 'A': 'd', 'q': 'D', 'P': 'D', 'B': 'D', 'M': 'D', 'G': 'd', 'E': 'V'}
-_CORPO_M = set('HhSsDdV')
+_SOMBRA = {'C': 'D', 'c': 'd', 'A': 'd', 'q': 'D', 'P': 'D', 'B': 'D', 'M': 'D', 'G': 'd', 'E': 'V',
+           '2': 'D', '4': 'D', '7': 'D', 'e': 'V', 'n': 'L', 'K': 'D'}
+_CORPO_M = set('HhSsDdVJI')
 # luz dinamica: pixels do corpo perto da lamina acesa clareiam um degrau
 _LAMINA = set('wjRrzY9!')                  # so as partes claras (a bainha usa W/u)
 _ACENDE = {'C': 'c', 'A': 'c', 'q': 'c', 'P': 'c', 'c': 'Q', 'H': 'h', 'h': 'Q', 'B': 'K',
-           'M': 'g', 'G': 'Q', 'D': 'd', 'd': 'o'}
+           'M': 'g', 'G': 'Q', 'D': 'd', 'd': 'o', '2': 'C', '4': 'C', '7': 'P', 'J': 'H', 'I': 'h'}
 
 
 def _iluminar(px, luz):
@@ -104,22 +114,18 @@ def _iluminar(px, luz):
             px[q] = ch
 
 _CABECA = [
-    "....HHHHH....",
-    "..HHHHHHHHH..",
-    ".HHhhHHHHHHH.",
-    "HHHHhHHHHHHHH",
-    "HHHHHHHHHHHHH",
-    "HHHHHHHSHHHSH",
-    "HHHHHSSSSSSSS",
-    "HHHHSSSSESSES",
-    ".HHHSSSSESSES",
-    "..HHSSSSSSSs.",
-    "...HHsSSSss..",
+    "....JHHHJ....",
+    "..JHHIhhHHJ..",
+    ".JHHIhhIHHHH.",
+    "JHHHIhHHHHHHH",
+    "JHHHHHHHHIHHH",
+    "JJHHHHHsHHHsh",
+    "JHHHHsSSSSSSS",
+    "JHHHsSSEESSES",
+    ".JHHsSSenSSeS",
+    "..JHsSSSSSsS.",
+    "...JHssSSss..",
 ]
-_CABECA_PISCA = list(_CABECA)
-_CABECA_PISCA[7] = "HHHHSSSSSSSSS"          # olho fechado = so a linha de baixo
-_CABECA_BAIXO = list(_CABECA_PISCA)         # olhando para baixo (o PIN sendo digitado)
-_CABECA_BAIXO[9] = "..HHSSSSESSE."
 
 
 def _cabeca_var(trocas, base=None):
@@ -129,27 +135,32 @@ def _cabeca_var(trocas, base=None):
     return c
 
 
+# piscando: so a linha de baixo do olho
+_CABECA_PISCA = _cabeca_var({7: "JHHHsSSSSSSSS", 8: ".JHHsSSEESSES"})
+# olhando para baixo (o PIN sendo digitado)
+_CABECA_BAIXO = _cabeca_var({7: "JHHHsSSSSSSSS", 8: ".JHHsSSEESSES", 9: "..JHsSSenSSe."})
 # serio/determinado: sobrancelha franzida por cima de olhos estreitos
-_CABECA_SERIO = _cabeca_var({6: "HHHHHSSEESSEE", 7: "HHHHSSSSESSES", 8: ".HHHSSSSSSSSS"})
+_CABECA_SERIO = _cabeca_var({6: "JHHHHsSEESSEE", 7: "JHHHsSSenSSeS", 8: ".JHHsSSSSSSSS"})
 # gritando no golpe: serio + boca aberta
-_CABECA_GRITO = _cabeca_var({9: "..HHSSSSSSEs.", 10: "...HHsSSSEs.."}, _CABECA_SERIO)
+_CABECA_GRITO = _cabeca_var({9: "..JHsSSSSSEs.", 10: "...JHssSSEs.."}, _CABECA_SERIO)
 # olhos acesos em ciano (reiatsu da espada evoluida)
-_CABECA_LUZ = _cabeca_var({6: "HHHHHSSEESSEE", 7: "HHHHSSSS9SS9S", 8: ".HHHSSSS9SS9S"})
+_CABECA_LUZ = _cabeca_var({6: "JHHHHsSEESSEE", 7: "JHHHsSS99SS9S", 8: ".JHHsSS99SS9S"})
 # susto: olhos arregalados e boca em "o"
-_CABECA_SUSTO = _cabeca_var({6: "HHHHHSSSESSES", 9: "..HHSSSSSSEs."})
-# feliz: olhos fechados em arco (^^)
-_CABECA_FELIZ = _cabeca_var({6: "HHHHHSSSSSSES", 7: "HHHHSSSSESESE", 8: ".HHHSSSSSSSSS"})
+_CABECA_SUSTO = _cabeca_var({6: "JHHHHsSEESSES", 7: "JHHHsSSenSSeS", 8: ".JHHsSSeeSSeS",
+                             9: "..JHsSSSSSEs."})
+# feliz: olhos fechados em arco (^^) e sorriso
+_CABECA_FELIZ = _cabeca_var({7: "JHHHsSSEESSSS", 8: ".JHHsSESSESES", 9: "..JHsSSSSsSS."})
 _CABECAS = {'a': _CABECA, 'f': _CABECA_PISCA, 'b': _CABECA_BAIXO, 's': _CABECA_SERIO,
             'g': _CABECA_GRITO, 'l': _CABECA_LUZ, 'u': _CABECA_SUSTO, 'e': _CABECA_FELIZ}
 _TRONCO = [
-    "....CGGGC....",
-    "...CCCGCCC...",
-    "..CCCCGCCCC..",
-    "..CCcCGCCCC..",
-    "..CCcCGCCCC..",
-    ".CCCcCGCCCCC.",
-    ".CMMMMGMMMMC.",          # cinto (fivela prateada no meio)
-    ".CCCCPPPCCCC.",
+    "...2CCsSsCc..",          # gola alta e o pescoco entre elas
+    "...2CG4GAc...",          # abertura do casaco: camisa preta e friso prateado
+    "..2CCG4GCAc..",
+    "..2CcCGCCAc..",
+    "..2CcCGC2Ac..",          # dobra
+    ".2CCcCGC2CAc.",
+    ".2MMMgkgMMMc.",          # cinto (fivela prateada com brilho)
+    ".2CCCPPPCCAc.",
 ]
 _PERNAS = {
     # em pe: 7 linhas (coxa, joelho, canela, bota). O sobretudo cobre as 5
@@ -208,6 +219,23 @@ _X0 = 25                 # coluna esquerda do tronco/cabeca
 _PES = 14                # linha dos pes (sobra embaixo para espadas apontando p/ baixo)
 
 
+def _estampar_pernas(px, mapa, x0, y_topo):
+    """Pernas com volume: o primeiro pixel de cada perna (lado de tras) fica
+    na sombra e a ponta de cada bota (ultima linha) ganha um brilho."""
+    ult = len(mapa) - 1
+    for r, linha in enumerate(mapa):
+        for c, ch in enumerate(linha):
+            if ch == '.':
+                continue
+            antes = linha[c - 1] if c > 0 else '.'
+            depois = linha[c + 1] if c + 1 < len(linha) else '.'
+            if ch == 'P' and antes != 'P':
+                ch = '7'
+            elif ch == 'B' and r == ult and depois != 'B':
+                ch = 'K'
+            px[(x0 + c, y_topo - r)] = ch
+
+
 def _estampar(px, mapa, x0, y_topo):
     for r, linha in enumerate(mapa):
         for c, ch in enumerate(linha):
@@ -225,7 +253,7 @@ def _linha(px, x0, y0, x1, y1, ch, grossura=1):
             px[(x, y - 1)] = ch
 
 
-_CORPO = set('CcAqGPBMSsHhE')           # cores de corpo/roupa (para o contorno do braco)
+_CORPO = set('CcAqGPBMSsHhE24JIen7')           # cores de corpo/roupa (para o contorno do braco)
 
 
 def _braco(px, x0, y0, x1, y1, luva=True, frente=False):
@@ -237,26 +265,29 @@ def _braco(px, x0, y0, x1, y1, luva=True, frente=False):
     passos = max(abs(dx), abs(dy), 1)
     horizontal = abs(dx) >= abs(dy)
     base = 'A' if frente else 'C'
+    sombra = 'C' if frente else '2'
     meu = {}
     for i in range(passos + 1):
         x = round(x0 + dx * i / passos)
         y = round(y0 + dy * i / passos)
         punho = i >= passos - 1 and passos > 3
-        if horizontal:
+        if horizontal:                      # luz em cima, sombra embaixo
             meu[(x, y + 1)] = 'G' if punho else 'c'
             meu[(x, y)] = 'G' if punho else base
-            meu[(x, y - 1)] = 'G' if punho else base
-        else:
-            meu[(x - 1, y)] = 'G' if punho else base
+            meu[(x, y - 1)] = 'G' if punho else sombra
+        else:                               # luz na frente, sombra atras
+            meu[(x - 1, y)] = 'G' if punho else sombra
             meu[(x, y)] = 'G' if punho else base
             meu[(x + 1, y)] = 'G' if punho else 'c'
     for vx in (0, 1):                      # ombro arredondado
         for vy in (0, -1):
             meu[(x0 + vx, y0 + vy)] = base
+    meu[(x0 + 1, y0)] = 'c'                 # brilho no alto do ombro
     if luva:
         for vx in (0, 1):
             for vy in (0, 1):
                 meu[(x1 + vx, y1 + vy)] = 'M'
+        meu[(x1 + 1, y1 + 1)] = 'g'         # brilho nos nos dos dedos
     if frente:
         for (x, y) in meu:
             for vx, vy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
@@ -327,11 +358,12 @@ def _katana(px, mx, my, ux, uy, nx, ny, comp, brilho):
         bx, by = mx + ux * k + nx * off, my + uy * k + ny * off
         hamon = (k % 4) in (1, 2)
         px[_p(bx, by)] = 'j' if hamon else 'W'
-        px[_p(bx + nx, by + ny)] = 'w'
+        reflexo = comp > 6 and (k - ini) in (int((comp - ini) * 0.3), int((comp - ini) * 0.3) + 1)
+        px[_p(bx + nx, by + ny)] = '+' if reflexo else 'w'
         if k < comp:
             px[_p(bx - nx, by - ny)] = 'u'
     off = -sori
-    px[_p(mx + ux * (comp + 1) + nx * (off + 0.4), my + uy * (comp + 1) + ny * (off + 0.4))] = 'w'
+    px[_p(mx + ux * (comp + 1) + nx * (off + 0.4), my + uy * (comp + 1) + ny * (off + 0.4))] = '+'
     if brilho is not None:
         k = ini + int(brilho * (comp - ini))
         u = (k - ini) / float(max(1, comp - ini))
@@ -354,7 +386,8 @@ def _repulser(px, mx, my, ux, uy, nx, ny, comp, brilho):
     for k in range(2, comp + 1):
         bx, by = mx + ux * k, my + uy * k
         px[_p(bx, by)] = 'r' if k % 5 == 3 else 'R'          # faceta clara no miolo
-        px[_p(bx + nx, by + ny)] = 'r'
+        reflexo = comp > 6 and k in (2 + int((comp - 2) * 0.35), 3 + int((comp - 2) * 0.35))
+        px[_p(bx + nx, by + ny)] = '+' if reflexo else 'r'
         if k < comp - 1:
             px[_p(bx - nx, by - ny)] = 'z'
     px[_p(mx + ux * (comp + 1), my + uy * (comp + 1))] = 'r'
@@ -493,7 +526,13 @@ def _sobretudo(px, base_x, y0, n, capa, lift, fase, pernas, saia=1.0):
                 elif (lado == 'e' and x == b) or (lado == 'd' and x == a):
                     ch = 'q' if vento > 1.2 else 'G'     # forro com vento / friso
                 else:
-                    ch = 'C'
+                    # dobras na diagonal que andam com a fase (o pano mexe);
+                    # aba de tras mais escura, a da frente pega luz
+                    dobra = ((x - base_x) * 2 + k + int(fase * 4)) % 5 == 0
+                    if lado == 'e':
+                        ch = '2' if (dobra or x == a + 1) else 'C'
+                    else:
+                        ch = 'A' if dobra else 'C'
                 px[(x, y)] = ch
 
 
@@ -542,7 +581,7 @@ def _emote(px, qual, base_x, topo_cab):
 # pose padrao: todos os campos que a montagem entende
 POSE_BASE = dict(dx=0, dy=0, pernas='repouso', olhos='a', cabelo=0.0, capa=0.0,
                  lift=0.0, sobe=0.0, fase=0.0, brilho=None, saia=1.0, frente1=False,
-                 tipo1=1, fusao=False, emote=None, mugetsu=False, hx=0, hy=0, luz=0.0,
+                 tipo1=1, fusao=False, emote=None, mugetsu=False, hx=0, hy=0, luz=0.0, incl=0,
                  m1=(3, -5), a1=-40.0, c1=15, s1=None,
                  m2=None, a2=None, c2=15, s2=None)
 
@@ -554,14 +593,17 @@ def montar(p):
     pernas = _PERNAS[p['pernas']]
     topo_tronco = _PES + len(pernas) + len(_TRONCO) - 1 + dy
     base_x = _X0 + dx
-    ombro1 = (base_x + 9, topo_tronco - 2)
-    ombro2 = (base_x + 3, topo_tronco - 2)
+    # peso: o tronco de cima (ombros, bracos e cabeca) inclina `incl` px
+    # sobre a cintura - pende para tras na preparacao, vai a frente no golpe
+    incl = int(round(p.get('incl', 0) or 0))
+    ombro1 = (base_x + 9 + incl, topo_tronco - 2)
+    ombro2 = (base_x + 3 + incl, topo_tronco - 2)
     y_cinto = topo_tronco - 6
     fase = p.get('fase', 0.0) or 0.0
     dois_pi = 2 * math.pi
     topo_cab = topo_tronco + len(_CABECA)
     # camada da cabeca: pode atrasar 1 px em relacao ao tronco (inercia)
-    cab_x = base_x + int(round(p.get('hx', 0) or 0))
+    cab_x = base_x + incl + int(round(p.get('hx', 0) or 0))
     topo_cab += int(round(p.get('hy', 0) or 0))
 
     mugetsu = p.get('mugetsu', False)
@@ -571,7 +613,7 @@ def montar(p):
     # atras de tudo: cabo da Dark Repulser (bainha nas costas)
     bx, by = _bainha_cintura(base_x, y_cinto)
     if p['a2'] is None and not p.get('fusao'):
-        _cabo_nas_costas(px, base_x + 1, topo_tronco + 1, 2)
+        _cabo_nas_costas(px, base_x + 1 + incl, topo_tronco + 1, 2)
 
     # braco/espada de tras (atras do corpo); sem pose = braco relaxado.
     # Erguido (pendurado, sacando das costas) ele fica na frente do cabelo.
@@ -623,12 +665,13 @@ def montar(p):
 
     # pernas e, por cima, a saia do sobretudo (aberta na frente); a bainha
     # da cintura passa por cima da aba de tras
-    _estampar(px, pernas, _X0, _PES + len(pernas) - 1)
+    _estampar_pernas(px, pernas, _X0, _PES + len(pernas) - 1)
     _sobretudo(px, base_x, topo_tronco - len(_TRONCO), len(pernas) - 2 if len(pernas) > 4 else len(pernas) - 1,
                p['capa'], p['lift'], fase, pernas, p.get('saia', 1.0))
     _bainha(px, bx, by)
-    _estampar(px, _TRONCO, base_x, topo_tronco)
-    _alca_peito(px, base_x, topo_tronco)
+    _estampar(px, _TRONCO[:4], base_x + incl, topo_tronco)       # peito e ombros
+    _estampar(px, _TRONCO[4:], base_x, topo_tronco - 4)         # cintura fica
+    _alca_peito(px, base_x + incl, topo_tronco)
     _fivelas_botas(px)
 
     # braco da frente: erguido acima do ombro passa por tras da cabeca
@@ -651,14 +694,19 @@ def montar(p):
     if mugetsu:
         _chamas(px, fase)
     # contorno (rim light ciano; roxo na forma Mugetsu) para ler no fundo escuro
-    aro = 'o' if mugetsu else 'O'
+    aro, aro_sombra = ('o', '8') if mugetsu else ('O', '0')
+    novos = {}
     for (x, y) in list(px.keys()):
         if px[(x, y)] in _SEM_CONTORNO:
             continue
-        for vx, vy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        for vx, vy in ((1, 0), (0, 1), (-1, 0), (0, -1)):
             q = (x + vx, y + vy)
             if q not in px:
-                px[q] = aro
+                # lado da luz (em cima / na frente) ganha do lado da sombra
+                ch = aro if (vx == 1 or vy == 1) else aro_sombra
+                if novos.get(q) != aro:
+                    novos[q] = ch
+    px.update(novos)
     return px
 
 
@@ -737,7 +785,7 @@ def _chave(p):
     def r(k, v):
         if k in ('capa', 'cabelo', 'lift', 'sobe'):
             return round(v * 4) / 4.0            # fisica: passos de 0.25
-        if k in ('dx', 'dy', 'hx', 'hy'):
+        if k in ('dx', 'dy', 'hx', 'hy', 'incl'):
             return int(round(v))                 # a montagem arredonda igual
         if isinstance(v, float):
             return round(v, 1)
@@ -750,7 +798,7 @@ def _chave(p):
 # ═══════════════════════════════════════════════════════════════════
 #  SEQUENCIAS (keyframes interpolados a 30fps)
 # ═══════════════════════════════════════════════════════════════════
-_NUM = ('dx', 'dy', 'cabelo', 'capa', 'lift', 'sobe', 'a1', 'a2', 'c1', 'c2', 'saia')
+_NUM = ('dx', 'dy', 'cabelo', 'capa', 'lift', 'sobe', 'a1', 'a2', 'c1', 'c2', 'saia', 'incl')
 
 
 def _ease(t):
@@ -1021,7 +1069,7 @@ class KiritoPixel(Widget):
         p = p or self._base
         pernas = _PERNAS[p['pernas']]
         topo_tronco = _PES + len(pernas) + len(_TRONCO) - 1 + int(round(p['dy']))
-        base_x = _X0 + int(round(p['dx']))
+        base_x = _X0 + int(round(p['dx'])) + int(round(p.get('incl', 0) or 0))
         if qual == 1 and p['m1'] is not None:
             x, y = base_x + 9 + p['m1'][0], topo_tronco - 2 + p['m1'][1]
         elif qual == 2:
@@ -1389,7 +1437,7 @@ POSE_A = {
     'pendurado_b': pose(pernas='solto2', m2=(-3, 15), a2=None, m1=(2, -3), a1=None, saia=0.35),
     # kamae: recolhe as pernas e empurra a guarda com o polegar (koiguchi)
     'pendurado2':  pose(pernas='pulo', dy=3, m2=(-3, 15), a2=None, m1=(3, -2), a1=None, saia=0.5),
-    'agacha':     pose(pernas='agachado', dy=-3, m1=(2, -3), a1=None),
+    'agacha':     pose(pernas='agachado', dy=-3, m1=(2, -3), a1=None, incl=1),
     'pulo':       pose(pernas='pulo', dy=-1, m1=(2, -3), a1=None),
     # saque iai: a lamina sai da bainha da cintura e corta na horizontal, subindo
     'saca1':      pose(pernas='avanco', dx=1, m1=(4, -1), a1=_BAINHA_ANG, c1=7, m2=(-2, 1)),
@@ -1530,9 +1578,10 @@ def golpe(arma, corta, olhos=('s', 'g', 's'), n_arma=3, prende=2, segue=3, volta
     if arma['m2'] is not None and corta['m2'] is not None:
         ant['m2'] = _passo_mao(arma['m2'], corta['m2'], 1.0, True)
     ant['dx'] = arma['dx'] - 1                       # pende para tras
+    ant['incl'] = -1                                 # ombros e cabeca vao para tras
     if altura(arma) > 3:
         ant['dy'] = arma['dy'] - 1                   # e abaixa (se nao estiver agachado)
-    imp = dict(corta, olhos=olhos[1])
+    imp = dict(corta, olhos=olhos[1], incl=1)       # o peso vai para a frente no corte
     if seg is None:
         seg = dict(imp)
         if corta['a1'] is not None and s1:
@@ -1543,8 +1592,9 @@ def golpe(arma, corta, olhos=('s', 'g', 's'), n_arma=3, prende=2, segue=3, volta
         if arma['m2'] is not None and corta['m2'] is not None:
             seg['m2'] = _passo_mao(arma['m2'], corta['m2'], 1.0, False)
         seg['dx'] = corta['dx'] + 1                  # inclina para a frente
+        seg['incl'] = 1
     else:
-        seg = dict(seg, olhos=olhos[1])
+        seg = dict(seg, olhos=olhos[1], incl=1)
     fim = dict(corta, olhos=olhos[2])
     chaves = [(n_arma, arma, 'suave'), (prende, ant, 'segura')]
     if duplo:                                         # meio do golpe: 2 quadros de rastro
