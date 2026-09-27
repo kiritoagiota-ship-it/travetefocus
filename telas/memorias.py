@@ -341,21 +341,31 @@ class TelaMemorias(Screen):
         def _deletar(*_):
             som.tocar_delete()
             tremer_tela(10)
-            # mini Kirito fatia o cartao do turno inteiro
+            # o Yoru crava a estocada no cartao do turno
             from cenas import kirito_fatiar
             btn_a.disabled = True
-            kirito_fatiar(caixa, _executar_delete)
+            kirito_fatiar(caixa, _executar_delete, tipo='estocada')
 
-        def _whatsapp(*_):
+        def _enviar():
             try:
                 from exportar import mensagem_turno, enviar_whatsapp
                 ok, aviso = enviar_whatsapp(mensagem_turno(memoria))
             except Exception as e:
                 print(f"[whatsapp] {e}")
                 ok, aviso = False, "Nao consegui preparar a mensagem."
-            vibrar(40)
             if aviso:
                 self._aviso(aviso, ok)
+
+        def _whatsapp(*_):
+            vibrar(40)
+            # o Yoru joga um pergaminho de luz para fora da tela; o WhatsApp
+            # abre quando o pergaminho sai
+            try:
+                from cenas import kirito_pergaminho
+                kirito_pergaminho(btn_zap, _enviar)
+            except Exception as e:
+                print(f"[whatsapp] pergaminho: {e}")
+                _enviar()
 
         _bind_teclado(inp_data, pop)
         btn_zap.bind(on_release=_whatsapp)

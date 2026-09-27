@@ -239,9 +239,9 @@ class TelaGanhos(Screen):
                 def _confirmar_delete(*_):
                     som.tocar_delete()
                     vibrar(80)
-                    # mini Kirito fatia a linha do periodo
+                    # o Yoru parte a linha do periodo com o corte em X
                     from cenas import kirito_fatiar
-                    kirito_fatiar(widget, _executar)
+                    kirito_fatiar(widget, _executar, tipo='x')
                     tremer_tela(8)
 
                 pop2, lay2 = _make_popup()

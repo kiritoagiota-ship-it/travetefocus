@@ -117,17 +117,25 @@ class TelaRegistro(Screen):
         btn.bind(on_release=lambda x, d=dado, w=btn: self.confirmar_delete(d, w))
         self.ids.lista_container.add_widget(btn)
         entrada_cascata([btn], dy=dp(30))
-        # o '+XP' nasce em cima do item novo (espera 1 frame para ele ter posicao)
-        Clock.schedule_once(lambda dt: animar_ganho_xp(xp_total, origem=btn), 0.05)
+        # o Yoru aparece e 'carimba' o +XP com um corte curto (o numero nasce
+        # no corte); espera o item novo terminar de entrar na lista
+        def _carimbo(dt):
+            try:
+                from cenas import kirito_carimbo
+                kirito_carimbo(btn, lambda: animar_ganho_xp(xp_total, origem=btn))
+            except Exception as e:
+                print(f"[registro] carimbo: {e}")
+                animar_ganho_xp(xp_total, origem=btn)
+        Clock.schedule_once(_carimbo, 0.2)
         Clock.schedule_once(lambda _: self._focar_nome(), 0.15)
 
     def confirmar_delete(self, dado, btn):
         def _fazer():
             som.tocar_delete()
             vibrar(80)
-            # mini Kirito fatia o lote e depois vem a explosao de cacos
+            # o Yoru corta o lote com o saque relampago e depois vem a explosao de cacos
             from cenas import kirito_fatiar
-            kirito_fatiar(btn, lambda: self.deletar(dado))
+            kirito_fatiar(btn, lambda: self.deletar(dado), tipo='iai')
         popup_delete_engracado(_fazer)
 
     def deletar(self, dado):
@@ -185,5 +193,11 @@ class TelaRegistro(Screen):
             vibrar(200)
             tremer_tela(12)
             self.atualizar()
+            # o Yoru comemora: chiburi, embainha e a pose de vitoria
+            try:
+                from cenas import kirito_vitoria
+                Clock.schedule_once(lambda dt: kirito_vitoria(self), 0.35)
+            except Exception as e:
+                print(f"[registro] vitoria: {e}")
 
         popup_resumo_dia(tot_pecas, tot_xp, _confirmar)

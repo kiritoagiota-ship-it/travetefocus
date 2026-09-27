@@ -61,7 +61,7 @@ _PALETA = {
     # brilho percorrendo a lamina
     '!': (1.00, 1.00, 1.00, 1), '1': (0.80, 0.96, 1.00, 0.85),
     # rastro de movimento da lamina (smear em pixel)
-    'X': (0.85, 0.97, 1.00, 0.55), 'x': (0.50, 0.85, 1.00, 0.35),
+    'X': (0.88, 0.98, 1.00, 0.88), 'x': (0.42, 0.86, 1.00, 0.6),
     'O': (0.00, 0.78, 1.00, 0.85),                               # contorno (rim light)
     # forma Mugetsu (Bankai): corpo na sombra, olhos e chamas roxo/azul
     'D': (0.05, 0.04, 0.09, 1), 'd': (0.22, 0.13, 0.36, 1),     # roupa na sombra / brilho roxo
@@ -92,13 +92,16 @@ _PALETA = {
     'U': (0.70, 0.82, 1.00, 1),                                  # cabelo: reflexo
     '%': (0.50, 0.58, 0.76, 1),                                  # couro: reflexo (bota, luva)
     '&': (0.11, 0.075, 0.18, 1),                                 # roupa na sombra: meio-tom roxo
+    '~': (0.38, 0.22, 0.40, 1),                                  # rosto: sombra funda da franja (Mugetsu)
+    '^': (0.86, 0.72, 0.98, 1),                                  # pele com reflexo roxo do fogo
+    '<': (0.62, 0.34, 1.00, 0.6), '>': (0.92, 0.82, 1.00, 0.88),  # rastro roxo (Mugetsu)
 }
-_SEM_CONTORNO = set('xX!1FfL')
+_SEM_CONTORNO = set('xX!1FfL<>')
 # Mugetsu: a roupa escurece (o rosto continua claro, os olhos acendem)
-_SOMBRA = {'C': '&', 'c': 'd', 'A': 'd', 'q': 'D', 'P': '&', 'B': 'D', 'M': 'D', 'G': 'd', 'E': '8',
-           '2': 'D', '4': 'D', '7': 'D', 'e': 'V', 'n': 'L', 'K': 'D', 'Z': 'o', 'p': 'd', 'b': '&',
-           '3': 'o', 'm': 'V', 'i': 'd', 'U': 'o', '%': 'd', '9': 'L'}
-_CORPO_M = set('HhSsDdVJIeTt&')
+_SOMBRA = {'C': '&', 'c': 'd', 'A': 'd', 'q': 'D', 'P': '&', 'B': 'D', 'M': 'D', 'G': 'd', 'E': 'D',
+           '2': 'D', '4': 'D', '7': 'D', 'e': 'V', 'n': '!', 'K': 'D', 'Z': 'o', 'p': 'd', 'b': '&',
+           '3': 'V', 'm': 'L', 'i': 'd', 'U': 'o', '%': 'd', '9': 'L', 'x': '<', 'X': '>'}
+_CORPO_M = set('HhSsDdVJIeTt&~^')
 # luz dinamica: pixels do corpo perto da lamina acesa clareiam um degrau
 _LAMINA = set('wjRrzY9!')                  # so as partes claras (a bainha usa W/u)
 _ACENDE = {'C': 'c', 'A': 'c', 'q': 'c', 'P': 'c', 'c': 'Q', 'H': 'h', 'h': 'Q', 'B': 'K',
@@ -231,7 +234,7 @@ _X0 = 25                 # coluna esquerda do tronco/cabeca
 _PES = 14                # linha dos pes (sobra embaixo para espadas apontando p/ baixo)
 
 
-_CORPO = set('CcAqGPBMSsHhE24JIen7tU3%bp')           # cores de corpo/roupa (para o contorno do braco)
+_CORPO = set('CcAqGPBMSsHhE24JIen7tU3%bp~^')           # cores de corpo/roupa (para o contorno do braco)
 
 
 def _p(x, y):
@@ -644,18 +647,42 @@ def _cabelo_longo2(px, cx, ty, cb, sobe, fase, y_joelho, cresce=1.0):
 
 
 def _rastro2(px, hx, hy, de, ang, comp):
-    """Smear em texels: leque de pixels do angulo `de` ate a lamina."""
-    passo = 4 if de < ang else -4
-    g = de
+    """Rastro do golpe (smear) em ARCO SOLIDO: o setor varrido pela lamina,
+    da metade dela ate a ponta. Perto da lamina e na borda de fora fica
+    claro e cheio; indo para o comeco do golpe vai ralando em xadrez (pixel
+    art) ate sumir. Nao passa por cima do boneco nem da espada."""
     L = comp * R
-    while (passo > 0 and g < ang) or (passo < 0 and g > ang):
-        ga = math.radians(g)
-        c, sn = math.cos(ga), math.sin(ga)
-        for k in range(int(L * 0.45), L + 1):
-            q = (int(round(hx + c * k)), int(round(hy + sn * k)))
-            if q not in px:
-                px[q] = 'x' if k < L * 0.75 else 'X'
-        g += passo
+    r0, r1 = L * 0.42, L + 1.5
+    lo, hi = min(de, ang), max(de, ang)
+    if hi - lo < 1:
+        return
+    ri = int(math.ceil(r1))
+    r0q, r1q = r0 * r0, r1 * r1
+    for ox in range(-ri, ri + 1):
+        for oy in range(-ri, ri + 1):
+            d2 = ox * ox + oy * oy
+            if d2 < r0q or d2 > r1q:
+                continue
+            a = math.degrees(math.atan2(oy, ox))
+            a = lo + (a - lo) % 360.0
+            if a > hi:
+                continue
+            f = (a - de) / float(ang - de)                  # 0 = comeco do golpe, 1 = lamina
+            rr = (math.sqrt(d2) - r0) / (r1 - r0)           # 0 = meio da lamina, 1 = ponta
+            q = (hx + ox, hy + oy)
+            if q in px:
+                continue
+            xadrez = (ox + oy) % 2 == 0
+            if f < 0.3:
+                ch = 'x' if (xadrez and rr > 0.55 and f > 0.08) else None
+            elif rr > 0.84:
+                ch = 'X'
+            elif f > 0.72 or rr > 0.5:
+                ch = 'X' if (f > 0.8 and rr > 0.55) else 'x'
+            else:
+                ch = 'x' if xadrez else None
+            if ch:
+                px[q] = ch
 
 
 def _trancado(k, j, borda, fita='g', luz='k'):
@@ -1150,6 +1177,72 @@ _CABECAS_F = {
 for _m_ in (_CAB_FRENTE, _CAB_COSTAS, _TOR_COSTAS) + tuple(_CABECAS_F.values()):
     assert all(len(_l) == 39 for _l in _m_), 'vista com largura errada'
 
+
+def _rosto_mugetsu(mapa):
+    """Rosto na forma Mugetsu: sombra funda da franja caindo por cima dos
+    olhos (a pele logo abaixo do cabelo escurece em 2 degraus), olhos em
+    brasa (a iris inteira acesa, com o miolo claro) e reflexo roxo do fogo
+    na borda do rosto."""
+    c = [list(l) for l in mapa]
+    H, W = len(c), len(c[0])
+    cab = set('HJIhU')
+    pele = set('Ss')
+    for r in range(H):
+        for col in range(W):
+            ch = c[r][col]
+            if ch in pele:
+                if r >= 1 and mapa[r - 1][col] in cab:
+                    c[r][col] = '~'
+                elif r >= 2 and mapa[r - 2][col] in cab:
+                    c[r][col] = 't'
+                elif r >= 3 and mapa[r - 3][col] in cab and ch == 'S':
+                    c[r][col] = 's'
+                elif any(not (0 <= r + vy < H and 0 <= col + vx < W) or mapa[r + vy][col + vx] == '.'
+                         for vx, vy in ((1, 0), (-1, 0), (0, 1))):
+                    c[r][col] = '^'                  # borda do rosto: luz do fogo
+    # brasa: um risquinho de luz sai do canto de fora de cada olho
+    olho = set('Ee3mn')
+    linhas_olho = [r for r in range(H) if any(ch in '3m' for ch in mapa[r])]
+    if linhas_olho:
+        r = linhas_olho[0]
+        cols = [col for col in range(W) if mapa[r][col] in olho]
+        grupos = []
+        for col in cols:
+            if grupos and col - grupos[-1][-1] <= 1:
+                grupos[-1].append(col)
+            else:
+                grupos.append([col])
+        meio = W / 2.0
+        for g in grupos:
+            if len(g) < 3:
+                continue                             # o olho de tras (3/4) fica sem risco
+            fora = -1 if (g[0] + g[-1]) / 2.0 < meio or len(grupos) == 1 else 1
+            ponta = g[0] if fora < 0 else g[-1]
+            for i, ch in enumerate('Vo8'):
+                col = ponta + fora * (i + 1)
+                if 0 <= col < W and c[r][col] != '.':
+                    c[r][col] = ch
+    return [''.join(l) for l in c]
+
+
+_CABECAS2_M = {k: _rosto_mugetsu(v) for k, v in _CABECAS2.items()}
+_CABECAS_F_M = {k: _rosto_mugetsu(v) for k, v in _CABECAS_F.items()}
+
+
+def olhos_texel(p):
+    """Centro dos olhos (texels, sem espelho) na pose - para o brilho e o
+    rastro de luz dos olhos na forma Mugetsu. De costas: nenhum."""
+    vista = p.get('vista', 'lado')
+    if vista == 'costas':
+        return []
+    dx, dy = _meia(p['dx']), _meia(p['dy'])
+    topo = _PES + _alt_pernas(p) + dy + len(_TRONCO) - 1
+    incl = int(round(p.get('incl', 0) or 0))
+    cab_x = _t(_X0 + dx + incl) + int(round(p.get('hx', 0) or 0))
+    cab_ty = _t(topo + len(_CABECA)) + R - 1 + int(round(p.get('hy', 0) or 0))
+    cols = (12.5, 26.5) if vista == 'frente' else (22.5, 32.0)
+    return [(cab_x + c, cab_ty - 23) for c in cols]
+
 def _pernas3(px, p, hip_x, hip_y):
     """As duas pernas (a de tras primeiro). Pes no chao ficam no chao e os
     joelhos dobram para a frente, calculados a cada pose."""
@@ -1574,9 +1667,11 @@ def montar(p, rapido=False):
     if vista == 'costas':
         cabeca = _CAB_COSTAS
     elif vista == 'frente':
-        cabeca = _CABECAS_F.get(p['olhos'], _CABECAS_F['a'])
+        caras = _CABECAS_F_M if mugetsu else _CABECAS_F
+        cabeca = caras.get(p['olhos'], caras['a'])
     else:
-        cabeca = _CABECAS2.get(p['olhos'], _CABECAS2['a'])
+        caras = _CABECAS2_M if mugetsu else _CABECAS2
+        cabeca = caras.get(p['olhos'], caras['a'])
     _carimbo(px, cabeca, cab_x, cab_ty)
     if acima2:
         _braco_tras()
@@ -1768,7 +1863,7 @@ def _gerar_imagem(p):
         xs = [d[0] for d in dentro]
         ys = [d[1] for d in dentro]
         X0, X1, Y0, Y1 = min(xs), max(xs), min(ys), max(ys)
-        corpo = [d for d in dentro if d[2] not in 'xX']   # rastro nao conta para o enquadramento
+        corpo = [d for d in dentro if d[2] not in 'xX<>']   # rastro nao conta para o enquadramento
         if corpo:
             xs = [d[0] for d in corpo]
             ys = [d[1] for d in corpo]
@@ -1815,8 +1910,8 @@ def caixa(p):
     cx = _CAIXAS.get(ch)
     if cx is None:
         px = montar(p, rapido=True)
-        xs = [q[0] for q, c in px.items() if c not in 'xX']
-        ys = [q[1] for q, c in px.items() if c not in 'xX']
+        xs = [q[0] for q, c in px.items() if c not in 'xX<>']
+        ys = [q[1] for q, c in px.items() if c not in 'xX<>']
         if xs:
             x0, x1 = max(0, min(xs) - 1), min(TW - 1, max(xs) + 1)
             y0, y1 = max(0, min(ys) - 1), min(TH - 1, max(ys) + 1)
@@ -2458,6 +2553,53 @@ POSE_A.update({
 })
 
 
+# golpes proprios de cada acao (cada um com a sua mecanica de corpo)
+POSE_A.update({
+    # estocada (apagar turno): recolhe a lamina ao lado do rosto, mira com a
+    # outra mao e se lanca com o braco todo esticado
+    'estoca_arma': pose(pernas='recua', dx=-2, m1=(-3, 4), a1=-4.0, m2=(6, 3), olhos='s'),
+    'estoca':      pose(pernas='avanco_baixo', dx=3, dy=-1, m1=(11, 1), a1=0.0, c1=16, m2=(-5, -1),
+                        olhos='g'),
+    'estoca_puxa': pose(pernas='avanco', dx=1, m1=(3, 1), a1=4.0, m2=(-4, -1), olhos='s'),
+    # giro de 360 (abertura): as duas laminas abertas na horizontal
+    'giro_1':      pose(pernas='base_larga', m1=(9, 2), a1=2.0, m2=(-8, 2), a2=178.0, olhos='s'),
+    'giro_2':      pose(pernas='base_larga', m1=(9, 2), a1=2.0, m2=(-8, 2), a2=178.0, vista='costas'),
+    'giro_3':      pose(pernas='base_larga', m1=(9, 2), a1=2.0, m2=(-8, 2), a2=178.0, vista='frente',
+                        olhos='g'),
+    # mergulho do alto (abertura): sobe com a lamina erguida e desce de ponta
+    'mergulho_sobe': pose(pernas='pulo', m1=(0, 12), a1=95.0, m2=(-1, 11), olhos='s'),
+    'mergulho':      pose(pernas='solto', dy=2, m1=(3, 4), a1=-90.0, c1=17, m2=(1, 4), olhos='g'),
+    'mergulho_fim':  pose(pernas='agachado', dy=-3, m1=(4, -4), a1=-88.0, c1=17, m2=(2, -3), olhos='s'),
+    # golpe subindo com salto (abertura): agachado com a lamina baixa atras,
+    # corta subindo e o corpo vai junto para o alto
+    'salto_arma':  pose(pernas='agachado', dy=-3, dx=-1, m1=(-4, -2), a1=205.0, m2=(-2, -3), olhos='s'),
+    'salto':       pose(pernas='pulo', dy=1, m1=(6, 8), a1=70.0, m2=(-5, 2), olhos='g'),
+    'salto_fim':   pose(pernas='suspenso', dy=2, m1=(3, 12), a1=100.0, m2=(-5, 3), olhos='s'),
+    # saque de uma espada so (apagar lote): chiburi e embainhar sem a azul
+    'chiburi1_a':  pose(pernas='avanco', dx=1, dy=-1, m1=(5, 6), a1=70.0, m2=(-3, 0), olhos='s'),
+    'chiburi1':    pose(pernas='base_larga', dx=2, m1=(6, 2), a1=-30.0, m2=(-3, 0), olhos='s'),
+    'embainha1_a': pose(pernas='base', m1=(6, 1), a1=_BAINHA_ANG - 360, c1=8, olhos='s'),
+    'embainha1_b': pose(pernas='base', m1=(3, -2), a1=_BAINHA_ANG - 360, c1=4),
+    'embainha1_c': pose(pernas='base', m1=(2, -3), a1=_BAINHA_ANG - 360, c1=0),
+    # arremesso do pergaminho de luz (enviar pro WhatsApp)
+    'joga_arma':   pose(pernas='recua', dx=-1, m1=(-4, 6), a1=None, m2=(5, 2), olhos='s'),
+    'joga':        pose(pernas='avanco', dx=2, m1=(9, 7), a1=None, m2=(-4, -1), olhos='g'),
+    # Starburst Stream (WIPE): 16 golpes rapidos, alternando as espadas
+    # (cada par: preparo -> corte; so uma lamina se mexe por golpe)
+    'sb1_a': pose(pernas='base_larga', m1=(1, 9), a1=115.0, m2=(-5, -1), a2=205.0, olhos='s'),
+    'sb1_b': pose(pernas='avanco', dx=2, m1=(8, -2), a1=-40.0, m2=(-5, -1), a2=205.0, olhos='g'),
+    'sb2_a': pose(pernas='avanco', m1=(4, 4), a1=60.0, m2=(-6, -4), a2=235.0, olhos='s'),
+    'sb2_b': pose(pernas='base_larga', dx=1, m1=(4, 4), a1=60.0, m2=(6, 6), a2=55.0, olhos='g'),
+    'sb3_a': pose(pernas='base_larga', m1=(-2, 3), a1=175.0, m2=(-5, -2), a2=210.0, olhos='s'),
+    'sb3_b': pose(pernas='avanco', dx=2, m1=(9, 2), a1=5.0, m2=(-5, -2), a2=210.0, olhos='g'),
+    'sb4_a': pose(pernas='avanco', m1=(5, 3), a1=40.0, m2=(-7, 2), a2=185.0, olhos='s'),
+    'sb4_b': pose(pernas='base_larga', dx=1, m1=(5, 3), a1=40.0, m2=(7, 1), a2=-5.0, olhos='g'),
+    # carimbo do +XP (adicionar lote): corte curto na horizontal
+    'carimbo_arma': pose(pernas='base', m1=(-2, 5), a1=150.0, c1=12, olhos='s'),
+    'carimbo':      pose(pernas='avanco', dx=2, m1=(8, 1), a1=-8.0, c1=12, olhos='g'),
+})
+
+
 def smear(p, de=None, de2=None):
     """Copia da pose com rastro da espada 1 (e/ou 2) vindo dos angulos dados."""
     q = dict(p)
@@ -2795,19 +2937,126 @@ class LotePixels:
             c.a = a0 * alfa
 
 
+# ── fogo em quadros (flip-book de pixel art, como nos jogos) ─────────────
+# Cada lingua de fogo e uma animacao de 8 quadros gerada uma vez (3 tamanhos,
+# 3 variacoes, roxo e azul): miolo claro perto da base, corpo lilas/roxo,
+# borda escura, ponta ondulada que tomba para tras, uma lambida do lado de
+# vez em quando e uma gota que se solta e sobe. Na tela cada lingua e so um
+# retangulo com textura: leve no celular.
+_N_CHAMA = 8
+_TAM_CHAMA = ((7, 14), (9, 20), (12, 28))
+_PAL_CHAMA = {
+    'roxo': ((66, 20, 128, 235), (128, 56, 235, 245), (194, 143, 255, 255), (247, 235, 255, 255)),
+    'azul': ((22, 34, 120, 235), (60, 108, 245, 245), (140, 205, 255, 255), (240, 250, 255, 255)),
+}
+_TEX_CHAMA = {}
+
+
+def _quadro_chama(w, h, f, n=_N_CHAMA, inclina=-0.3, semente=0):
+    """Um quadro de uma lingua de fogo w x h texels (y=0 embaixo):
+    {(x, y): nivel}, nivel 0 (borda escura) .. 3 (miolo claro). O ciclo de
+    n quadros fecha (loop)."""
+    dois_pi = 2 * math.pi
+    fs = f / float(n)
+    rnd = random.Random(semente * 1000 + f)
+    out = {}
+
+    def perfil(u):
+        # larga embaixo (bojo em ~25% da altura), afina ate a ponta
+        return (1.0 - u) ** 1.15 * (1.0 - 0.55 * math.exp(-u * 8.0))
+
+    alt = h * (0.8 + 0.12 * math.sin(dois_pi * (fs + semente * 0.21)))    # a lingua respira
+    lado = 1 if (semente % 2) else -1
+    lambida = 0.5 + 0.5 * math.sin(dois_pi * (fs * 2 + semente * 0.4))    # lambida do lado
+    solta_y = alt + (h - alt) * fs * 1.1 - 1
+    solta_r = max(0.0, 1.2 - 1.3 * fs) * (w / 6.0)
+    for y in range(h):
+        u = y / max(1.0, alt)
+        for x in range(w):
+            melhor = None
+            if u < 1.0:
+                cx = (w - 1) / 2.0 + math.sin(dois_pi * (fs + u * 0.8 + semente * 0.37)) * u * w * 0.2 \
+                    + inclina * u * alt * 0.3
+                meia = (w / 2.0) * perfil(u) / 0.62
+                d = abs(x - cx) / max(0.45, meia)
+                melhor = (d, u)
+                if lambida > 0.35:
+                    u2 = (y - alt * 0.22) / max(1.0, alt * 0.55 * lambida)
+                    if 0 <= u2 < 1:
+                        cx2 = cx + lado * (1.2 + 2.2 * u2) * (w / 8.0)
+                        m2 = (w / 4.2) * (1 - u2) ** 1.2
+                        d2 = abs(x - cx2) / max(0.4, m2)
+                        if d2 < d:
+                            melhor = (d2 * 1.08 + 0.1, u + 0.12)
+            if solta_r > 0.35:                                   # gota de fogo que se soltou
+                bx = (w - 1) / 2.0 + inclina * alt * 0.3 + math.sin(dois_pi * fs) * 0.6
+                db = math.hypot((x - bx) / max(0.6, solta_r), (y - solta_y) / max(0.8, solta_r * 1.6))
+                if db <= 1.0 and (melhor is None or db < melhor[0]):
+                    melhor = (db * 0.9 + 0.35, 0.9)
+            if melhor is None:
+                continue
+            d, uu = melhor
+            if d > 1.0 + rnd.uniform(-0.1, 0.04):
+                continue
+            if d < 0.26 and uu < 0.27:
+                nivel = 3
+            elif d < 0.56 and uu < 0.56:
+                nivel = 2
+            elif d < 0.82:
+                nivel = 1
+            else:
+                nivel = 0
+            if uu > 0.78:
+                nivel = min(nivel, 1)
+            out[(x, y)] = nivel
+    return out
+
+
+def _textura_chama(tam, pal, f, semente):
+    chave = (tam, pal, f, semente)
+    tex = _TEX_CHAMA.get(chave)
+    if tex is None:
+        w, h = _TAM_CHAMA[tam]
+        buf = bytearray(w * h * 4)
+        cores = _PAL_CHAMA[pal]
+        for (x, y), n in _quadro_chama(w, h, f, semente=semente).items():
+            i = (y * w + x) * 4
+            buf[i:i + 4] = bytes(cores[n])
+        dados = bytes(buf)
+        tex = Texture.create(size=(w, h), colorfmt='rgba')
+        tex.mag_filter = 'nearest'
+        tex.min_filter = 'nearest'
+        tex.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte')
+        tex.add_reload_observer(lambda t, d=dados: t.blit_buffer(d, colorfmt='rgba', bufferfmt='ubyte'))
+        _TEX_CHAMA[chave] = tex
+    return tex
+
+
+def preparar_chamas():
+    """Gera os quadros do fogo aos poucos (alguns por quadro de tela), antes
+    da transformacao: nada trava quando o fogo acende."""
+    fila = [(t, p, f, s) for t in range(3) for p in ('roxo', 'azul') for s in range(3) for f in range(_N_CHAMA)]
+
+    def _passo(dt):
+        try:
+            t0 = time.time()
+            while fila and time.time() - t0 < 0.006:
+                _textura_chama(*fila.pop(0))
+            return bool(fila)
+        except Exception as e:
+            print(f"[chamas] preparar: {e}")
+            return False
+    Clock.schedule_interval(_passo, 0)
+
+
 class ChamasReiatsu(Widget):
-    """Fogo roxo da forma Mugetsu, com pixels do mesmo tamanho dos do Yoru.
-    O fogo e feito de LINGUAS: cada uma nasce num ponto do contorno do
-    corpo (mais na cabeca e nos ombros) e e desenhada inteira a cada quadro
-    - uma coluna que sobe, ondula, tomba para tras com o vento, afina ate a
-    ponta e esfria em degraus (branco -> lilas -> roxo -> roxo escuro); umas
-    poucas puxam para o azul. Cada lingua cresce, balanca e se apaga, e
-    outra nasce no lugar. Acompanha o corpo. Liga sozinho quando a pose
-    esta na forma Mugetsu. `frente=True`: linguas finas por cima dele."""
-    DEGRAUS = (((0.98, 0.94, 1.00), 1.0), ((0.82, 0.64, 1.00), 1.0), ((0.64, 0.34, 1.00), 0.95),
-               ((0.46, 0.20, 0.86), 0.9), ((0.28, 0.10, 0.52), 0.72))
-    DEGRAUS_AZUL = (((0.97, 0.93, 1.00), 1.0), ((0.55, 0.86, 1.00), 1.0), ((0.34, 0.55, 1.00), 0.95),
-                    ((0.52, 0.30, 1.00), 0.9), ((0.30, 0.13, 0.58), 0.72))
+    """Fogo roxo da forma Mugetsu, na grade de pixels do Yoru. Cada lingua e
+    uma animacao de pixel art (8 quadros) presa num ponto do contorno do
+    corpo: as grandes nascem na cabeca, nos ombros e nas costas, as menores
+    nos lados; cada uma vive um pouco, se apaga e nasce outra noutro ponto.
+    Umas poucas sao azuladas. Brasas soltas sobem piscando. Liga sozinho
+    quando a pose esta na forma Mugetsu. `frente=True`: linguas pequenas
+    por cima dele (profundidade)."""
 
     def __init__(self, k, n_max=520, linguas=30, frente=False, **kwargs):
         kwargs.setdefault('size_hint', (None, None))
@@ -2815,25 +3064,63 @@ class ChamasReiatsu(Widget):
         super().__init__(**kwargs)
         self.k = k
         self.frente = frente
-        self.n_linguas = linguas
         self._linguas = []
-        cores = [('r%d' % i, (c[0], c[1], c[2], a)) for i, (c, a) in enumerate(self.DEGRAUS)]
-        cores += [('a%d' % i, (c[0], c[1], c[2], a)) for i, (c, a) in enumerate(self.DEGRAUS_AZUL)]
-        self._lote = LotePixels(self.canvas, cores)
+        with self.canvas:
+            for _ in range(linguas):
+                c = Color(1, 1, 1, 0)
+                r = Rectangle(size=(0, 0))
+                self._linguas.append({'c': c, 'r': r, 'vida': 0.0, 't': 1.0})
+        self._brasas = []
+        self._olhos = []                  # posicoes recentes dos olhos (rastro de luz)
+        self._lote = LotePixels(self.canvas, (('b0', (0.62, 0.30, 1.0, 1.0)), ('b1', (0.86, 0.72, 1.0, 1.0)),
+                                              ('b2', (1.0, 1.0, 1.0, 1.0)), ('o2', (0.42, 0.18, 0.78, 0.55)),
+                                              ('o1', (0.70, 0.42, 1.0, 0.8)), ('o0', (0.96, 0.84, 1.0, 1.0))))
         self._ev = Clock.schedule_interval(self._tick, 1 / 30.)
 
-    def _nova_lingua(self, bordas):
-        topo = max(y for _, y in bordas)
+    def _nascer(self, L, bordas, topo, base):
         a = random.choice(bordas)
         b = random.choice(bordas)
         tx, ty = a if a[1] >= b[1] else b            # prefere as bordas de cima
-        alto = ty >= topo - 16 * E
-        return {'tx': tx, 'ty': ty, 't': 0.0,
-                'vida': random.uniform(0.4, 0.75) * (1.2 if alto else 1.0),
-                'alt': random.uniform(12, 22) * E * (1.35 if alto else 1.0),
-                'larg': random.uniform(0.8, 1.4) if self.frente else random.uniform(2.2, 4.2),
-                'fase': random.uniform(0, 6.3), 'amp': random.uniform(1.0, 2.4) * E,
-                'azul': random.random() < 0.18}
+        altura = (ty - base) / float(max(1, topo - base))
+        if self.frente:
+            tam = 0
+        elif altura > 0.72:
+            tam = 2 if random.random() < 0.65 else 1
+        elif altura > 0.4:
+            tam = 1 if random.random() < 0.7 else 0
+        else:
+            tam = 0 if random.random() < 0.7 else 1
+        L.update(tx=tx, ty=ty, tam=tam, pal='azul' if random.random() < 0.16 else 'roxo',
+                 sem=random.randrange(3), f0=random.uniform(0, _N_CHAMA), t=0.0,
+                 vida=random.uniform(0.45, 0.9) * (1.2 if tam == 2 else 1.0),
+                 vel=random.uniform(10.0, 15.0))
+
+    def _rastro_olhos(self, k, te):
+        """Olhos em brasa: quando ele se mexe rapido, os olhos deixam um
+        risco de luz roxa que some em poucos quadros."""
+        olhos = []
+        for (ex, ey) in olhos_texel(k._pose):
+            if k.espelhar:
+                ex = TW - 1 - ex
+            olhos.append((k.x + ex * te, k.y + ey * te))
+        self._olhos.append(olhos)
+        del self._olhos[:-7]
+        pontos = {}
+        for i in range(len(self._olhos) - 1, 0, -1):
+            idade = len(self._olhos) - 1 - i
+            cor = 'o0' if idade < 1 else ('o1' if idade < 3 else 'o2')
+            for (a, b) in zip(self._olhos[i], self._olhos[i - 1]):
+                d = math.hypot(b[0] - a[0], b[1] - a[1]) / te
+                if d < 1.5:
+                    continue
+                n = int(d) + 1
+                for j in range(n):
+                    u = j / float(n)
+                    x = a[0] + (b[0] - a[0]) * u
+                    y = a[1] + (b[1] - a[1]) * u
+                    pontos.setdefault(cor, []).append(
+                        (k.x + math.floor((x - k.x) / te) * te, k.y + math.floor((y - k.y) / te) * te, te))
+        self._lote.desenhar(pontos)
 
     def _tick(self, dt):
         try:
@@ -2845,46 +3132,62 @@ class ChamasReiatsu(Widget):
             ativo = pose.get('mugetsu') and k.opacity > 0.3
             bordas = bordas_pose(pose) if ativo else None
             if not bordas:
-                self._linguas = []
+                for L in self._linguas:
+                    L['c'].a = 0
+                    L['vida'] = 0.0
+                self._brasas = []
+                self._olhos = []
                 self._lote.desenhar({})
                 return
-            while len(self._linguas) < self.n_linguas:
-                L = self._nova_lingua(bordas)
-                L['t'] = random.uniform(0, L['vida'] * 0.8)    # nao nascem todas juntas
-                self._linguas.append(L)
+            topo = max(y for _, y in bordas)
+            base = min(y for _, y in bordas)
             ox, oy = k.x, k.y
             esp = k.espelhar
-            pontos = {}
-            vivas = []
             for L in self._linguas:
                 L['t'] += dt
-                v = L['t'] / L['vida']
-                if v >= 1.0:
-                    continue
-                vivas.append(L)
-                alt = L['alt'] * (0.35 + 0.65 * math.sin(math.pi * min(1.0, v * 1.3)))
-                sobe = L['alt'] * 0.35 * v                  # a lingua toda sobe um pouco
-                larg0 = L['larg'] * (1.0 - 0.6 * max(0.0, v - 0.55) / 0.45)
-                pre = 'a' if L['azul'] else 'r'
-                n = max(2, int(alt))
-                for i in range(n):
-                    u = i / float(n)
-                    x = L['tx'] + math.sin(L['fase'] + L['t'] * 10.0 - u * 4.0) * L['amp'] * u - 0.3 * alt * u
-                    y = L['ty'] + sobe + i
-                    w = larg0 * (1.0 - u) ** 0.8
-                    if w < 0.5 and i > 1:
-                        w = 0.5 if (i % 2 == 0) else 0          # ponta fina, falhando
-                    if w <= 0:
+                if L['t'] >= L['vida']:
+                    self._nascer(L, bordas, topo, base)
+                    L['t'] = random.uniform(0, 0.1)
+                w, h = _TAM_CHAMA[L['tam']]
+                f = int(L['t'] * L['vel'] + L['f0']) % _N_CHAMA
+                tex = _textura_chama(L['tam'], L['pal'], f, L['sem'])
+                x0 = L['tx'] - w // 2
+                y0 = L['ty'] - (1 if self.frente else 3)             # a base entra no corpo
+                if esp:
+                    x0 = TW - x0 - w
+                r = L['r']
+                r.texture = tex
+                r.tex_coords = _TC_ESPELHO if esp else _TC_NORMAL
+                r.pos = (ox + x0 * te, oy + y0 * te)
+                r.size = (w * te, h * te)
+                u = L['t'] / L['vida']
+                a = min(1.0, L['t'] / 0.08) * (1.0 if u < 0.75 else max(0.0, (1 - u) / 0.25))
+                L['c'].a = a * (0.85 if self.frente else 1.0)
+            if self.frente:
+                self._rastro_olhos(k, te)
+            # brasas: pixels soltos subindo, balancando e piscando
+            if not self.frente:
+                while len(self._brasas) < 16:
+                    bx, by = random.choice(bordas)
+                    self._brasas.append({'x': float(bx), 'y': float(by), 'vy': random.uniform(22, 40),
+                                         'fase': random.uniform(0, 6.3), 't': 0.0, 'vida': random.uniform(0.5, 1.1)})
+                pontos = {}
+                vivas = []
+                for b in self._brasas:
+                    b['t'] += dt
+                    if b['t'] >= b['vida']:
                         continue
-                    lado = int(round(w * 2))                   # largura em texels
-                    x0 = int(round(x - lado / 2.0))
-                    if esp:
-                        x0 = TW - x0 - lado
-                    d = min(4, int(u * 4.2 + v * 1.4))
-                    pontos.setdefault(pre + str(d), []).append(
-                        (ox + x0 * te, oy + int(round(y)) * te, lado * te, te))
-            self._linguas = vivas
-            self._lote.desenhar(pontos, 0.8 if self.frente else 1.0)
+                    vivas.append(b)
+                    b['y'] += b['vy'] * dt
+                    lx = b['x'] + math.sin(b['fase'] + b['t'] * 7) * 1.5 - b['t'] * 6
+                    tx = (TW - 1 - lx) if esp else lx
+                    u = b['t'] / b['vida']
+                    if u > 0.7 and int(b['t'] * 20) % 2:
+                        continue                                   # pisca antes de sumir
+                    nome = 'b2' if u < 0.2 else ('b1' if u < 0.55 else 'b0')
+                    pontos.setdefault(nome, []).append((ox + round(tx) * te, oy + round(b['y']) * te, te))
+                self._brasas = vivas
+                self._lote.desenhar(pontos)
         except Exception as e:
             print(f"[chamas] {e}")
             return self.parar()

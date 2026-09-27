@@ -19,11 +19,11 @@ gravacoes em dominio publico - licenca CC0 1.0
 
 CC0 nao exige credito; fica registrado por gentileza aos autores.
 
-Voz "Starburst Stream" (voz_starburst, voz_stream)
---------------------------------------------------
-Gerada no PC com o Piper (sintese de voz neural de codigo aberto,
-gratuita), modelo masculino en_US "hfc_male" (base Hi-Fi-CAPTAIN; o
-modelo e para uso nao comercial - se um dia o app for vendido, trocar a
-voz). Tratada aqui: tom um pouco mais grave, voz dobrada, presenca e eco
-curto. Para usar uma voz gravada, basta trocar esses dois arquivos (mesmo
-nome, formato WAV).
+Vozes do Yoru (voz_starburst, voz_stream, voz_mugetsu, voz_ha, voz_seiya, voz_teya)
+------------------------------------------------------------------------------------
+Geradas no PC com o Kokoro (sintese de voz neural de codigo aberto, gratuita,
+licenca Apache 2.0 - pode usar ate em app vendido), voz masculina japonesa
+"jm_kumo", falando em japones como no anime: "Sutabasuto... Sutorimu!",
+"Mugetsu" e os gritos curtos dos golpes. Tratadas aqui: tom um pouco mais
+grave, voz dobrada, presenca e eco curto. Para usar uma voz gravada, basta
+trocar os arquivos (mesmo nome, formato WAV).
