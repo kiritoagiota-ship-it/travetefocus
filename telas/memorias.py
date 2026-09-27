@@ -464,7 +464,11 @@ class TelaMemorias(Screen):
             itens = list(self.ids.memorias_container.children)
             try:
                 from cenas import kirito_wipe
-                kirito_wipe(itens, _apagar_tudo)
+                # so as memorias que aparecem na lista (dentro da rolagem)
+                sv = self.ids.memorias_container.parent
+                x0, y0 = sv.to_window(sv.x, sv.y)
+                area = (x0, y0, x0 + sv.width, y0 + sv.height)
+                kirito_wipe(itens, _apagar_tudo, grafico=self.ids.grafico_barras, area_lista=area)
             except Exception as e:
                 print(f"[memorias] wipe animado: {e}")
                 _apagar_tudo()
@@ -479,6 +483,10 @@ class TelaMemorias(Screen):
             app.salvar_dados()
             self.atualizar_lista()
             self._atualizar_grafico()
+            # o grafico foi fatiado no golpe final: volta vazio, acendendo
+            g = self.ids.grafico_barras
+            g.opacity = 0
+            Animation(opacity=1, duration=0.6).start(g)
             som.tocar_wipe()
             vibrar(300)
             tremer_tela(25)

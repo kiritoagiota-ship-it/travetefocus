@@ -61,8 +61,17 @@ _PALETA = {
     # rastro de movimento da lamina (smear em pixel)
     'X': (0.85, 0.97, 1.00, 0.55), 'x': (0.50, 0.85, 1.00, 0.35),
     'O': (0.00, 0.78, 1.00, 0.85),                               # contorno (rim light)
+    # forma Mugetsu (Bankai): corpo na sombra, olhos e chamas roxo/azul
+    'D': (0.05, 0.04, 0.09, 1), 'd': (0.22, 0.13, 0.36, 1),     # roupa na sombra / brilho roxo
+    'V': (0.90, 0.62, 1.00, 1),                                  # olhos acesos (roxo)
+    'F': (0.62, 0.28, 1.00, 0.95), 'f': (0.28, 0.58, 1.00, 0.95),
+    'L': (0.93, 0.86, 1.00, 0.9),                                # ponta clara da chama
+    'o': (0.66, 0.36, 1.00, 0.9),                                # contorno roxo
 }
-_SEM_CONTORNO = set('xX!1')
+_SEM_CONTORNO = set('xX!1FfL')
+# Mugetsu: a roupa escurece (o rosto continua claro, os olhos acendem)
+_SOMBRA = {'C': 'D', 'c': 'd', 'A': 'd', 'q': 'D', 'P': 'D', 'B': 'D', 'M': 'D', 'G': 'd', 'E': 'V'}
+_CORPO_M = set('HhSsDdV')
 
 _CABECA = [
     "....HHHHH....",
@@ -503,7 +512,7 @@ def _emote(px, qual, base_x, topo_cab):
 # pose padrao: todos os campos que a montagem entende
 POSE_BASE = dict(dx=0, dy=0, pernas='repouso', olhos='a', cabelo=0.0, capa=0.0,
                  lift=0.0, sobe=0.0, fase=0.0, brilho=None, saia=1.0, frente1=False,
-                 tipo1=1, fusao=False, emote=None,
+                 tipo1=1, fusao=False, emote=None, mugetsu=False,
                  m1=(3, -5), a1=-40.0, c1=15, s1=None,
                  m2=None, a2=None, c2=15, s2=None)
 
@@ -521,6 +530,10 @@ def montar(p):
     fase = p.get('fase', 0.0) or 0.0
     dois_pi = 2 * math.pi
     topo_cab = topo_tronco + len(_CABECA)
+
+    mugetsu = p.get('mugetsu', False)
+    if mugetsu:                                  # cabelo comprido atras de tudo
+        _cabelo_longo(px, base_x, topo_cab, p['cabelo'], p.get('sobe', 0.0) or 0.0, fase)
 
     # atras de tudo: cabo da Dark Repulser (bainha nas costas)
     bx, by = _bainha_cintura(base_x, y_cinto)
@@ -599,15 +612,72 @@ def montar(p):
     if p.get('emote'):
         _emote(px, p['emote'], base_x, topo_cab)
 
-    # contorno (rim light ciano) para ler no fundo escuro
+    if mugetsu:
+        _chamas(px, fase)
+    # contorno (rim light ciano; roxo na forma Mugetsu) para ler no fundo escuro
+    aro = 'o' if mugetsu else 'O'
     for (x, y) in list(px.keys()):
         if px[(x, y)] in _SEM_CONTORNO:
             continue
         for vx, vy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
             q = (x + vx, y + vy)
             if q not in px:
-                px[q] = 'O'
+                px[q] = aro
     return px
+
+
+def _cabelo_longo(px, base_x, topo_cab, cb, sobe, fase):
+    """Mugetsu: cabelo comprido ate a cintura, solto para tras e ondulando;
+    com vento (reiatsu) ele levanta e voa para tras."""
+    dois_pi = 2 * math.pi
+    vento = min(0.9, max(0.0, cb) * 0.2 + sobe * 0.5)
+    n = 18
+    for fio, (x0, y0) in enumerate(((1, -2), (2, -3), (0, -4), (1, -5), (0, -7), (1, -8))):
+        for k in range(n):
+            u = k / float(n - 1)
+            onda = (0.9 + 0.8 * sobe) * u * math.sin(dois_pi * (fase * 1.2 - k / 7.0 - fio * 0.17))
+            x = base_x + x0 - int(round(k * (0.3 + vento * 0.9) + onda))
+            y = topo_cab + y0 - int(round(k * (1.0 - vento * 0.8)))
+            px[(x, y)] = 'h' if (k + fio) % 7 == 0 else 'H'
+
+
+def _chamas(px, fase):
+    """Forma Mugetsu: a roupa escurece e o corpo todo fica envolto em chamas
+    roxas e azuis que sobem tremulando (mudam com a `fase`)."""
+    for q, ch in list(px.items()):
+        if ch in _SOMBRA:
+            px[q] = _SOMBRA[ch]
+    passo = int(fase * 6) % 6
+    corpo = [q for q, ch in px.items() if ch in _CORPO_M]
+    if not corpo:
+        return
+    ocup = set(corpo)
+    topo = max(y for _, y in corpo)
+    novos = {}
+    for (x, y) in corpo:
+        if (x, y + 1) in ocup:
+            continue                              # so onde o corpo tem a borda de cima
+        h = (x * 7919 + y * 104729 + passo * 1543) % 97
+        if h % 4 == 0:
+            continue
+        alto = 1 + h % 5 + (2 if y >= topo - 7 else 0)   # mais altas na cabeca e ombros
+        for i in range(1, alto + 1):
+            desvio = -1 if (i > 2 and (h + i + passo) % 3 == 0) else 0
+            q = (x + desvio, y + i)
+            if q in ocup:
+                break
+            novos[q] = 'f' if i <= alto * 0.4 else ('F' if i < alto else 'L')
+    for (x, y) in corpo:                          # fiapos para tras (lado das costas)
+        if (x - 1, y) in ocup:
+            continue
+        h = (x * 3571 + y * 2749 + passo * 911) % 53
+        if h % 5 == 0:
+            novos.setdefault((x - 1, y), 'F')
+            if h % 2:
+                novos.setdefault((x - 2, y + 1), 'f')
+    for q, ch in novos.items():
+        if q not in px:
+            px[q] = ch
 
 
 def _braco_frente(px, p, ombro1):
@@ -869,12 +939,23 @@ class KiritoPixel(Widget):
             PopMatrix()
         self.bind(pos=self._mover, x=self._mover, y=self._mover,
                   rotacao=self._mover, escala_y=self._mover, escala_x=self._mover,
-                  espelhar=lambda *_: self._desenhar(forcar=True),
+                  espelhar=self._virou,
                   clarao=lambda *_: self._desenhar(forcar=True))
         self._mover()
         self._desenhar()
 
     # ── geometria ────────────────────────────────────────────────────
+    def _virou(self, *_):
+        """Ao virar de lado, o quadril fica no mesmo ponto da tela (sem o
+        boneco dar um pulinho de lado no quadro da virada)."""
+        try:
+            a = (_X0 + 6 + 0.5) * self.ps
+            b = (GW - 1 - (_X0 + 6) + 0.5) * self.ps
+            self.x += (a - b) if self.espelhar else (b - a)
+        except Exception:
+            pass
+        self._desenhar(forcar=True)
+
     def ancora_local(self):
         """Centro do quadril em coordenadas do proprio sprite (px de tela)."""
         cx = (_X0 + 6) if not self.espelhar else (GW - 1 - (_X0 + 6))

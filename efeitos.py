@@ -1056,14 +1056,18 @@ class PoeiraDigital(Widget):
         self.bind(pos=lambda i, v: setattr(i._rect, 'pos', v))
 
 
-def explodir_estilhacos(widget_alvo, callback_final):
+def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14):
     """
     Estilhacos no estilo SAO: o item se parte em poligonos com a imagem real
     dele; os cacos voam girando, viram cristal ciano e se desfazem em
     pontinhos de luz que sobem. Coordenadas da janela; tudo num unico
     Clock (leve mesmo com varios itens de uma vez, como no WIPE).
+    corte = angulo (graus) do golpe que acertou o item: antes de explodir
+    ele racha ao longo do talho (uma linha de luz acende e as duas metades
+    deslizam em sentidos contrarios) e os cacos voam na direcao do golpe.
     """
-    tremer_tela(14)
+    if tremor:
+        tremer_tela(tremor)
     fim = [False]
 
     def _acabar(*_):
@@ -1099,9 +1103,25 @@ def explodir_estilhacos(widget_alvo, callback_final):
         widget_alvo.opacity = 0
         Window.add_widget(camada)
 
-        flash = FlashExplosao((gx, gy), (gw, gh))
-        camada.add_widget(flash)
-        Animation(opacity=0, escala=1.5, duration=0.22).start(flash)
+        racha = 0.16 if corte is not None else 0.0     # tempo rachando antes de voar
+        if corte is not None:
+            ua = math.radians(corte)
+            ux, uy = math.cos(ua), math.sin(ua)
+        else:
+            ux, uy = 1.0, 0.0
+        nx, ny = -uy, ux
+
+        def _flash(*_):
+            try:
+                flash = FlashExplosao((gx, gy), (gw, gh))
+                camada.add_widget(flash)
+                Animation(opacity=0, escala=1.5, duration=0.22).start(flash)
+            except Exception:
+                pass
+        if racha:
+            Clock.schedule_once(_flash, racha)
+        else:
+            _flash()
 
         # malha triangular com pontos internos deslocados (cacos irregulares)
         cols = max(3, min(8, int(gw / dp(46)) + 1))
@@ -1130,6 +1150,7 @@ def explodir_estilhacos(widget_alvo, callback_final):
 
         ccx, ccy = gx + gw / 2.0, gy + gh / 2.0
         cacos = []
+        meia = math.hypot(gw, gh) / 2.0
         with camada.canvas:
             for tri in tris:
                 mx = sum(p[0] for p in tri) / 3.0
@@ -1153,20 +1174,36 @@ def explodir_estilhacos(widget_alvo, callback_final):
                 cor_borda = Color(0.55, 1.0, 1.0, 0.9)
                 Line(points=[v for p in tri for v in p], close=True, width=1.1)
                 PopMatrix()
-                # voa para fora do centro do item, com um empurrao para cima
                 dx, dy = mx - ccx, my - ccy
-                ang = math.atan2(dy + random.uniform(-0.2, 0.2) * gh, dx + random.uniform(-0.3, 0.3) * gw)
-                v = dp(random.uniform(140, 420))
+                lado = 1.0 if dx * nx + dy * ny >= 0 else -1.0
+                if corte is None:
+                    # voa para fora do centro do item, com um empurrao para cima
+                    ang = math.atan2(dy + random.uniform(-0.2, 0.2) * gh, dx + random.uniform(-0.3, 0.3) * gw)
+                    v = dp(random.uniform(140, 420))
+                    vx, vy = math.cos(ang) * v, math.sin(ang) * v * 0.7 + dp(random.uniform(120, 260))
+                else:
+                    # cada metade se afasta do talho e tudo segue o golpe
+                    afasta = dp(random.uniform(90, 260))
+                    segue = dp(random.uniform(160, 420))
+                    vx = nx * lado * afasta + ux * segue + random.uniform(-1, 1) * dp(60)
+                    vy = ny * lado * afasta + uy * segue + dp(random.uniform(60, 200))
                 cacos.append({
                     'tr': tr, 'rot': rot, 'cor': cor, 'borda': cor_borda, 'brilho': cor_brilho,
-                    'x': 0.0, 'y': 0.0,
-                    'vx': math.cos(ang) * v, 'vy': math.sin(ang) * v * 0.7 + dp(random.uniform(120, 260)),
+                    'x': 0.0, 'y': 0.0, 'lado': lado,
+                    'vx': vx, 'vy': vy,
                     'va': random.uniform(-540, 540), 'a': 0.0, 'mx': mx, 'my': my,
                     'vida': random.uniform(0.7, 1.0), 'soltou': False, 'tem_tex': tex is not None})
+            # o talho: linha de luz atravessando o item na direcao do golpe
+            cor_talho = Color(1, 1, 1, 0)
+            talho = Line(points=[ccx - ux * meia, ccy - uy * meia, ccx + ux * meia, ccy + uy * meia],
+                         width=dp(2.2))
+            cor_talho2 = Color(0.55, 1.0, 1.0, 0)
+            talho2 = Line(points=[ccx - ux * meia, ccy - uy * meia, ccx + ux * meia, ccy + uy * meia],
+                          width=dp(6))
             # pontinhos de luz (os cacos viram luz no fim)
             luzes = []
             for _ in range(min(90, len(cacos) * 3)):
-                c = Color(0.7, 1.0, 1.0, 0)
+                c = Color(*random.choice(((0.7, 1.0, 1.0, 0), (0.7, 1.0, 1.0, 0), (0.78, 0.6, 1.0, 0))))
                 r = Rectangle(size=(0, 0))
                 luzes.append([c, r, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         livres = list(range(len(luzes)))
@@ -1178,8 +1215,25 @@ def explodir_estilhacos(widget_alvo, callback_final):
             try:
                 dt = min(dt, 1 / 30.)
                 t[0] += dt
+                if racha and t[0] < racha:
+                    # rachando: o talho acende e as metades deslizam (sem voar ainda)
+                    e = 1 - (1 - t[0] / racha) ** 3
+                    cor_talho.a = min(1.0, t[0] / 0.04)
+                    cor_talho2.a = 0.45 * cor_talho.a
+                    for k in cacos:
+                        k['x'] = nx * k['lado'] * dp(6) * e + ux * k['lado'] * dp(4) * e
+                        k['y'] = ny * k['lado'] * dp(6) * e + uy * k['lado'] * dp(4) * e
+                        k['tr'].xy = (k['x'], k['y'])
+                        k['brilho'].a = 0.25 * e
+                    return
+                if racha:
+                    fade = max(0.0, 1 - (t[0] - racha) / 0.18)
+                    cor_talho.a = fade
+                    cor_talho2.a = 0.45 * fade
+                    talho.width = dp(2.2) + dp(3) * (1 - fade)
+                tv = t[0] - racha                         # tempo desde que os cacos soltaram
                 for k in cacos:
-                    u = t[0] / k['vida']
+                    u = tv / k['vida']
                     if u >= 1:
                         if k['cor'].a:
                             k['cor'].a = 0
@@ -1201,9 +1255,9 @@ def explodir_estilhacos(widget_alvo, callback_final):
                         k['cor'].rgba = (1 - 0.45 * cristal, 1.0, 1.0, alfa)
                     else:
                         k['cor'].a = 0.95 * alfa
-                    estalo = max(0.0, 1 - t[0] / 0.1)
+                    estalo = max(0.0, 1 - tv / 0.1)
                     k['brilho'].a = alfa * min(0.85, 0.7 * estalo + 0.4 * cristal)
-                    k['borda'].a = 0.9 * alfa * (0.6 + 0.4 * math.sin(t[0] * 30 + k['mx']))
+                    k['borda'].a = 0.9 * alfa * (0.6 + 0.4 * math.sin(tv * 30 + k['mx']))
                     if u > 0.6 and not k['soltou']:
                         k['soltou'] = True
                         for _ in range(3):
@@ -1233,7 +1287,7 @@ def explodir_estilhacos(widget_alvo, callback_final):
                     L[1].pos = (L[2] - s / 2, L[3] - s / 2)
                     L[1].size = (s, s)
                     L[0].a = kk
-                if t[0] >= 1.15:
+                if tv >= 1.15:
                     _acabar()
                     return False
             except Exception as e:
@@ -1241,7 +1295,7 @@ def explodir_estilhacos(widget_alvo, callback_final):
                 _acabar()
                 return False
         Clock.schedule_interval(_passo, 1 / 60.)
-        Clock.schedule_once(_acabar, 2.0)          # seguranca
+        Clock.schedule_once(_acabar, 2.0 + racha)  # seguranca
     except Exception as e:
         print(f"[estilhacos] ignorado: {e}")
         widget_alvo.opacity = 0

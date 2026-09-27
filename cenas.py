@@ -41,6 +41,7 @@ CIANO = (0.0, 0.9, 1.0)
 AZUL = (0.35, 0.65, 1.0)        # rastro da Dark Repulser
 POEIRA = (0.55, 0.62, 0.75)
 BRANCO = (1.0, 1.0, 1.0)
+ROXO = (0.66, 0.34, 1.0)        # chamas da forma Mugetsu
 
 # efeitos que as cenas tocam (pre-carregados no inicio de cada cena)
 _SONS_TITULO = ['agarra', 'koiguchi', 'pulo', 'pouso', 'sacar_iai', 'corte', 'sacar',
@@ -174,6 +175,8 @@ def _mover(k, de, para, dur, altura=0.0, rot=None, fantasmas=3,
         try:
             t[0] += dt
             u = min(1.0, t[0] / dur)
+            if on_passo:
+                on_passo(u)          # troca a pose antes de enquadrar (sem 1 quadro de atraso)
             if ease == 'linear':
                 e = u
             elif ease == 'in':
@@ -190,8 +193,6 @@ def _mover(k, de, para, dur, altura=0.0, rot=None, fantasmas=3,
             while marcas and u >= marcas[0]:
                 marcas.pop(0)
                 k.fantasma(cor=cor_fantasma, alfa=0.42, duracao=0.24)
-            if on_passo:
-                on_passo(u)
             if u >= 1:
                 _acabar()
                 return False
@@ -980,7 +981,7 @@ _TRECHOS = [(0, 3), (3, 5), (5, 8), (8, 10), (10, 13)]      # TRA|VE|TE |FO|CUS
 
 
 def _ps_para(largura, altura):
-    alvo = min(dp(125), largura * 0.32, altura * 0.155)     # altura do boneco
+    alvo = min(dp(150), largura * 0.37, altura * 0.18)      # altura do boneco (ver os detalhes)
     return max(2, int(round(alvo / 26.0)))
 
 
@@ -1262,7 +1263,11 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         th = titulo.th
         m = max(dp(4), ps)                              # folga ate a borda do quadro
         P = K.POSE_A
-        kk.precarregar([P[n] for n in P])
+        # Bankai (estilo Mugetsu): da fusao ate o golpe final ele fica na
+        # sombra, envolto em chamas roxas e azuis, com o cabelo comprido
+        M = {n: _com(P[n], mugetsu=True) for n in ('fund_alto', 'evo_alto', 'evo_carga',
+                                                    'evo_corte', 'evo_fim')}
+        kk.precarregar([P[n] for n in P] + list(M.values()))
         _precarregar_sons(_SONS_TITULO)
         ox_t, oy_t = titulo._origem()
         pe = kk.extensao(P['guardado'])[1] - ps         # ancora -> sola da bota
@@ -1483,7 +1488,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             # cada corte: prepara (a lamina recua), golpeia em 2 quadros de
             # rastro, passa do ponto e volta com uma molinha
             chaves, i_r = K.golpe(P[p_arma], P[p_corta], n_arma=2, prende=1, segue=3, volta=4)
-            poses_g = [c[1] for c in chaves]
+            poses_g = K.sequencia(chaves)            # todos os quadros cabem no quadro
             ax, ay = kk.ancora()
             alvo = _alvo_golpe(lado, i, poses_g)
             teto = area[3] - m - _ext(kk, poses_g)[3]
@@ -1519,14 +1524,14 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                    on_fim=_ataca, limite=(area, m), on_passo=voo)
 
         # ── 6. golpe final (estilo Bleach) ───────────────────────────
-        p_fim = ['evo_corte', 'evo_fim', 'dupla', 'chiburi_a', 'chiburi', 'embainha_a', 'embainha_b',
+        p_fim = [M['evo_corte'], M['evo_fim'], 'dupla', 'chiburi_a', 'chiburi', 'embainha_a', 'embainha_b',
                  'embainha_c', 'guardado']
         cx_meio = ox_t + titulo.tw / 2.0
 
         def _final():
             # sobe para o meio da frase, embaixo do infinito
             kk.espelhar = False
-            alvo = quadro(cx_meio, y_topo, ['agacha', 'une_a', 'une_b', 'fund_alto', 'evo_alto'])
+            alvo = quadro(cx_meio, y_topo, ['agacha', 'une_a', 'une_b', M['fund_alto'], M['evo_alto']])
             ax, ay = kk.ancora()
             p_pulo = _com(P['pulo'], olhos='s')
             kk.mostrar(K.esticado(p_pulo))
@@ -1575,8 +1580,13 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             jx, jy = hx2, hy2 + 6 * ps                 # onde as laminas se encontram
             # segura a espada fundida no alto, tremendo com o reiatsu (loop
             # ate absorver o infinito)
-            kk.tocar(K.poder(_com(P['fund_alto'], olhos='s'), n=36, de=0.9), loop=True)
-            _clarao_boneco(kk, 0.35)
+            # BANKAI: fica todo branco um instante e volta na forma Mugetsu
+            kk.tocar(K.poder(_com(M['fund_alto'], olhos='s'), n=36, de=0.9), loop=True)
+            kk.clarao = 1.0
+            ag.depois(0.12, lambda: _clarao_boneco(kk, 0.5))
+            ax_m, ay_m = kk.ancora()
+            faiscas.estourar(ax_m, ay_m, ROXO, n=30, forca=dp(200), tam=ps, gravidade=-dp(120))
+            _anel(camada, (ax_m, ay_m), ps * 3, ps * 30, 0.6, ROXO, esp=dp(5))
             faiscas.estourar(jx, jy, BRANCO, n=26, forca=dp(220), tam=ps)
             faiscas.estourar(jx, jy, AZUL, n=16, forca=dp(160), tam=ps)
             _anel(camada, (jx, jy), ps * 2, ps * 22, 0.45, CIANO, esp=dp(4))
@@ -1629,7 +1639,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             if r is not None:
                 r._absorvido = True
             tx, ty = kk.ponta_espada(1)
-            kk.tocar(K.poder(P['evo_alto'], n=36, de=1.0, olhos='l'), loop=True)
+            kk.tocar(K.poder(M['evo_alto'], n=36, de=1.0, olhos='l'), loop=True)
             _clarao_boneco(kk, 0.3, 0.8)
             _brilho_tela(camada, 0.7, 0.4, (0.85, 1.0, 1.0))
             _anel(camada, (tx, ty), ps * 3, max(W, H) * 0.6, 0.6, CIANO, esp=dp(5))
@@ -1648,9 +1658,9 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             # sobe acima do comeco da frase e carrega flutuando (as letras
             # ficam a vista); o ultimo corte mergulha na diagonal
             kk.espelhar = False
-            x_ini, y_ini = quadro(ox_t - th * 0.5, y_topo + alt * 0.6, ['evo_carga', 'evo_corte'])
+            x_ini, y_ini = quadro(ox_t - th * 0.5, y_topo + alt * 0.6, [M['evo_carga'], M['evo_corte']])
             ax, ay = kk.ancora()
-            carga = _com(P['evo_carga'], sobe=1.0)
+            carga = _com(M['evo_carga'], sobe=1.0)
             kk.parar()
             kk.mostrar(K.esticado(carga))
             _som('pulo')
@@ -1665,7 +1675,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             ax, ay = kk.ancora()
             poeira(ax, ay - kk.extensao()[1], n=8)
             # carrega o golpe: a energia treme o corpo e levanta cabelo e sobretudo
-            kk.tocar(K.poder(P['evo_carga'], n=36, de=0.7, olhos='l'), loop=True)
+            kk.tocar(K.poder(M['evo_carga'], n=36, de=0.7, olhos='l'), loop=True)
             _som('carga')
             titulo.pulsar(0.9)
             cam[0].ir(1.16, foco=(ax, ay + alt * 0.2), dur=0.8)
@@ -1698,8 +1708,8 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             cam[0].ir(1.0, dur=0.12)
             # o corte: 2 quadros de rastro (meio golpe e golpe inteiro) e o
             # mergulho com a lamina a frente
-            corte = _com(P['evo_corte'], sobe=1.0)
-            meio = K.smear(K.misturar(P['evo_carga'], corte, 0.5, 0.5), P['evo_carga']['a1'])
+            corte = _com(M['evo_corte'], sobe=1.0)
+            meio = K.smear(K.misturar(M['evo_carga'], corte, 0.5, 0.5), P['evo_carga']['a1'])
             kk.tocar(K.sequencia([(1, meio, 'segura'), (1, K.smear(corte, P['evo_carga']['a1']), 'segura'),
                                   (6, corte, 'segura'), (1, corte)]))
             _som('getsuga')
@@ -1725,9 +1735,9 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         def _para():
             # para de costas para a frase: a lamina passa do ponto, o corpo
             # vai junto e volta com uma molinha... e o mundo segura a respiracao
-            fim_p = P['evo_fim']
+            fim_p = M['evo_fim']
             seg = _com(fim_p, a1=fim_p['a1'] - 20, dx=fim_p['dx'] + 1, sobe=0.6)
-            kk.tocar(K.sequencia([(2, _com(P['evo_corte'], sobe=1.0), 'out'), (6, seg, 'mola'),
+            kk.tocar(K.sequencia([(2, _com(M['evo_corte'], sobe=1.0), 'out'), (6, seg, 'mola'),
                                   (6, fim_p, 'segura'), (1, fim_p)]))
             kk.pausar(0.12)
             kk.empurrar(capa=-20, cabelo=-16)
@@ -1740,7 +1750,11 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             dupla = _com(P['dupla'], olhos='s')
             kk.tocar(K.sequencia([(4, _com(dupla, dx=dupla['dx'] + 1, a1=dupla['a1'] + 12,
                                            a2=dupla['a2'] - 12), 'mola'), (1, dupla)]))
-            _clarao_boneco(kk, 0.3, 0.9)
+            # sai da Bankai: clarao branco e as chamas se desfazem em brilhos
+            kk.clarao = 1.0
+            ag.depois(0.08, lambda: _clarao_boneco(kk, 0.4))
+            ax_m, ay_m = kk.ancora()
+            faiscas.estourar(ax_m, ay_m + alt * 0.3, ROXO, n=24, forca=dp(140), tam=ps, gravidade=-dp(200))
             faiscas.estourar(hx2, hy2, BRANCO, n=18, forca=dp(160), tam=ps)
             faiscas.estourar(hx2, hy2, AZUL, n=10, forca=dp(120), tam=ps)
             _anel(camada, (hx2, hy2), ps * 2, ps * 14, 0.35, CIANO)
@@ -2275,7 +2289,7 @@ def kirito_fatiar(alvo, on_fim=None):
         # corte de cima para baixo com preparacao e a lamina passando do ponto
         chaves, i_r = K.golpe(K.POSE_A['arma1'], K.POSE_A['corta_desce'], n_arma=2, prende=1,
                               segue=3, volta=4, seg=K.POSE_A['segue_desce'])
-        golpe = [c[1] for c in chaves]
+        golpe = K.sequencia(chaves)
         k.precarregar([K.POSE_A[n] for n in ('agacha', 'pulo')] + golpe)
         # ataca pelo canto do widget do lado de onde veio, inteiro no quadro
         ataque = _no_quadro(k, rx - dp(6) if esquerda else rx + rw + dp(6), cy + rh * 0.35,
@@ -2350,19 +2364,22 @@ def kirito_fatiar(alvo, on_fim=None):
         _explodir()
 
 
-def kirito_wipe(widgets, on_fim=None):
-    """WIPE: Kirito se materializa no alto da lista, saca as duas espadas e
-    faz um combo cortando a lista inteira; cada golpe desintegra um grupo de
-    itens. No fim, um X gigante e ele some num teleporte."""
+def kirito_wipe(widgets, on_fim=None, grafico=None, area_lista=None):
+    """WIPE: Kirito se materializa, saca as duas espadas e corta UMA memoria
+    por golpe - so as que estao na tela, de cima para baixo, cada golpe de
+    um jeito (cruzado, de cima, de baixo) e de um lado. Cada memoria racha
+    no talho e vira cacos na direcao do golpe. No golpe final ele fatia o
+    grafico de barras do topo. Nenhum corte no vento."""
     fim = _Uma(on_fim)
     camada = [None]
     try:
         W, H = Window.size
+        y_min, y_max = (area_lista[1], area_lista[3]) if area_lista else (0.0, float(H))
         vis = []
         for w in widgets:
             try:
                 x, y, ww, hh = _ret_janela(w)
-                if y + hh > 0 and y < H and ww > 0:
+                if ww > 0 and hh > 0 and y_min <= y + hh / 2.0 <= y_max:
                     vis.append((w, x, y, ww, hh))
             except Exception:
                 pass
@@ -2372,77 +2389,75 @@ def kirito_wipe(widgets, on_fim=None):
         Window.add_widget(cam)
         ps = _ps_para(W, H)
         k = K.KiritoPixel(ps=ps)
-        faiscas = K.Faiscas(n_max=120)
+        faiscas = K.Faiscas(n_max=140)
         cam.add_widget(k)
         cam.add_widget(faiscas)
-        topo = max((y + hh for _, _, y, _, hh in vis), default=H * 0.7)
-        base = min((y for _, _, y, _, _ in vis), default=H * 0.2)
         bx0, by0, bx1, by1 = _limites()
         area = (bx0, by0, bx1, by1)
         cx = (bx0 + bx1) / 2.0
-        W = bx1 - bx0                                 # largura util (coluna)
-        k.mostrar(_com(K.POSE_A['guardado'], olhos='s'))
-        ini = _no_quadro(k, cx, topo + dp(10), [K.POSE_A['guardado'], K.POSE_A['pega2'],
-                                                 K.POSE_A['saca2'], K.POSE_A['dupla']], area, dp(4))
+        P = K.POSE_A
+        topo = max((y + hh for _, _, y, _, hh in vis), default=H * 0.6)
+        k.mostrar(_com(P['guardado'], olhos='s'))
+        ini = _no_quadro(k, cx, topo + dp(10), [P['guardado'], P['pega2'], P['saca2'], P['dupla']],
+                         area, dp(4))
         k.ancorar(*ini)
-        k.precarregar([K.POSE_A[n] for n in K.POSE_A])
+        k.precarregar([P[n] for n in P])
         _precarregar_sons(['sacar', 'corte', 'corte2', 'titulo', 'pulo', 'teleporte'])
-        grupos = [vis[i::4] for i in range(4)]
-        golpes = [(0.20, 1, CIANO), (0.50, -1, AZUL), (0.35, 1, CIANO), (0.70, -1, AZUL)]
-        # cada corte de um jeito (cruzado, de cima, de baixo, cruzado), com
-        # preparacao e a lamina passando do ponto
-        tipos = [('x_arma', 'x_corta'), ('desce_arma', 'desce_corta'),
-                 ('sobe_arma', 'sobe_corta'), ('x_arma', 'x_corta')]
-        cortes = [K.golpe(K.POSE_A[a], K.POSE_A[c], n_arma=2, prende=1, segue=3, volta=4)
-                  for a, c in tipos]
+        # (pose de preparo, pose do corte, giro do arco, angulo do talho) com
+        # ele virado para a direita; do outro lado tudo espelha
+        tipos = [('x_arma', 'x_corta', -10, -14.0), ('desce_arma', 'desce_corta', -32, -48.0),
+                 ('sobe_arma', 'sobe_corta', 28, 38.0)]
 
-        def _desintegra(itens):
+        def _desintegra(w, ang):
             from efeitos import explodir_estilhacos
-            for w, *_ in itens:
-                try:
-                    explodir_estilhacos(w, lambda: None)
-                except Exception as e:
-                    print(f"[wipe] item: {e}")
+            try:
+                explodir_estilhacos(w, lambda: None, corte=ang, tremor=0)
+            except Exception as e:
+                print(f"[wipe] item: {e}")
 
         def _golpe(i):
-            if i >= len(golpes):
+            if i >= len(vis):
                 _final()
                 return
-            fy, lado, cor = golpes[i]
-            chaves, i_r = cortes[i]
-            poses_g = [c[1] for c in chaves]
-            y = base + (topo - base) * (1 - fy)
+            w, x, y, ww, hh = vis[i]
+            a, c, giro_arco, talho = tipos[i % len(tipos)]
+            lado = 1 if i % 2 == 0 else -1               # 1: ataca pela esquerda
+            cor = CIANO if i % 2 == 0 else AZUL
+            chaves, i_r = K.golpe(P[a], P[c], n_arma=2, prende=1, segue=3, volta=3)
+            poses_g = K.sequencia(chaves)
+            cy = y + hh / 2.0
             k.espelhar = lado < 0
-            alvo = _no_quadro(k, cx - lado * W * 0.28, y, poses_g, area, dp(2))
+            # ao lado do item: a lamina alcanca o meio dele
+            alvo = _no_quadro(k, x + ww * (0.2 if lado > 0 else 0.8), cy, poses_g, area, dp(2))
             arma = poses_g[0]
 
             def _ataca():
                 k.espelhar = lado < 0
-                seq = K.sequencia(chaves)
 
                 def _q(q):
                     if q == i_r:
+                        ccx = x + ww / 2.0
                         cam.add_widget(CorteMeiaLua(
-                            centro=(cx, y), raio=W * 0.55, ang_ini=165 if lado > 0 else 15,
-                            ang_fim=-35 if lado > 0 else 215, espessura=dp(40),
-                            achat=0.3, rotacao=-10 * lado, cor=cor))
-                        faiscas.estourar(cx, y, cor, n=22, forca=dp(220), tam=ps)
+                            centro=(ccx, cy), raio=ww * 0.5, ang_ini=165 if lado > 0 else 15,
+                            ang_fim=-35 if lado > 0 else 215, espessura=max(dp(24), hh * 1.2),
+                            achat=0.3, rotacao=giro_arco * lado, cor=cor))
+                        faiscas.estourar(ccx, cy, cor, n=16, forca=dp(200), tam=ps)
                         _som('corte2' if cor == AZUL else 'corte')
-                        _tremer(10)
+                        _tremer(8)
                         k.pausar(0.07)
-                        _desintegra(grupos[i])
-                k.tocar(seq, on_quadro=_q, on_fim=lambda: _golpe(i + 1))
+                        _desintegra(w, talho if lado > 0 else 180 - talho)
+                k.tocar(K.sequencia(chaves), on_quadro=_q, on_fim=lambda: _golpe(i + 1))
             k.parar()
-            _mover(k, k.ancora(), alvo, 0.2, altura=dp(30), cor_fantasma=cor, on_fim=_ataca,
+            _mover(k, k.ancora(), alvo, 0.2, altura=dp(26), cor_fantasma=cor, on_fim=_ataca,
                    on_passo=_voo(k, K.esticado(arma), K.encolhido(arma), arma, (0.2, 0.65)))
 
         def _saca():
-            seq = K.sequencia(_de_agora(k, 2, proxima=K.POSE_A['pega2']) +
-                              [(2, _com(K.POSE_A['pega2'], olhos='s'), 'segura'),
-                               (2, _com(K.POSE_A['pega2'], olhos='s'), 'out'),
-                               (4, _com(K.POSE_A['saca2'], olhos='s'), 'mola'),
-                               (2, _com(K.POSE_A['dupla'], olhos='s'), 'segura'),
-                               (1, _com(K.POSE_A['dupla'], olhos='s'))])
+            seq = K.sequencia(_de_agora(k, 2, proxima=P['pega2']) +
+                              [(2, _com(P['pega2'], olhos='s'), 'segura'),
+                               (2, _com(P['pega2'], olhos='s'), 'out'),
+                               (4, _com(P['saca2'], olhos='s'), 'mola'),
+                               (2, _com(P['dupla'], olhos='s'), 'segura'),
+                               (1, _com(P['dupla'], olhos='s'))])
 
             def _q(i):
                 if i == 6:
@@ -2452,34 +2467,41 @@ def kirito_wipe(widgets, on_fim=None):
             k.tocar(seq, on_quadro=_q, on_fim=lambda: _golpe(0))
 
         def _final():
+            # golpe final: o X gigante em cima do grafico de barras do topo
             k.espelhar = False
-            # o X final: preparacao longa (tensao), 2 quadros de rastro e a
-            # continuidade do golpe
-            chaves_f, i_f = K.golpe(K.POSE_A['final_arma'], K.POSE_A['final'], n_arma=3, prende=3,
+            if grafico is not None:
+                gx, gy, gw, gh = _ret_janela(grafico)
+            else:
+                gx, gy, gw, gh = bx0, (by0 + by1) / 2.0, bx1 - bx0, dp(80)
+            gcx, gcy = gx + gw / 2.0, gy + gh / 2.0
+            chaves_f, i_f = K.golpe(P['final_arma'], P['final'], n_arma=3, prende=3,
                                     segue=4, volta=7, graus=20.0)
-            poses_f = [c[1] for c in chaves_f]
-            alvo = _no_quadro(k, cx, (topo + base) / 2.0, poses_f, area, dp(2))
+            poses_f = K.sequencia(chaves_f)
+            alvo = _no_quadro(k, gx + gw * 0.18, gcy, poses_f, area, dp(2))
 
             def _ataca():
                 k.espelhar = False
-                seq = K.sequencia(chaves_f)
 
                 def _q(q):
                     if q == i_f:
                         for sent, cor in ((1, CIANO), (-1, AZUL)):
                             cam.add_widget(CorteMeiaLua(
-                                centro=(cx, alvo[1]), raio=max(W, H) * 0.5, ang_ini=160 if sent > 0 else 20,
-                                ang_fim=-45 if sent > 0 else 225, espessura=dp(70), achat=0.5,
-                                rotacao=35 * sent, cor=cor, dur_cheio=5 / 30.0, dur_decai=9 / 30.0))
-                        faiscas.estourar(cx, alvo[1], CIANO, n=60, forca=dp(380), tam=ps)
+                                centro=(gcx, gcy), raio=gw * 0.55, ang_ini=160 if sent > 0 else 20,
+                                ang_fim=-45 if sent > 0 else 225, espessura=max(dp(50), gh * 0.9),
+                                achat=0.5, rotacao=35 * sent, cor=cor, dur_cheio=5 / 30.0,
+                                dur_decai=9 / 30.0))
+                        faiscas.estourar(gcx, gcy, CIANO, n=60, forca=dp(380), tam=ps)
+                        faiscas.estourar(gcx, gcy, BRANCO, n=24, forca=dp(260), tam=ps)
                         _som('titulo')
                         _tremer(28)
                         k.pausar(0.12)
                         _brilho_tela(cam, 0.35, 0.3)
-                k.tocar(seq, on_quadro=_q, on_fim=_sai)
+                        if grafico is not None:
+                            _desintegra(grafico, -25.0)
+                k.tocar(K.sequencia(chaves_f), on_quadro=_q, on_fim=_sai)
             k.parar()
             arma_f = poses_f[0]
-            _mover(k, k.ancora(), alvo, 0.24, altura=dp(50), on_fim=_ataca,
+            _mover(k, k.ancora(), alvo, 0.26, altura=dp(50), on_fim=_ataca,
                    on_passo=_voo(k, K.esticado(arma_f), K.encolhido(arma_f), arma_f, (0.2, 0.65)))
 
         def _sai():
@@ -2495,7 +2517,7 @@ def kirito_wipe(widgets, on_fim=None):
         def _seguranca(dt):
             _remover_da_janela(cam)
             fim()
-        Clock.schedule_once(_seguranca, 8.0)
+        Clock.schedule_once(_seguranca, 6.0 + 0.9 * len(vis))
     except Exception as e:
         print(f"[wipe] ignorado: {e}")
         _remover_da_janela(camada[0])

@@ -1,9 +1,10 @@
 """telas/ganhos.py — TelaGanhos
 
 Regra do calculo (por periodo: semanal, quinzenal ou mensal):
-  - toda peca ate a meta vale o valor BASE (padrao R$ 0,25);
-  - cada peca ACIMA da meta vale o valor BONUS (padrao R$ 0,30).
-  Ex: meta 3000, 3500 pecas -> 3000 x 0,25 + 500 x 0,30 = R$ 900,00.
+  - abaixo da meta, cada peca vale o valor BASE (padrao R$ 0,25);
+  - bateu a meta, TODAS as pecas do periodo passam a valer o valor BONUS
+    (padrao R$ 0,30).
+  Ex: meta 3000 -> 2999 pecas = R$ 749,75 | 3000 = R$ 900,00 | 3500 = R$ 1.050,00.
 So entram os turnos ja finalizados (memorias). Um turno contado no
 fechamento de um periodo nao entra de novo no periodo seguinte (mesmo que
 os dois caiam no mesmo dia).
@@ -117,22 +118,24 @@ class TelaGanhos(Screen):
 
     # ── dinheiro ────────────────────────────────────────────────────────
     def _detalhe_ganho(self, total_pecas):
-        """(pecas_base, valor_base, pecas_bonus, valor_bonus, total)."""
+        """(pecas_base, valor_base, pecas_bonus, valor_bonus, total).
+        Bateu a meta: todas as pecas vao para o bonus (pecas_base = 0)."""
         cfg = self._cfg()
         meta  = int(cfg['meta_bonus'])
         base  = float(cfg['valor_base'])
         bonus = float(cfg['valor_bonus'])
-        n_base = min(total_pecas, meta)
-        n_bonus = max(0, total_pecas - meta)
+        if total_pecas >= meta and total_pecas > 0:
+            n_base, n_bonus = 0, total_pecas
+        else:
+            n_base, n_bonus = total_pecas, 0
         v_base = round(n_base * base, 2)
         v_bonus = round(n_bonus * bonus, 2)
         return n_base, v_base, n_bonus, v_bonus, round(v_base + v_bonus, 2)
 
     def _calcular_ganho(self, total_pecas):
         """
-        Base R$0.25/peca para as pecas ate a meta.
-        Bonus R$0.30/peca so para as pecas ACIMA da meta.
-        Ex: 3500 pecas, meta=3000 -> 3000x0.25 + 500x0.30 = R$900.
+        Abaixo da meta: R$0.25 por peca. Bateu a meta: TODAS a R$0.30.
+        Ex: meta=3000 -> 3000 pecas = R$900; 3500 pecas = R$1050.
         """
         return self._detalhe_ganho(total_pecas)[4]
 
@@ -173,18 +176,15 @@ class TelaGanhos(Screen):
         contar(self.ids.lbl_periodo_ganho, ganho,
                lambda v: f"[color=#9aa6bd]Projecao[/color]\n[color=#00ff88][b]R$ {fmt_br(v, 2)}[/b][/color]",
                inteiro=False)
-        if pecas > meta:
-            n_base, v_base, n_bonus, v_bonus, _ = self._detalhe_ganho(pecas)
+        if pecas >= meta and pecas > 0:
+            extra = ganho - pecas * float(cfg['valor_base'])
             self.ids.lbl_periodo_bonus.text = (
-                f"[color=#ffcc00]{em('🔥')} META BATIDA! {fmt_br(n_bonus)} pecas a mais "
-                f"x {bonus_rs} = +{_reais(v_bonus)}[/color]")
-        elif pecas == meta:
-            self.ids.lbl_periodo_bonus.text = (
-                f"[color=#ffcc00]{em('🔥')} META BATIDA! Cada peca a mais agora vale {bonus_rs}[/color]")
+                f"[color=#ffcc00]{em('🔥')} META BATIDA! Todas as pecas valem {bonus_rs} "
+                f"(+{_reais(extra)} de bonus)[/color]")
         else:
             self.ids.lbl_periodo_bonus.text = (
                 f"[color=#aab4c8]Faltam {fmt_br(faltam)} pecas para a meta de {fmt_br(meta)} - "
-                f"acima dela cada peca vale {bonus_rs}[/color]")
+                f"batendo, TODAS passam a valer {bonus_rs}[/color]")
         self.ids.btn_fechar_periodo.opacity  = 1
         self.ids.btn_fechar_periodo.disabled = False
 
@@ -212,7 +212,7 @@ class TelaGanhos(Screen):
             pecas = p.get('total_pecas', 0)
             ganho = p.get('total_ganho', 0.0)
             meta_p = p.get('meta', self._cfg()['meta_bonus'])
-            bonus_icon = f"{em('🔥')} " if pecas > meta_p else ""
+            bonus_icon = f"{em('🔥')} " if pecas >= meta_p and pecas > 0 else ""
 
             row = BoxLayout(size_hint_y=None, height=dp(68), spacing=dp(6))
             lbl = ListaItem(
@@ -326,7 +326,7 @@ class TelaGanhos(Screen):
             som.tocar_salvar()
             tremer_tela(5)
             self._aviso("CALCULO SALVO: base " + _reais(cfg['valor_base']) + " / bonus "
-                        + _reais(cfg['valor_bonus']) + " acima de " + fmt_br(cfg['meta_bonus']))
+                        + _reais(cfg['valor_bonus']) + " ao bater " + fmt_br(cfg['meta_bonus']))
 
     def abrir_periodo(self):
         app      = App.get_running_app()
@@ -402,12 +402,15 @@ class TelaGanhos(Screen):
             markup=True, font_name="orbitron.ttf", font_size="15sp",
             size_hint_y=None, height=dp(34), halign="center"))
 
-        linha_base = (f"[color=#aab4c8]{fmt_br(n_base)} x {_reais(cfg['valor_base'])}[/color]"
-                      f"   [color=#00e5ff]{_reais(v_base)}[/color]")
         if n_bonus > 0:
-            linha_bonus = (f"[color=#ffcc00]{em('🔥')} {fmt_br(n_bonus)} acima da meta x "
-                           f"{_reais(cfg['valor_bonus'])}   +{_reais(v_bonus)}[/color]")
+            sem_meta = round(n_bonus * float(cfg['valor_base']), 2)
+            linha_base = (f"[color=#ffcc00]{em('🔥')} META BATIDA: {fmt_br(n_bonus)} x "
+                          f"{_reais(cfg['valor_bonus'])}   {_reais(v_bonus)}[/color]")
+            linha_bonus = (f"[color=#8c96aa]sem a meta seriam {_reais(sem_meta)} "
+                           f"(+{_reais(v_bonus - sem_meta)} de bonus)[/color]")
         else:
+            linha_base = (f"[color=#aab4c8]{fmt_br(n_base)} x {_reais(cfg['valor_base'])}[/color]"
+                          f"   [color=#00e5ff]{_reais(v_base)}[/color]")
             linha_bonus = (f"[color=#8c96aa]Meta de {fmt_br(cfg['meta_bonus'])} nao batida "
                            f"(faltaram {fmt_br(int(cfg['meta_bonus']) - pecas)})[/color]")
 
