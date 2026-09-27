@@ -1064,7 +1064,7 @@ def _ps_titulo(th, largura, altura):
     """Abertura: o Kirito tem a altura de ~2 letras do logo - a espada passa
     por uma silaba de cada vez, como se ele esculpisse a frase (e par: os
     pixels do boneco ficam todos do mesmo tamanho)."""
-    alvo = min(th * 1.7, largura * 0.30, altura * 0.16)
+    alvo = min(th * 2.2, largura * 0.34, altura * 0.18)
     return max(2, 2 * int(round(alvo / 31.0 / 2.0)))
 
 
@@ -1499,7 +1499,8 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             kk.mostrar(K.esticado(p_pulo))
             _som('pulo')
             kk.empurrar(capa=-10, cabelo=-8, lift=12)
-            alvo = quadro(ox_t - th * 0.7, oy_t + th * 0.5, POSES_G1)
+            # pousa EM CIMA do comeco da frase (as letras ficam a vista)
+            alvo = quadro(ox_t + th * 0.2, y_topo, POSES_G1)
             # giro para a frente (horario, olhando para a direita): solta com
             # as pernas esticadas, encolhe no giro e estica de novo para pousar
             _mover(kk, (ax, ay), alvo, 0.5, altura=0.0, rot=(0, -360), fantasmas=4, on_fim=_golpe1,
