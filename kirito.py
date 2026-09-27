@@ -2271,6 +2271,8 @@ class KiritoPixel(Widget):
 
         def _p(dt):
             t[0] += dt
+            if getattr(self, 'clarao_preso', False):
+                return False                        # um quadro de impacto esta usando a silhueta
             self.clarao = max(0.0, (0.9 if forte else 0.45) * (1 - t[0] / 0.07))
             return t[0] < 0.07
         Clock.schedule_interval(_p, 1 / 60.)

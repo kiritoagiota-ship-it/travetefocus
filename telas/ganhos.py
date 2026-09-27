@@ -431,3 +431,12 @@ class TelaGanhos(Screen):
         layout.add_widget(caixa)
         caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
         _abrir_popup(caixa, pop)
+        if n_bonus > 0:                          # bateu a meta: o Yoru comemora
+            def _yoru(dt):
+                try:
+                    from cenas import kirito_meta
+                    kirito_meta(caixa)
+                except Exception as e:
+                    print(f"[ganhos] yoru: {e}")
+            from kivy.clock import Clock as _Clk2
+            _Clk2.schedule_once(_yoru, 0.45)

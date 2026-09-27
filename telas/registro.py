@@ -126,7 +126,7 @@ class TelaRegistro(Screen):
             except Exception as e:
                 print(f"[registro] carimbo: {e}")
                 animar_ganho_xp(xp_total, origem=btn)
-        Clock.schedule_once(_carimbo, 0.2)
+        Clock.schedule_once(_carimbo, 0.42)
         Clock.schedule_once(lambda _: self._focar_nome(), 0.15)
 
     def confirmar_delete(self, dado, btn):

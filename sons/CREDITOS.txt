@@ -17,6 +17,12 @@ gravacoes em dominio publico - licenca CC0 1.0
 - "RPG Audio" - Kenney (www.kenney.nl)
     koiguchi, desliza, embainhar, pouso, agarra, susto
 
+- "Impact Sounds" - Kenney (www.kenney.nl)
+    vidro, cristal, moedas (sino)
+- "RPG Audio" - Kenney (www.kenney.nl)
+    moedas, papel
+- Sintetizados aqui (ruido, varreduras e graves): fogo, trevas, giro, fitas
+
 CC0 nao exige credito; fica registrado por gentileza aos autores.
 
 Vozes do Yoru (voz_starburst, voz_stream, voz_mugetsu, voz_ha, voz_seiya, voz_teya)

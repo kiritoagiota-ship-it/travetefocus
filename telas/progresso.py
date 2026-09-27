@@ -30,6 +30,12 @@ class TelaProgresso(Screen):
         def _level_up_fanfare(dt):
             try: som.tocar_level_up()
             except Exception: pass
+            # o Yoru comemora do lado do nivel
+            try:
+                from cenas import kirito_nivel
+                kirito_nivel(self.ids.lbl_level_num)
+            except Exception as e:
+                print(f"[progresso] yoru: {e}")
             # Flash dourado no label de level
             lbl = self.ids.lbl_level_num
             (Animation(color=[1, 0.88, 0.1, 1], duration=0.15) +

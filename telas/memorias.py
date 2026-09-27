@@ -343,7 +343,9 @@ class TelaMemorias(Screen):
             tremer_tela(10)
             # o Yoru crava a estocada no cartao do turno
             from cenas import kirito_fatiar
-            btn_a.disabled = True
+            for b in (btn_a, btn_f, btn_zap, btn_salvar_data):
+                b.disabled = True
+            pop.auto_dismiss = False                 # nao fecha no meio do golpe
             kirito_fatiar(caixa, _executar_delete, tipo='estocada')
 
         def _enviar():
