@@ -17,6 +17,7 @@ from efeitos import (BotaoAngular, BotaoAngularAlerta, ListaItem,
                      InputHolografico, tremer_tela, explodir_estilhacos)
 import som
 from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, _bind_teclado
+import tatil
 
 
 def _ordenadas(memorias):
@@ -319,10 +320,12 @@ class TelaMemorias(Screen):
                 hora   = partes[1] if len(partes) > 1 else datetime.now().strftime("%H:%M")
                 memoria['data'] = f"{d.strftime('%d/%m/%Y')}  {hora}"
                 som.tocar_salvar()
+                tatil.confirmar()
                 App.get_running_app().salvar_dados()
                 self.atualizar_lista()
                 self._atualizar_grafico()
             except ValueError:
+                tatil.erro()
                 Animation.cancel_all(inp_data, 'borda_color')
                 (Animation(borda_color=[1, 0.1, 0.2, 1], duration=0.08) +
                  Animation(borda_color=[0.55, 0.05, 0.95, 1], duration=0.35)
@@ -359,7 +362,7 @@ class TelaMemorias(Screen):
                 self._aviso(aviso, ok)
 
         def _whatsapp(*_):
-            vibrar(40)
+            tatil.confirmar()
             # o Yoru joga um pergaminho de luz para fora da tela; o WhatsApp
             # abre quando o pergaminho sai
             try:
@@ -445,7 +448,7 @@ class TelaMemorias(Screen):
             _on_erro("Modulo exportar.py nao encontrado no repositorio.")
             return
         exportar_e_compartilhar(app.memorias, app.user_data_dir, _on_erro)
-        vibrar(80)
+        tatil.confirmar()
 
     def confirmar_wipe(self):
         pop, layout = _make_popup()

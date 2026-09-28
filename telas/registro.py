@@ -5,9 +5,11 @@ from kivy.animation import Animation
 from kivy.clock import Clock
 from kivy.metrics import dp
 from efeitos import ListaItem, explodir_estilhacos, tremer_tela
-from helpers import popup_pedir_xp, popup_delete_engracado, popup_resumo_dia, animar_ganho_xp, vibrar, anexar_teclado
+from helpers import (popup_pedir_xp, popup_delete_engracado, popup_resumo_dia, animar_ganho_xp,
+                     anexar_teclado, sugestoes_pecas)
 from datetime import datetime
 import som
+import tatil
 from animacoes_ui import entrada_cascata
 
 
@@ -27,7 +29,7 @@ class TelaRegistro(Screen):
     def _anexar_teclados(self, dt=None):
         """Conecta teclados SAO nos campos de texto e numero."""
         try:
-            anexar_teclado(self.ids.nome_input, 'letras')
+            anexar_teclado(self.ids.nome_input, 'letras', sugestoes=sugestoes_pecas)
             anexar_teclado(self.ids.qtd_input,  'numeros')
         except Exception as e:
             print(f"[registro] teclado nao anexado: {e}")
@@ -86,6 +88,7 @@ class TelaRegistro(Screen):
             self._shake_input(self.ids.qtd_input)
         if not (n and q and q.isdigit() and int(q) > 0):
             som.tocar_erro()
+            tatil.erro()
             return
         popup_pedir_xp(n, int(q), lambda xp: self.salvar(n, q, xp))
 
@@ -108,7 +111,7 @@ class TelaRegistro(Screen):
         self.ids.nome_input.text = ""
         self.ids.qtd_input.text  = ""
         som.tocar_add()
-        vibrar(50)
+        tatil.confirmar()
         self.ids.empty_state.opacity = 0
         self.ids.empty_state.height  = 0
         dado = app.registros[-1]
@@ -132,7 +135,7 @@ class TelaRegistro(Screen):
     def confirmar_delete(self, dado, btn):
         def _fazer():
             som.tocar_delete()
-            vibrar(80)
+            tatil.forte()
             # o Yoru corta o lote com o saque relampago e depois vem a explosao de cacos
             from cenas import kirito_fatiar
             kirito_fatiar(btn, lambda: self.deletar(dado), tipo='iai')
@@ -152,6 +155,7 @@ class TelaRegistro(Screen):
         app = App.get_running_app()
         if not app.registros:
             som.tocar_erro()
+            tatil.erro()
             return
         tot_pecas = sum(int(x[1]) for x in app.registros)
         tot_xp    = sum(int(x[2]) for x in app.registros)
@@ -190,7 +194,7 @@ class TelaRegistro(Screen):
             app.recalcular_totais()
             app.salvar_dados()
             som.tocar_finalizar()
-            vibrar(200)
+            tatil.vitoria()
             tremer_tela(12)
             self.atualizar()
             # o Yoru comemora: chiburi, embainha e a pose de vitoria

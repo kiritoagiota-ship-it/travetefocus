@@ -21,7 +21,8 @@ from datetime import datetime
 from efeitos import BotaoAngular, BotaoAngularAlerta, ListaItem, tremer_tela
 import som
 from animacoes_ui import entrada_cascata, contar, fmt_br
-from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, em, anexar_teclado
+from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, em, anexar_teclado
+import tatil
 
 
 def _data_str_para_obj(data_str):
@@ -238,7 +239,7 @@ class TelaGanhos(Screen):
 
                 def _confirmar_delete(*_):
                     som.tocar_delete()
-                    vibrar(80)
+                    tatil.forte()
                     # o Yoru parte a linha do periodo com o corte em X
                     from cenas import kirito_fatiar
                     kirito_fatiar(widget, _executar, tipo='x')
@@ -320,10 +321,12 @@ class TelaGanhos(Screen):
         self._atualizar_periodo_atual()
         if invalidos:
             som.tocar_erro()
+            tatil.erro()
             self._aviso("VALOR INVALIDO: " + ", ".join(invalidos) + " (mantido o anterior)",
                         (1, 0.35, 0.35, 1))
         else:
             som.tocar_salvar()
+            tatil.confirmar()
             tremer_tela(5)
             self._aviso("CALCULO SALVO: base " + _reais(cfg['valor_base']) + " / bonus "
                         + _reais(cfg['valor_bonus']) + " ao bater " + fmt_br(cfg['meta_bonus']))
@@ -341,7 +344,7 @@ class TelaGanhos(Screen):
         app.periodos_ganhos = periodos
         app.salvar_dados()
         som.tocar_abrir_periodo()
-        vibrar(100)
+        tatil.confirmar()
         tremer_tela(8)
         # Animação de abertura: piscar o status em verde
         self._atualizar_periodo_atual()
@@ -380,7 +383,7 @@ class TelaGanhos(Screen):
         app.periodos_ganhos  = periodos
         app.salvar_dados()
         som.tocar_fechar_periodo()
-        vibrar(200)
+        tatil.vitoria()
         tremer_tela(15)
         self._atualizar_periodo_atual()
         self._atualizar_historico()

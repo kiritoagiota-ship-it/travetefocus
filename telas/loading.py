@@ -15,6 +15,7 @@ from kivy.core.window import Window
 from kivy.metrics import dp
 
 from efeitos import tremer_tela, InputHolografico, BotaoAngular
+import tatil
 from infinito import InfinitoLoader  # noqa: F401  (usado no kv: id reator_shader)
 from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, _bind_teclado
 import som
@@ -289,6 +290,7 @@ class TelaLoading(Screen):
                 _safe_treme(10)
                 try: som.tocar_retomada()
                 except Exception: pass
+                tatil.confirmar()
                 self._salvar_sessao()
                 # acesso liberado: o Kirito sobe na caixa, sorri e some num
                 # teleporte (ele volta pendurado na cena do titulo)
@@ -308,6 +310,7 @@ class TelaLoading(Screen):
                 inp_pin.text = ""
                 try: som.tocar_pin_erro()
                 except Exception: pass
+                tatil.erro()
                 _k('susto')
                 _safe_treme(12)
                 if tentativas[0] > 0:

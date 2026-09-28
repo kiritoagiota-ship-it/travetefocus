@@ -26,14 +26,42 @@ from efeitos import (
 
 # ─── Vibração Android ────────────────────────────────────────────────────────
 def vibrar(duracao_ms=80):
-    """Vibra o celular no Android. No-op em outras plataformas."""
+    """Vibra o celular por `duracao_ms` (respeita o liga/desliga do app).
+    Para as respostas curtinhas use tatil.tecla/confirmar/erro/forte."""
     try:
-        from kivy.utils import platform as _plat
-        if _plat == 'android':
-            from plyer import vibrator
-            vibrator.vibrate(duracao_ms / 1000.0)
+        import tatil
+        tatil.pulso(duracao_ms)
     except Exception:
-        pass  # plyer não disponível ou permissão negada
+        pass
+
+
+# ─── Sugestões de peças (teclado de letras do registro) ─────────────────────
+def sugestoes_pecas(texto=''):
+    """Nomes de peças já usadas (mais recentes primeiro, sem repetir),
+    filtrados pelo que já foi digitado (sem ligar para acento/maiúscula):
+    primeiro as que começam com o texto, depois as que o contêm."""
+    from efeitos import _sem_acento
+    app = App.get_running_app()
+    fontes = [r[0] for r in reversed(list(getattr(app, 'registros', []))) if r]
+    for m in reversed(list(getattr(app, 'memorias', []))):
+        fontes += [it[0] for it in m.get('itens', []) if it]
+    chave = _sem_acento(texto.strip())
+    vistos, comeca, contem = set(), [], []
+    for nome in fontes:
+        nome = str(nome).strip()
+        k = _sem_acento(nome)
+        if not nome or k in vistos:
+            continue
+        vistos.add(k)
+        if not chave:
+            comeca.append(nome)
+        elif k == chave:
+            continue
+        elif k.startswith(chave):
+            comeca.append(nome)
+        elif chave in k:
+            contem.append(nome)
+    return comeca + contem
 
 
 # ─── Suporte a Emoji com fonte dedicada ──────────────────────────────────────
@@ -322,10 +350,14 @@ def _desviar_do_teclado(inp, kb, estado):
     popup ou, fora de popup, a tela inteira."""
     try:
         _, iy = inp.to_window(inp.x, inp.y)
+        caixa = _caixa_do_popup(inp)
+        if caixa is not None:
+            _, cy0 = caixa.to_window(caixa.x, caixa.y)
+            if caixa.height < Window.height - dp(18) - kb.top:
+                iy = cy0                      # cabe inteira: sobe a caixa toda
         falta = (kb.top + dp(12)) - iy
         if falta <= 0:
             return
-        caixa = _caixa_do_popup(inp)
         if caixa is not None:
             _, cy = caixa.to_window(caixa.x, caixa.y)
             topo_max = Window.height - dp(6)
@@ -364,12 +396,13 @@ def _voltar_do_teclado(estado):
         print(f"[teclado] voltar: {e}")
 
 
-def anexar_teclado(inp, tipo='letras', decimal=False):
+def anexar_teclado(inp, tipo='letras', decimal=False, sugestoes=None):
     """
     Teclado customizado SAO.
     - Passa 'fechar' callback para _TecladoBase — OK fecha sem crash
     - Toque fora do teclado tambem fecha
     - Supressao do teclado Android via _bind_keyboard no InputHolografico
+    - sugestoes(texto) -> nomes: linha de sugestoes no teclado de letras
     """
     if getattr(inp, '_teclado_custom_ok', False):
         return
@@ -426,9 +459,9 @@ def anexar_teclado(inp, tipo='letras', decimal=False):
                 return
             kb = (Kls(target=inst, fechar=_esconder, decimal=decimal)
                   if tipo == 'numeros'
-                  else Kls(target=inst, fechar=_esconder))
+                  else Kls(target=inst, fechar=_esconder, sugestoes=sugestoes))
             larg       = largura_coluna()
-            kb.size    = (larg, dp(252))
+            kb.size    = (larg, kb.height)
             kb.pos     = ((Window.width - larg) / 2.0, 0)
             kb.opacity = 0
             Window.add_widget(kb)
@@ -493,7 +526,7 @@ def popup_pedir_xp(nome: str, quantidade: int, on_save):
     inp.bind(text=_preview)
     btn = BotaoAngular(text=">>  CONFIRMAR  <<", size_hint_y=None, height=dp(52))
 
-    for w in [lbl_info, btn, inp, lbl_preview]:  # btn antes do inp
+    for w in [lbl_info, inp, lbl_preview, btn]:  # o teclado sobe a caixa inteira
         caixa.add_widget(w)
     layout.add_widget(caixa)
     caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}

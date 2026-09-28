@@ -436,6 +436,17 @@
                         pos:  self.pos
                         size: self.size
 
+            # ── Liga/desliga a vibracao (resposta tatil) ──────
+            BotaoAngular:
+                text:        "VIBRAÇÃO:  LIGADA" if app.vibracao else "VIBRAÇÃO:  DESLIGADA"
+                font_name:   "orbitron.ttf"
+                font_size:   "11sp"
+                pos_hint:    {"center_x": 0.5, "center_y": 0.14}
+                size_hint:   (0.6, None)
+                height:      dp(40)
+                cor_texto:   [0.0, 0.9, 1.0, 1.0] if app.vibracao else [0.45, 0.5, 0.56, 1.0]
+                on_release:  app.alternar_vibracao()
+
             # ── Rodapé ────────────────────────────────────────
             Label:
                 text:      "[ SISTEMA OPERACIONAL DE CONFECÇÃO  ·  v" + app.versao + " ]"
@@ -808,7 +819,7 @@
     BoxLayout:
         orientation: "vertical"
         padding:     [dp(14), dp(16), dp(14), dp(12)]
-        spacing:     dp(10)
+        spacing:     dp(8)
         size_hint:   1, 1
         Label:
             text:        "CÁLCULO TÁTICO"
@@ -821,11 +832,24 @@
             halign:      "center"
             valign:      "middle"
             text_size:   self.size
-        # Display
+        # Ultimas contas (toque numa para usar o resultado), encostadas no visor
         BoxLayout:
+            id:          calc_hist_area
+            orientation: "vertical"
+            size_hint_y: 1
+            on_height:   root._mostrar_historico()
+            Widget:
+            BoxLayout:
+                id:          calc_historico
+                orientation: "vertical"
+                size_hint_y: None
+                height:      self.minimum_height
+        # Visor: conta pequena em cima, numero grande embaixo
+        BoxLayout:
+            orientation: "vertical"
             size_hint_y: None
-            height:      dp(72)
-            padding:     [dp(14), 0]
+            height:      dp(104)
+            padding:     [dp(14), dp(6), dp(14), dp(4)]
             canvas.before:
                 Color:
                     rgba: rgba("#07071ccc")
@@ -838,107 +862,172 @@
                     points: [self.x+10, self.y, self.right-10, self.y, self.right, self.y+10, self.right, self.top-10, self.right-10, self.top, self.x+10, self.top, self.x, self.top-10, self.x, self.y+10, self.x+10, self.y]
                     width:  1.5
             Label:
-                id:        calc_display
-                text:      ""
-                font_size: "32sp"
-                font_name: "orbitron.ttf"
-                color:     rgba("#ffffff")
-                halign:    "right"
-                valign:    "middle"
-                text_size: self.size
-        # Grid de botões
+                id:           calc_conta
+                text:         ""
+                font_name:    "orbitron.ttf"
+                font_size:    "16sp"
+                color:        0.45, 0.62, 0.70, 1
+                halign:       "right"
+                valign:       "middle"
+                text_size:    self.size
+                shorten:      True
+                shorten_from: "left"
+                size_hint_y:  None
+                height:       dp(30)
+            Label:
+                id:           calc_display
+                text:         ""
+                font_size:    "44sp"
+                font_name:    "orbitron.ttf"
+                color:        rgba("#ffffff")
+                halign:       "right"
+                valign:       "middle"
+                text_size:    self.size
+                shorten:      True
+                shorten_from: "left"
+        # Teclas (como a calculadora do celular)
         GridLayout:
-            cols:        4
-            spacing:     dp(7)
-            size_hint_y: 1
-            BotaoAngular:
-                text:      "7"
-                font_size: "20sp"
-                on_release: root.add_texto("7")
-            BotaoAngular:
-                text:      "8"
-                font_size: "20sp"
-                on_release: root.add_texto("8")
-            BotaoAngular:
-                text:      "9"
-                font_size: "20sp"
-                on_release: root.add_texto("9")
-            BotaoAngularOperador:
-                text:      "/"
-                font_size: "20sp"
-                on_release: root.add_texto("/")
-            BotaoAngular:
-                text:      "4"
-                font_size: "20sp"
-                on_release: root.add_texto("4")
-            BotaoAngular:
-                text:      "5"
-                font_size: "20sp"
-                on_release: root.add_texto("5")
-            BotaoAngular:
-                text:      "6"
-                font_size: "20sp"
-                on_release: root.add_texto("6")
-            BotaoAngularOperador:
-                text:      "X"
-                font_size: "20sp"
-                on_release: root.add_texto("*")
-            BotaoAngular:
-                text:      "1"
-                font_size: "20sp"
-                on_release: root.add_texto("1")
-            BotaoAngular:
-                text:      "2"
-                font_size: "20sp"
-                on_release: root.add_texto("2")
-            BotaoAngular:
-                text:      "3"
-                font_size: "20sp"
-                on_release: root.add_texto("3")
-            BotaoAngularOperador:
-                text:      "-"
-                font_size: "20sp"
-                on_release: root.add_texto("-")
-            BotaoAngular:
-                text:      "."
-                font_size: "20sp"
-                on_release: root.add_texto(".")
-            BotaoAngular:
-                text:      "0"
-                font_size: "20sp"
-                on_release: root.add_texto("0")
+            cols:               4
+            spacing:            dp(7)
+            size_hint_y:        None
+            row_force_default:  True
+            row_default_height: dp(60)
+            height:             self.minimum_height
             BotaoAngularAlerta:
-                text:      "DEL"
-                font_size: "18sp"
-                on_release: root.backspace()
+                text:       "C"
+                font_name:  "orbitron.ttf"
+                font_size:  "22sp"
+                tatil:      "tecla"
+                on_press:   root.apertar("C")
             BotaoAngularOperador:
-                text:      "+"
-                font_size: "20sp"
-                on_release: root.add_texto("+")
+                text:       "( )"
+                font_name:  "orbitron.ttf"
+                font_size:  "22sp"
+                tatil:      "tecla"
+                on_press:   root.apertar("()")
+            BotaoAngularOperador:
+                text:       "%"
+                font_name:  "orbitron.ttf"
+                font_size:  "24sp"
+                tatil:      "tecla"
+                on_press:   root.apertar("%")
+            BotaoAngularOperador:
+                text:       "÷"
+                font_name:  "orbitron.ttf"
+                font_size:  "30sp"
+                tatil:      "tecla"
+                on_press:   root.apertar("/")
+            BotaoAngular:
+                text:       "7"
+                font_name:  "orbitron.ttf"
+                font_size:  "28sp"
+                tatil:      "tecla"
+                on_press:   root.apertar("7")
+            BotaoAngular:
+                text:       "8"
+                font_name:  "orbitron.ttf"
+                font_size:  "28sp"
+                tatil:      "tecla"
+                on_press:   root.apertar("8")
+            BotaoAngular:
+                text:       "9"
+                font_name:  "orbitron.ttf"
+                font_size:  "28sp"
+                tatil:      "tecla"
+                on_press:   root.apertar("9")
+            BotaoAngularOperador:
+                text:       "×"
+                font_name:  "orbitron.ttf"
+                font_size:  "30sp"
+                tatil:      "tecla"
+                on_press:   root.apertar("*")
+            BotaoAngular:
+                text:       "4"
+                font_name:  "orbitron.ttf"
+                font_size:  "28sp"
+                tatil:      "tecla"
+                on_press:   root.apertar("4")
+            BotaoAngular:
+                text:       "5"
+                font_name:  "orbitron.ttf"
+                font_size:  "28sp"
+                tatil:      "tecla"
+                on_press:   root.apertar("5")
+            BotaoAngular:
+                text:       "6"
+                font_name:  "orbitron.ttf"
+                font_size:  "28sp"
+                tatil:      "tecla"
+                on_press:   root.apertar("6")
+            BotaoAngularOperador:
+                text:       "−"
+                font_name:  "orbitron.ttf"
+                font_size:  "30sp"
+                tatil:      "tecla"
+                on_press:   root.apertar("-")
+            BotaoAngular:
+                text:       "1"
+                font_name:  "orbitron.ttf"
+                font_size:  "28sp"
+                tatil:      "tecla"
+                on_press:   root.apertar("1")
+            BotaoAngular:
+                text:       "2"
+                font_name:  "orbitron.ttf"
+                font_size:  "28sp"
+                tatil:      "tecla"
+                on_press:   root.apertar("2")
+            BotaoAngular:
+                text:       "3"
+                font_name:  "orbitron.ttf"
+                font_size:  "28sp"
+                tatil:      "tecla"
+                on_press:   root.apertar("3")
+            BotaoAngularOperador:
+                text:       "+"
+                font_name:  "orbitron.ttf"
+                font_size:  "30sp"
+                tatil:      "tecla"
+                on_press:   root.apertar("+")
+            BotaoAngularAlerta:
+                text:       "DEL"
+                font_name:  "orbitron.ttf"
+                font_size:  "17sp"
+                tatil:      "tecla"
+                on_press:   root.del_segurar()
+                on_release: root.del_soltar()
+            BotaoAngular:
+                text:       "0"
+                font_name:  "orbitron.ttf"
+                font_size:  "28sp"
+                tatil:      "tecla"
+                on_press:   root.apertar("0")
+            BotaoAngular:
+                text:       ","
+                font_name:  "orbitron.ttf"
+                font_size:  "30sp"
+                tatil:      "tecla"
+                on_press:   root.apertar(".")
+            BotaoAngular:
+                text:       "="
+                font_name:  "orbitron.ttf"
+                font_size:  "30sp"
+                tatil:      "tecla"
+                cor_borda:    [0, 1, 0.55, 0.9]
+                cor_borda_kv: [0, 1, 0.55, 0.9]
+                cor_texto:    [0, 1, 0.55, 1]
+                on_press:   root.apertar("=")
         # Linha final
         BoxLayout:
             size_hint_y: None
-            height:      dp(56)
+            height:      dp(48)
             spacing:     dp(10)
             BotaoAngular:
                 text:        "<<  Voltar"
-                size_hint_x: 0.22
+                size_hint_x: 0.34
                 font_size:   "13sp"
                 on_release:  app.mudar_tela("menu")
-            BotaoAngularAlerta:
-                text:        "C"
-                size_hint_x: 0.18
-                font_size:   "17sp"
-                on_release:  root.limpar()
-            BotaoAngular:
-                text:        "="
-                size_hint_x: 0.60
-                font_name:   "orbitron.ttf"
-                font_size:   "22sp"
-                cor_borda:   [0, 1, 0.55, 0.9]
-                cor_borda_kv: [0, 1, 0.55, 0.9]
-                cor_texto:   [0, 1, 0.55, 1]
-                on_release:  root.calcular()
+            Widget:
 
 # ════════════════════════════════════════════════════════════
 #  TELA GANHOS

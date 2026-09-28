@@ -13,7 +13,7 @@ from kivy.lang import Builder
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
 from kivy.uix.floatlayout import FloatLayout
 from kivy.core.window import Window
-from kivy.properties import NumericProperty, ListProperty, StringProperty
+from kivy.properties import NumericProperty, ListProperty, StringProperty, BooleanProperty
 from kivy.metrics import dp
 from kivy.utils import platform
 from kivy.resources import resource_add_path, resource_find
@@ -111,6 +111,7 @@ class TraveteApp(App):
     memorias        = ListProperty([])
     periodos_ganhos = ListProperty([])
     versao          = StringProperty("dev")
+    vibracao        = BooleanProperty(True)     # resposta tatil (tatil.py)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -151,6 +152,14 @@ class TraveteApp(App):
     def mudar_tela(self, destino):
         transicao_tela(self, destino)
 
+    def alternar_vibracao(self):
+        """Botao do menu: liga/desliga a resposta tatil (fica salvo)."""
+        self.vibracao = not self.vibracao
+        self.salvar_dados()
+        if self.vibracao:
+            import tatil
+            tatil.confirmar()
+
     def recalcular_totais(self):
         total_g = 0; total_x = 0
         por_dia = {}                       # dois turnos no mesmo dia somam
@@ -187,6 +196,7 @@ class TraveteApp(App):
             "ultima_data":     self.ultima_data,
             "periodos_ganhos": list(self.periodos_ganhos),
             "config_ganhos":   dict(self.config_ganhos),
+            "config_app":      {"vibracao": bool(self.vibracao)},
         }
         data_dir = self.user_data_dir
         if sincrono:
@@ -246,6 +256,7 @@ class TraveteApp(App):
                 self.ultima_data     = d.get("ultima_data",      "")
                 self.periodos_ganhos = d.get("periodos_ganhos",  [])
                 self.config_ganhos.update(d.get("config_ganhos", {}))
+                self.vibracao        = bool(d.get("config_app", {}).get("vibracao", True))
                 self.recalcular_totais()
                 return
             except Exception as e:
