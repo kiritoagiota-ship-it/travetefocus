@@ -2231,12 +2231,21 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
 
             def _gira():
                 kk.rotacao = 0
-                seq = K.sequencia([(3, abaixa, 'segura'), (2, g2, 'linear'), (2, g3, 'linear'),
-                                   (2, g1, 'linear'), (2, g2, 'linear'), (2, g3, 'linear'),
-                                   (6, g1, 'mola'), (1, g1)])
+                # giro de verdade: 2 voltas de 8 quadros cada. De lado ele
+                # "achata" (escala |cos|) e vira no meio de cada meia-volta -
+                # o sobretudo e o cabelo seguem pela fisica
+                seq = K.sequencia([(3, abaixa, 'segura'), (16, g1, 'segura'), (6, g1, 'mola'), (1, g1)])
+                lado0 = kk.espelhar
 
                 def _q(q):
-                    if q in (3, 9):                    # uma volta de luz a cada giro
+                    if 3 <= q < 19:
+                        cs = math.cos(2 * math.pi * (q - 3) / 8.0)
+                        kk.escala_x = max(0.2, abs(cs))
+                        kk.espelhar = lado0 if cs >= 0 else (not lado0)
+                    elif q == 19:
+                        kk.escala_x = 1.0
+                        kk.espelhar = lado0
+                    if q in (3, 11):                   # uma volta de luz a cada giro
                         ax, ay = kk.ancora()
                         for cor, rr, d in ((CIANO, 1.0, 0), (AZUL, 0.82, 180)):
                             camada.add_widget(CorteMeiaLua(
@@ -3477,7 +3486,7 @@ class _Mini:
         self.cam = Widget(size_hint=(None, None), size=(W, H), pos=(0, 0))
         Window.add_widget(self.cam)
         alt_boneco = max(dp(62), min(self.rh * 1.7, dp(96), H * 0.15))
-        self.ps = max(K.R, K.R * int(math.ceil(alt_boneco * 1.12 / 31.0 / K.R - 0.15)))
+        self.ps = max(K.R, int(round(3 * int(math.ceil(alt_boneco * 1.12 / 31.0 / 3 - 0.15)) * K.TAMANHO)))
         self.te = self.ps / float(K.R)
         _PX[0] = self.te
         self.k = K.KiritoPixel(ps=self.ps)
@@ -4192,11 +4201,19 @@ def kirito_meta(alvo):
                                    tam=s.te * 3, gravidade=dp(420))
 
         def _gira():
-            seq = K.sequencia([(2, g1, 'segura'), (2, P['giro_2'], 'linear'), (2, P['giro_3'], 'linear'),
-                               (2, g1, 'linear'), (5, g1, 'mola'), (4, vit, 'out'),
+            # uma volta de verdade em 8 quadros (achata de lado e vira no meio)
+            seq = K.sequencia([(2, g1, 'segura'), (8, g1, 'segura'), (5, g1, 'mola'), (4, vit, 'out'),
                                (12, _com(vit, emote='brilho'), 'segura'), (1, vit)])
+            lado0 = k.espelhar
 
             def _q(q):
+                if 2 <= q < 10:
+                    cs = math.cos(2 * math.pi * (q - 2) / 8.0)
+                    k.escala_x = max(0.2, abs(cs))
+                    k.espelhar = lado0 if cs >= 0 else (not lado0)
+                elif q == 10:
+                    k.escala_x = 1.0
+                    k.espelhar = lado0
                 if q == 2:
                     _som('giro')
                     ax, ay = k.ancora()
