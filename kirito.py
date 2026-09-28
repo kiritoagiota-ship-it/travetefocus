@@ -1535,6 +1535,7 @@ def _cauda(px, x0, y0, ang0, comp, curva, larg, ponta, cor, chao, barra=('Z', '2
             continue                              # o pano nao atravessa o chao
         if u <= ponta(v / W if W else 0.0):
             dentro[q] = (u, v, W)
+    fogo = getattr(cor, 'fogo', None)
     ang = math.radians(ang0 + curva(1.0))         # para onde a ponta aponta
     sx = 1 if math.cos(ang) > 0.38 else (-1 if math.cos(ang) < -0.38 else 0)
     sy = 1 if math.sin(ang) > 0.38 else (-1 if math.sin(ang) < -0.38 else 0)
@@ -1549,6 +1550,8 @@ def _cauda(px, x0, y0, ang0, comp, curva, larg, ponta, cor, chao, barra=('Z', '2
             ch = barra[0]
         else:
             ch = cor(u, v, W)
+        if fogo is not None:
+            ch = fogo(ch, u, ponta(v / W if W else 0.0), q)
         if ch:
             px[q] = ch
 
@@ -1901,7 +1904,61 @@ def _no_tufo(c, r):
     return r < 40 and c < 38 - (r - 4) * 0.62
 
 
-def _cabeca5(px, olhos, cab_x, cab_ty, cb, sobe, fase):
+# mechas do cabelao do Mugetsu: (coluna, linha da raiz no mapa da cabeca,
+# angulo na raiz, quanto curva para baixo, comprimento, meia-largura, fase).
+# Nascem da nuca indo para tras e caem numa curva (as de tras primeiro).
+_CABELAO = ((20, 40, -150.0, 42.0, 96.0, 5.5, 0.00), (24, 32, -158.0, 50.0, 124.0, 6.5, 0.21),
+            (30, 24, -165.0, 58.0, 132.0, 7.0, 0.43), (34, 14, -172.0, 66.0, 118.0, 6.5, 0.61),
+            (38, 8, -178.0, 70.0, 104.0, 6.0, 0.80), (18, 46, -140.0, 30.0, 78.0, 5.0, 0.12),
+            (28, 18, -168.0, 62.0, 138.0, 6.0, 0.35), (36, 12, -175.0, 72.0, 92.0, 4.5, 0.55),
+            (26, 28, -155.0, 46.0, 110.0, 5.5, 0.90))
+
+
+def _cabelao(px, cb, sobe, fase, cresce):
+    """Cabelao do Mugetsu (coordenadas do mapa da cabeca, y para cima):
+    mechas longas de comprimentos diferentes que saem da nuca para tras e
+    caem numa curva, engordam no meio e afinam ate a ponta. Brilho so perto
+    da raiz; as pontas se desfazem em fumaca e brasa roxa. O vento deita
+    para tras, o reiatsu levanta e uma onda desce da raiz para a ponta."""
+    cabelo = {}
+    corre = max(0.0, min(2.5, cb)) * 0.3
+    amp = 5.0 + 3.0 * min(2.0, abs(cb)) + 6.0 * sobe
+    f6 = int(round(fase * 6)) % 6
+    cresce = max(0.06, min(1.0, cresce))
+    for i, (col, lin, ang, curv, comp, larg, fz) in enumerate(_CABELAO):
+        cp = comp * cresce
+        if cp < 6:
+            continue
+        cai = curv * (1.0 - min(0.8, corre)) * (1.0 - 0.6 * sobe)
+
+        def curva(u, cai=cai, fz=fz):
+            return cai * u ** 1.4 + amp * u * _onda(fase * 1.2, u, 1.1, fz)
+
+        def larg_f(u, w=larg):
+            gorda = 1.0 + 0.35 * math.sin(math.pi * min(1.0, u * 1.6))      # engorda no meio
+            return (w * gorda * (1.0 - u) ** 0.75, w * gorda * (1.0 - u) ** 0.9)
+
+        f = _fita(col, -lin, ang + sobe * 25.0, cp, curva, larg_f, passo=0.6)
+        fim = 0.84
+        for q, (u, v, W) in f.items():
+            vf = v / W if W else 0.5
+            if u > fim:                                    # ponta em fumaca e brasa
+                if (q[0] * 3 + q[1] + f6) % 3:
+                    continue
+                ch = 'o' if ((q[0] * 7 + q[1] * 3 + f6) % 9 == 0) else ('&' if u > fim + 0.06 else 'J')
+            elif vf > 0.66:
+                ch = 'J'
+            elif vf < 0.3 and u < 0.42:
+                ch = 'h' if (vf < 0.14 and 0.08 < u < 0.26) else 'I'
+            else:
+                ch = 'H'
+            if q in cabelo and cabelo[q] in 'JHIh' and ch in 'JHIh' and                     any((q[0] + a, q[1] + b) not in f for (a, b) in _VIZ4):
+                ch = 'J'                                   # linha que separa as mechas
+            cabelo[q] = ch
+    px.update(cabelo)
+
+
+def _cabeca5(px, olhos, cab_x, cab_ty, cb, sobe, fase, cresce=None):
     """Cabeca da referencia com o TUFO vivo: cada texel do tufo anda um
     pouco (quanto mais longe da raiz, mais): o vento deita o tufo para tras,
     o reiatsu levanta, e uma onda passa da raiz para as pontas. O desenho
@@ -1909,11 +1966,15 @@ def _cabeca5(px, olhos, cab_x, cab_ty, cb, sobe, fase):
     q4 = lambda v: round(v * 4) / 4.0
     cb, sobe = q4(max(-1.0, min(3.0, cb))), q4(sobe)
     olhos = olhos if olhos in _YM.CABECAS else 'a'
-    _parte(px, ('cab5', olhos, cb, sobe, round(fase, 3)), cab_x, cab_ty,
-           lambda d: _cabeca5_desenho(d, olhos, cb, sobe, fase))
+    cr = None if cresce is None else round(cresce, 2)
+    _parte(px, ('cab5', olhos, cb, sobe, round(fase, 3), cr), cab_x, cab_ty,
+           lambda d: _cabeca5_desenho(d, olhos, cb, sobe, fase, cr))
 
 
-def _cabeca5_desenho(d, olhos, cb, sobe, fase):
+def _cabeca5_desenho(d, olhos, cb, sobe, fase, cresce=None):
+    if cresce is not None:
+        _cabelao(d, cb, sobe, fase, cresce)             # o cabelao fica atras da cabeca
+    sem_tufo = cresce is not None and cresce >= 0.3
     mapa = _YM.CABECAS[olhos]
     rx, ry = _RAIZ_TUFO
     corre = max(0.0, min(2.5, cb))
@@ -1927,6 +1988,8 @@ def _cabeca5_desenho(d, olhos, cb, sobe, fase):
             if not _no_tufo(c, r):
                 resto[(c, -r)] = ch
                 continue
+            if sem_tufo:
+                continue                                # o tufo virou o cabelao
             dist = math.hypot(c - rx, r - ry)
             w = max(0.0, min(1.0, (dist - 3.0) / 30.0)) ** 1.2
             dxx = -corre * 3.2 * w - sobe * 1.2 * w
@@ -2105,10 +2168,13 @@ def _braco5_desenho(meu, sx, sy, hx, hy, frente, luva, faixas, fase):
         return couro(j, t, la)
 
     def antebraco(j, t):
-        if faixas and t < 0.8:                     # faixas enroladas (forma Mugetsu)
-            if (int(t * lb) + j) % 5 == 0:
-                return 'W'
-            return 'g' if j >= 2 else 'u'
+        if faixas and t < 0.84:                    # faixas enroladas na diagonal (Mugetsu)
+            d = (int(t * lb) + j) % 6
+            if d == 0:
+                return '&'                          # vao entre as voltas
+            if d == 1:
+                return 'o' if j >= 1 else 'd'       # beirada acesa de cada volta
+            return 'd' if j >= -1 else '&'
         if luva and t > 0.66:
             if t < 0.74:
                 return 'G' if j >= 1 else 'K'      # punho da luva
@@ -2281,22 +2347,41 @@ def _bainha_costas5(px, X, Y):
     reta(122, 2.4, -6.0, 6.0, guarda)
 
 
-def _casaco5(px, cx, top, chao, capa, lift, fase, saia, parte):
+def _casaco5(px, cx, top, chao, capa, lift, fase, saia, parte, mug=False):
     """Sobretudo da referencia (na grade fina), guardado pronto."""
     q4 = lambda v: round(v * 4) / 4.0
     capa, lift, saia = q4(capa), q4(lift), q4(saia)
-    _parte(px, ('casaco5', parte, capa, lift, round(fase, 3), saia, chao - top), cx, top,
-           lambda d: _casaco5_desenho(d, 0, 0, chao - top, capa, lift, fase, saia, parte))
+    _parte(px, ('casaco5', parte, capa, lift, round(fase, 3), saia, chao - top, mug), cx, top,
+           lambda d: _casaco5_desenho(d, 0, 0, chao - top, capa, lift, fase, saia, parte, mug))
 
 
-def _casaco5_desenho(px, cx, top, chao, capa, lift, fase, saia, parte):
+def _casaco5_desenho(px, cx, top, chao, capa, lift, fase, saia, parte, mug=False):
     """Aba da frente na coxa (borda clara e friso azul), e atras duas
     caudas longas que abrem: a de fora mostra o FORRO AZUL na borda de tras
     e a barra e rasgada em pontas. A ponta chega depois da raiz."""
     vento = max(-1.0, min(2.2, capa))
     ergue = max(-0.6, min(2.6, lift))
     amp = 5.0 + 4.0 * min(3.0, abs(capa)) + 2.5 * abs(ergue)
-    estica = 1.0 + 0.2 * max(0.0, vento) + 0.1 * max(0.0, ergue)
+    estica = (1.0 + 0.2 * max(0.0, vento) + 0.1 * max(0.0, ergue)) * (1.3 if mug else 1.0)
+    f6 = int(round(fase * 6)) % 6
+
+    def rasga(vf, base):
+        """Barra: no Mugetsu, rasgada em pontas longas e desiguais."""
+        if not mug:
+            return base
+        return base - 0.05 - 0.13 * abs(math.sin(vf * 11.0 + 0.7)) - 0.06 * abs(math.sin(vf * 23.0))
+
+    def em_chamas(ch, u, fim_u, q):
+        """As pontas do sobretudo do Mugetsu viram fogo roxo."""
+        if not mug or u < fim_u - 0.12:
+            return ch
+        k2 = (fim_u - u) / 0.12                        # 1 longe da ponta .. 0 na ponta
+        h = (q[0] * 5 + q[1] * 3 + f6 * 2) % 7
+        if k2 < 0.35:
+            return 'L' if h < 2 else ('V' if h < 5 else None)
+        if k2 < 0.7:
+            return 'V' if h < 3 else 'o'
+        return 'o' if h < 3 else ch
 
     if parte == 'frente':
         def curva(u):
@@ -2313,9 +2398,10 @@ def _casaco5_desenho(px, cx, top, chao, capa, lift, fase, saia, parte):
             if u > 0.2 and abs(v - W * 0.55 - 0.8 * _onda(fase, u, 0.8, 0.2) * u + 1) < 0.6:
                 return 'A'
             return 'C'
-        _cauda(px, cx + 15.0, top, -92.0, 30.0, curva,
+        cor.fogo = em_chamas if mug else None
+        _cauda(px, cx + 15.0, top, -92.0, 30.0 * (1.5 if mug else 1.0), curva,
                lambda u: (6.5 + 1.0 * u, 5.5 + 1.0 * u * saia),
-               lambda vf: 1.0 - 0.05 * vf, cor, chao, barra=('a', '2'))
+               lambda vf: rasga(vf, 1.0 - 0.05 * vf), cor, chao, barra=('a', '2'))
         return
 
     # ── cauda de dentro: quase toda na sombra, forro azul no vao
@@ -2331,9 +2417,10 @@ def _casaco5_desenho(px, cx, top, chao, capa, lift, fase, saia, parte):
         if v > W - 1.5:
             return '2'
         return 'C' if int(v + u * 9) % 6 else '2'
+    cor_d.fogo = em_chamas if mug else None
     _cauda(px, cx - 2.0, top, -92.0, 56.0 * estica, curva_d,
            lambda u: (6.0 + 4.0 * u, 6.0 + 2.0 * u),
-           lambda vf: 1.0 - 0.08 * (1.0 - vf) - 0.05 * abs(math.sin(vf * 7.0)),
+           lambda vf: rasga(vf, 1.0 - 0.08 * (1.0 - vf) - 0.05 * abs(math.sin(vf * 7.0))),
            cor_d, chao, barra=('a', 'q'))
 
     # ── cauda de fora (a de tras): a maior, abre para tras e voa mais; o
@@ -2359,31 +2446,33 @@ def _casaco5_desenho(px, cx, top, chao, capa, lift, fase, saia, parte):
             if v >= dob:
                 return 'C' if int(v + u * 11) % 7 else '2'
         return 'C'
+    cor_f.fogo = em_chamas if mug else None
     _cauda(px, cx - 10.0, top, -100.0, 64.0 * estica, curva_f,
-           lambda u: (7.0 + 11.0 * u, 7.0 + 3.0 * u),
-           lambda vf: 1.0 - 0.1 * vf - 0.07 * abs(math.sin(vf * 9.4)),
+           lambda u: (7.0 + (14.0 if mug else 11.0) * u, 7.0 + 3.0 * u),
+           lambda vf: rasga(vf, 1.0 - 0.1 * vf - 0.07 * abs(math.sin(vf * 9.4))),
            cor_f, chao, barra=('l', 'q'))
 
 
 def _espetos5(px, cx, ty, cb, sobe, fase):
-    """Com o reiatsu, mechas do topo se arrepiam (grade fina)."""
+    """Com o reiatsu, mechas finas do topo se arrepiam, curvando para tras."""
     cabelo = {}
-    for i, (col, ang, tam) in enumerate(((30, 118.0, 1.0), (40, 104.0, 1.25), (50, 92.0, 1.1), (58, 80.0, 0.8))):
+    for i, (col, ang, tam) in enumerate(((24, 128.0, 0.9), (31, 116.0, 1.15), (38, 104.0, 1.3),
+                                          (45, 94.0, 1.2), (52, 86.0, 1.0), (58, 76.0, 0.8))):
         cresce = sobe * (0.75 + 0.25 * math.sin(2 * math.pi * (fase * 1.5 + i * 0.27)))
-        comp = (6.0 + 15.0 * cresce) * tam
+        comp = (5.0 + 17.0 * cresce) * tam
         if comp < 7.0:
             continue
-        a0 = ang + 18.0 * min(1.0, max(0.0, cb) * 0.3) + 8.0 * math.sin(2 * math.pi * (fase + i * 0.31))
+        a0 = ang + 16.0 * min(1.0, max(0.0, cb) * 0.3) + 6.0 * math.sin(2 * math.pi * (fase + i * 0.31))
 
         def curva(u, i=i):
-            return 14.0 * u * u + 6.0 * u * _onda(fase * 1.4, u, 0.7, i * 0.2)
+            return 26.0 * u * u + 5.0 * u * _onda(fase * 1.4, u, 0.7, i * 0.2)
         f = _fita(cx + col, ty - 7, a0, comp, curva,
-                  lambda u: (5.0 * (1.0 - u) ** 1.1, 4.0 * (1.0 - u) ** 0.9))
+                  lambda u: (2.8 * (1.0 - u) ** 1.2, 2.2 * (1.0 - u) ** 0.9))
         for q, (u, v, W) in f.items():
             vf = v / W if W else 0.5
-            if vf > 0.7 or u > 0.85:
+            if vf > 0.62 or u > 0.8:
                 ch = 'J'
-            elif vf < 0.32 and 0.2 < u < 0.7:
+            elif vf < 0.35 and 0.15 < u < 0.6:
                 ch = 'I'
             else:
                 ch = 'H'
@@ -2392,13 +2481,19 @@ def _espetos5(px, cx, ty, cb, sobe, fase):
         if q not in px:
             px[q] = ch
 
+def _sombra_mugetsu(px):
+    """A roupa escurece e as linhas ciano viram roxas (o rosto fica claro)."""
+    for q, ch in list(px.items()):
+        if ch in _SOMBRA:
+            px[q] = _SOMBRA[ch]
+
 
 def _cabeca_no_corpo(p):
     """Quando um braco passa por cima da cabeca, ela vai junto no corpo."""
     m1, m2 = p['m1'], p['m2']
     acima2 = m2 is not None and m2[1] > 10
     frente_erguido = m1 is not None and m1[1] > 4 and p.get('frente1')
-    return bool(acima2 or frente_erguido or p.get('mugetsu') or p.get('emote'))
+    return bool(acima2 or frente_erguido or p.get('emote'))
 
 
 def ancoras(p):
@@ -2446,25 +2541,28 @@ def montar(p, rapido=False, camada=None):
 
     chao = _PES * R
     topo_casaco = hy + 6
+    cresce = round(p.get('cresce', 1.0) or 0.0, 2) if mugetsu else None
     if camada == 'cauda':                     # sem cortar no chao (o widget corta)
-        _casaco5(px, 0, 0, -100000, p['capa'], p['lift'], fase, saia, 'tras')
-        return px if rapido else _contorno(px, False, None, None)
+        _casaco5(px, 0, 0, -100000, p['capa'], p['lift'], fase, saia, 'tras', mug=mugetsu)
+        if rapido:
+            return px
+        if mugetsu:
+            _sombra_mugetsu(px)
+        return _contorno(px, mugetsu, None, None)
     if camada == 'cabeca':
-        _cabeca5(px, p['olhos'], 0, 0, cb, sobe, fase)
+        _cabeca5(px, p['olhos'], 0, 0, cb, sobe, fase, cresce)
         if sobe > 0.3:
             _espetos5(px, 0, 0, cb, sobe, fase)
-        return px if rapido else _contorno(px, False, None, -47)
+        if rapido:
+            return px
+        if mugetsu:
+            _sombra_mugetsu(px)
+        return _contorno(px, mugetsu, None, -47)
     cab_junto = camada is None or _cabeca_no_corpo(p)
     if camada == 'corpo':                    # a aba da frente fica parada nesta camada
         p = dict(p, capa=0.0, lift=0.0)
         fase = 0.0
 
-    if mugetsu:
-        cb_q, sobe_q = round(cb * 4) / 4.0, round(sobe * 4) / 4.0
-        cr = round(p.get('cresce', 1.0), 2)
-        alto = cab_ty - R * (_PES + 4)
-        _parte(px, ('cab5m', cb_q, sobe_q, fase, cr, alto), cab_x + 14, cab_ty - 6,
-               lambda d: _cabelo_longo2(d, 0, 0, cb_q, sobe_q, fase, -alto, cr))
 
     if p['a2'] is None and not p.get('fusao'):
         _bainha_costas5(px, cx - 15, hy + 36)
@@ -2486,18 +2584,13 @@ def montar(p, rapido=False, camada=None):
     if ergue2 and not acima2:
         _braco_tras()
 
-    if mugetsu:
-        _casaco3(px, base + 1.5, hip_y - 1.2, p['capa'], p['lift'], fase, saia, 'tras', True)
-    elif camada is None:
-        _casaco5(px, cx, topo_casaco, chao, p['capa'], p['lift'], fase, saia, 'tras')
+    if camada is None:
+        _casaco5(px, cx, topo_casaco, chao, p['capa'], p['lift'], fase, saia, 'tras', mug=mugetsu)
     pernas = {}
     _pernas5(pernas, p, _X0 + 6.5, hip_y)
     _contorna(px, pernas, _PANO)                           # perna separada do sobretudo
     _bainha5(px, boca[0], boca[1])
-    if mugetsu:
-        _casaco3(px, base + 1.5, hip_y - 1.2, p['capa'], p['lift'], fase, saia, 'frente', True)
-    else:
-        _casaco5(px, cx, topo_casaco, chao, p['capa'], p['lift'], fase, saia, 'frente')
+    _casaco5(px, cx, topo_casaco, chao, p['capa'], p['lift'], fase, saia, 'frente', mug=mugetsu)
     # tronco (a parte de cima inclina junto com os ombros)
     qx, qy = _TOR_QUADRIL
     for r, linha in enumerate(_YM.TRONCO):
@@ -2507,6 +2600,17 @@ def montar(p, rapido=False, camada=None):
             if ch != '.':
                 px[(cx - qx + c + desl, y)] = ch
 
+    if mugetsu:                              # faixas cruzando o peito
+        for (xa, ya, xb, yb) in ((-12, 30, 13, 13), (-13, 21, 12, 5)):
+            n = max(abs(xb - xa), abs(yb - ya))
+            for i in range(n + 1):
+                x = cx + li + xa + (xb - xa) * i // n
+                y = hy + ya + (yb - ya) * i // n
+                for dd, ch in ((0, 'o'), (-1, 'd'), (-2, 'd'), (-3, '&')):
+                    q = (x, y + dd)
+                    if q in px:
+                        px[q] = ch
+
     m1 = p['m1']
     ergue = m1 is not None and m1[1] > 4 and not p.get('frente1')
 
@@ -2515,8 +2619,6 @@ def montar(p, rapido=False, camada=None):
             return
         h1 = mao(am1, m1)
         _braco5(px, o1[0], o1[1], h1[0], h1[1], frente=True, faixas=mugetsu, fase=fase)
-        if mugetsu:
-            _ombreira(px, o1[0], o1[1])
         if p['a1'] is not None:
             _espada2(px, h1[0], h1[1], p['a1'], int(p['c1']), p.get('tipo1', 1), p['s1'],
                      p.get('brilho'), fase)
@@ -2524,7 +2626,7 @@ def montar(p, rapido=False, camada=None):
     if ergue:
         _braco_frente()
     if cab_junto:
-        _cabeca5(px, p['olhos'], cab_x, cab_ty, cb, sobe, fase)
+        _cabeca5(px, p['olhos'], cab_x, cab_ty, cb, sobe, fase, cresce)
     if acima2:
         _braco_tras()
     if p['a1'] is None:
@@ -2546,9 +2648,7 @@ def montar(p, rapido=False, camada=None):
             if ch == 'Z':
                 px[q] = '9'
     if mugetsu:
-        for q, ch in list(px.items()):
-            if ch in _SOMBRA:
-                px[q] = _SOMBRA[ch]
+        _sombra_mugetsu(px)
     # no corpo sem as caudas, a borda de tras das pernas fica escura (as
     # caudas cobrem ali); o ciano so em cima do quadril
     return _contorno(px, mugetsu, (hy + 5) if camada == 'corpo' else None, None)
@@ -2827,10 +2927,12 @@ def chave_camadas(q):
     q4 = lambda v: round((v or 0.0) * 4) / 4.0
     corpo = tuple(kv for kv in _chave(q) if kv[0] not in _FISICA)
     cx, topo, cab_x, cab_ty = ancoras(q)
+    mug = bool(q.get('mugetsu'))
     cauda = ('cauda', q4(q['capa']), q4(q['lift']), round(q.get('fase', 0.0) or 0.0, 3),
-             q4(q.get('saia', 1.0)))
+             q4(q.get('saia', 1.0)), mug)
     cabeca = None if _cabeca_no_corpo(q) else (
-        'cabeca', q['olhos'], q4(q['cabelo']), q4(q.get('sobe', 0.0)), round(q.get('fase', 0.0) or 0.0, 3))
+        'cabeca', q['olhos'], q4(q['cabelo']), q4(q.get('sobe', 0.0)), round(q.get('fase', 0.0) or 0.0, 3),
+        mug, round(q.get('cresce', 1.0) or 0.0, 2) if mug else None)
     return corpo, cauda, cabeca
 
 
@@ -2981,6 +3083,36 @@ def salvar_gravados():
         print(f"[kirito] gravados {len(_GRAVADOS)} pedidos (total {len(velho)})")
     except Exception as e:
         print(f"[kirito] gravar: {e}")
+
+
+_TEX_MAPA = {}
+
+
+def textura_mapa(linhas):
+    """Texture (pixel duro) de um mapa de caracteres da paleta (linha 0 em
+    cima). Guardada."""
+    chave = id(linhas)
+    tex = _TEX_MAPA.get(chave)
+    if tex is not None:
+        return tex
+    h, w = len(linhas), len(linhas[0])
+    idx = bytearray(w * h)
+    for r, l in enumerate(linhas):
+        base = (h - 1 - r) * w
+        for cc, ch in enumerate(l):
+            if ch != '.':
+                idx[base + cc] = _COD[ch]
+    buf = bytearray(w * h * 4)
+    for i in range(4):
+        buf[i::4] = idx.translate(_TAB[i])
+    dados = bytes(buf)
+    tex = Texture.create(size=(w, h), colorfmt='rgba')
+    tex.mag_filter = 'nearest'
+    tex.min_filter = 'nearest'
+    tex.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte')
+    tex.add_reload_observer(lambda t, d=dados: t.blit_buffer(d, colorfmt='rgba', bufferfmt='ubyte'))
+    _TEX_MAPA[chave] = tex
+    return tex
 
 
 def _bytes(p):
@@ -3176,6 +3308,14 @@ class KiritoPixel(Widget):
             self._rect_clarao = Rectangle(pos=(0, 0), size=(0, 0))
             self._rect_clarao_cab = Rectangle(pos=(0, 0), size=(0, 0))
             PopMatrix()
+        # rastro de luz no olho: quando ele se mexe rapido, o olho risca o ar
+        self.rastro_olho = True
+        self._olho_hist = []
+        self._lote_olho = LotePixels(self.canvas.after, (
+            ('rb', (0.20, 0.70, 1.00, 0.16)), ('r2', (0.10, 0.50, 0.95, 0.6)),
+            ('r1', (0.33, 0.85, 1.00, 0.9)), ('r0', (0.85, 1.00, 1.00, 1.0)),
+            ('mb', (0.62, 0.30, 1.00, 0.18)), ('m2', (0.40, 0.18, 0.75, 0.6)),
+            ('m1', (0.70, 0.40, 1.00, 0.9)), ('m0', (0.95, 0.88, 1.00, 1.0))))
         self.bind(pos=self._mover, x=self._mover, y=self._mover,
                   rotacao=self._mover, escala_y=self._mover, escala_x=self._mover,
                   espelhar=self._virou,
@@ -3279,11 +3419,7 @@ class KiritoPixel(Widget):
         q['hy'] = int(round(max(-1.0, min(1.0, self._m_hy.x))))
         # laminas: seguem a pose com um pouquinho de atraso/mola (max 8 graus)
         # (as laminas nao atrasam: o corpo e desenhado uma vez por pose)
-        if b.get('mugetsu'):
-            # forma Mugetsu (ainda num desenho so): menos estados, para os
-            # quadros virem prontos do arquivo
-            q['hx'] = q['hy'] = 0
-            q['fase'] = (int(self._fase * 3) % 3) / 3.0
+
         # luz: aura da lamina ou clarao de impacto, em 3 degraus
         luz = max(self.luz, self._luz_imp)
         q['luz'] = 1.0 if luz >= 0.75 else (0.5 if luz >= 0.3 else 0.0)
@@ -3310,22 +3446,7 @@ class KiritoPixel(Widget):
     def _desenhar(self, forcar=False):
         try:
             self._pose = self._composta()
-            if self._pose.get('mugetsu'):
-                # forma Mugetsu: ainda num desenho so (sera refeita)
-                chave = (_chave(self._pose), self.espelhar)
-                if chave == self._ult_chave and not forcar:
-                    return
-                self._ult_chave = chave
-                for r in (self._rect_cauda, self._rect_cab, self._rect_clarao_cauda, self._rect_clarao_cab):
-                    r.size = (0, 0)
-                tex, rec = _textura(self._pose)
-                _no_retangulo(self._rect, tex, rec, self.ps, self.espelhar)
-                if self.clarao > 0:
-                    tex, rec = _textura(self._pose, silhueta=True)
-                    _no_retangulo(self._rect_clarao, tex, rec, self.ps, self.espelhar)
-                else:
-                    self._rect_clarao.size = (0, 0)
-            else:
+            if True:
                 camadas = self._camadas_da_pose(self._pose)
                 chave = (tuple((c[3], c[4]) for c in camadas), self.espelhar, self.clarao > 0)
                 if chave == self._ult_chave and not forcar:
@@ -3377,8 +3498,62 @@ class KiritoPixel(Widget):
             self._fase = (self._fase + dt * (1.6 + min(3.0, vel / 120.0))) % 1.0
             self._camadas(dt, frente, cima)
             self._desenhar()
+            self._rastro_do_olho()
         except Exception as e:
             print(f"[kirito] fisica: {e}")
+
+    def _ponto_mundo(self, lx, ly):
+        """Ponto local do sprite (px) -> coords do pai, com a escala em volta
+        da ancora e a rotacao em volta do pivo, como no canvas."""
+        ax, ay = self.ancora_local()
+        lx = ax + (lx - ax) * self.escala_x
+        ly = ay + (ly - ay) * self.escala_y
+        ox, oy = self.pivo if self.pivo is not None else (ax, ay)
+        a = math.radians(self.rotacao)
+        ca, sa = math.cos(a), math.sin(a)
+        return (self.x + ox + (lx - ox) * ca - (ly - oy) * sa,
+                self.y + oy + (lx - ox) * sa + (ly - oy) * ca)
+
+    def _rastro_do_olho(self):
+        """Risco de luz ciano deixado pelo olho quando ele se mexe rapido
+        (na forma Mugetsu quem faz o risco e o fogo, em roxo)."""
+        try:
+            p = self._pose
+            if not self.rastro_olho or self.parent is None:
+                if self._olho_hist:
+                    self._olho_hist = []
+                    self._lote_olho.desenhar({})
+                return
+            te = self.ps / float(R)
+            ex, ey = olhos_texel(p)[0]
+            if self.espelhar:
+                ex = TW - 1 - ex
+            self._olho_hist.append(self._ponto_mundo((ex + 0.5) * te, (ey + 0.5) * te))
+            del self._olho_hist[:-7]
+            h = self._olho_hist
+            pontos = {}
+            for i in range(len(h) - 1, 0, -1):
+                idade = len(h) - 1 - i
+                cor = 'r0' if idade < 1 else ('r1' if idade < 3 else 'r2')
+                lado = te * (2.0 if idade < 1 else (1.5 if idade < 3 else 1.0))
+                (x0, y0), (x1, y1) = h[i], h[i - 1]
+                d = math.hypot(x1 - x0, y1 - y0) / te
+                if d < 1.4:
+                    continue
+                n = int(d) + 1
+                for j in range(n):
+                    u = j / float(n)
+                    x = x0 + (x1 - x0) * u
+                    y = y0 + (y1 - y0) * u
+                    gx, gy = math.floor(x / te) * te, math.floor(y / te) * te
+                    cc = ('m' + cor[1]) if p.get('mugetsu') else cor
+                    pontos.setdefault(cc, []).append((gx - (lado - te) / 2, gy - (lado - te) / 2, lado))
+                    if idade < 3:                        # brilho em volta do risco
+                        pontos.setdefault('mb' if p.get('mugetsu') else 'rb', []).append(
+                            (gx - 1.5 * te, gy - 1.5 * te, 4 * te))
+            self._lote_olho.desenhar(pontos)
+        except Exception as e:
+            print(f"[kirito] rastro do olho: {e}")
 
     def _camadas(self, dt, frente, cima):
         """Movimento secundario: o que o tronco e as laminas fazem na pose
@@ -3569,10 +3744,7 @@ class KiritoPixel(Widget):
                 Translate(self.x, self.y)
                 Rotate(angle=self.rotacao, origin=orig)
                 cor_sil = Color(cor[0], cor[1], cor[2], alfa)
-                if self._pose.get('mugetsu'):
-                    tex, rec = _textura(self._pose, silhueta=True, xadrez=True)
-                    _no_retangulo(Rectangle(), tex, rec, self.ps, self.espelhar)
-                else:
+                if True:
                     for _r, _s, qual, ch, (ox, oy) in self._camadas_da_pose(self._pose):
                         tex, rec = textura_camada(self._pose, qual, ch, silhueta=True, xadrez=True)
                         _no_retangulo(Rectangle(), tex, (rec[0] + ox, rec[1] + oy, rec[2], rec[3]),
@@ -4106,6 +4278,233 @@ class LotePixels:
             mesh.vertices = vs
             mesh.indices = ids
             c.a = a0 * alfa
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  FITA DE FOGO DO MUGETSU (como o vapor do Luffy no Gear 4)
+#  Uma fita grossa de fogo roxo com azul da voltas em volta dele: um laco
+#  em volta dos ombros e da cabeca e uma espiral que sobe dos pes ate o
+#  peito. O que passa por tras fica atras dele, o que passa na frente fica
+#  por cima. Miolo claro, corpo roxo (trechos azuis correndo pela fita),
+#  borda escura, linguas de fogo subindo e brasas. 12 quadros prontos de
+#  pixel art (gerados aos poucos, fora da hora da cena).
+# ═══════════════════════════════════════════════════════════════════
+_N_FITA = 12
+_FITA_X0, _FITA_Y0, _FITA_W, _FITA_H = -70, -80, 140, 175     # caixa (texels, a partir do quadril)
+_FITA_QUADROS = {}                                            # (quadro, 'tras'/'frente') -> idx bytes
+
+
+def _caminhos_fita():
+    """[(pontos [(x, y, prof, s)], largura base)] em texels a partir do
+    quadril. prof > 0 = na frente dele."""
+    out = []
+    # laco em volta dos ombros e da cabeca (inclinado)
+    pts = []
+    n = 220
+    for i in range(n + 1):
+        t = 2 * math.pi * i / n
+        x = 40.0 * math.cos(t)
+        y = 58.0 + 14.0 * math.sin(t) + 6.0 * math.cos(t)
+        pts.append((x, y, math.sin(t), i * 1.15))
+    out.append((pts, 7.0))
+    # espiral que sobe dos pes ate o peito (uma volta e meia)
+    pts = []
+    n = 300
+    for i in range(n + 1):
+        u = i / float(n)
+        t = 2 * math.pi * 1.55 * u + 0.6
+        r = 30.0 + 6.0 * u
+        x = r * math.cos(t)
+        y = -70.0 + 115.0 * u + 9.0 * math.sin(t)
+        pts.append((x, y, math.sin(t), i * 1.1))
+    out.append((pts, 6.0))
+    return out
+
+
+def _quadro_fita(f):
+    """Um quadro da fita: {'tras': {(x,y): cor}, 'frente': {...}}"""
+    fase = f / float(_N_FITA)
+    camadas = {'tras': {}, 'frente': {}}
+    for (pts, larg) in _caminhos_fita():
+        for j in range(1, len(pts)):
+            x0, y0, p0, s0 = pts[j - 1]
+            x1, y1, p1, s1 = pts[j]
+            tx, ty = x1 - x0, y1 - y0
+            nrm = math.hypot(tx, ty) or 1.0
+            nx, ny = -ty / nrm, tx / nrm
+            s = s0
+            # largura que pulsa correndo pela fita
+            w = larg * (0.72 + 0.38 * math.sin(s * 0.08 - fase * 2 * math.pi * 2)
+                        + 0.2 * math.sin(s * 0.21 + fase * 2 * math.pi))
+            alvo = camadas['frente' if p0 >= 0 else 'tras']
+            azul = math.sin(s * 0.045 - fase * 2 * math.pi) > 0.45     # trechos azuis correndo
+            passos = int((w + 2.0) * 2.6) + 1
+            for k in range(passos + 1):
+                d = -(w + 2.0) + 2 * (w + 2.0) * k / passos
+                if abs(d) > w:                              # brilho em volta: pontilhado
+                    x = int(math.floor(x0 + nx * d + 0.5))
+                    y = int(math.floor(y0 + ny * d + 0.5))
+                    if (x + y + f) % 2 == 0 and (x, y) not in alvo:
+                        alvo[(x, y)] = '8'
+                    continue
+                x = int(math.floor(x0 + nx * d + 0.5))
+                y = int(math.floor(y0 + ny * d + 0.5))
+                a = abs(d) / max(0.5, w)
+                if a < 0.28:
+                    ch = '!' if (int(s) + f) % 5 == 0 else 'L'
+                elif a < 0.62:
+                    ch = 'f' if azul else 'V'
+                elif a < 0.86:
+                    ch = 'f' if (azul and a < 0.75) else 'o'
+                else:
+                    ch = '8'
+                q = (x, y)
+                if q not in alvo or a < 0.62:
+                    alvo[q] = ch
+            # lingua de fogo que sobe da borda de cima (de tempos em tempos)
+            if int(s) % 5 == 0 and s1 - s0 > 0:
+                alt = 3 + int(9 * (0.5 + 0.5 * math.sin(s * 0.7 + fase * 2 * math.pi * 3)))
+                bx = int(round(x0 + (nx if ny > 0 else -nx) * w))
+                by = int(round(y0 + abs(ny) * w))
+                tomba = math.sin(fase * 2 * math.pi + s)
+                for h in range(alt):
+                    uu = h / float(max(1, alt - 1))
+                    xx = bx + int(round(tomba * uu * 2))
+                    for dx in range(-1 if uu < 0.5 else 0, 1 if uu < 0.3 else 0 + 1):
+                        q = (xx + dx, by + h)
+                        if q not in alvo:
+                            alvo[q] = 'V' if uu < 0.4 else ('o' if uu < 0.8 else 'L')
+    # brasas subindo
+    rnd = random.Random(99)
+    for i in range(70):
+        bx = rnd.uniform(-46, 46)
+        by0 = rnd.uniform(-70, 60)
+        by = by0 + ((fase + rnd.random()) % 1.0) * 30
+        q = (int(bx), int(by))
+        (camadas['frente'] if rnd.random() < 0.5 else camadas['tras']).setdefault(q, 'L' if rnd.random() < 0.3 else 'o')
+    return camadas
+
+
+def _idx_fita(px):
+    idx = bytearray(_FITA_W * _FITA_H)
+    for (x, y), ch in px.items():
+        xx, yy = x - _FITA_X0, y - _FITA_Y0
+        if 0 <= xx < _FITA_W and 0 <= yy < _FITA_H:
+            idx[yy * _FITA_W + xx] = _COD[ch]
+    return bytes(idx)
+
+
+def preparar_fita(no_fim=None):
+    """Quadros da fita: do arquivo de quadros prontos (se houver) ou gerados
+    aos poucos (um por quadro de tela)."""
+    for f in range(_N_FITA):
+        for lado in ('tras', 'frente'):
+            if (f, lado) not in _FITA_QUADROS:
+                item = _ASSADO.get(repr(('fita', f, lado))) if _ASSADO and _assado_valido() else None
+                if item is not None:
+                    ini, tam = item[0], item[1]
+                    _FITA_QUADROS[(f, lado)] = _zlib.decompress(_ASSADO_DADOS[0][ini:ini + tam])
+    fila = [f for f in range(_N_FITA) if (f, 'tras') not in _FITA_QUADROS]
+
+    def _passo(dt):
+        try:
+            if not fila:
+                if no_fim:
+                    no_fim()
+                return False
+            f = fila.pop(0)
+            cam = _quadro_fita(f)
+            _FITA_QUADROS[(f, 'tras')] = _idx_fita(cam['tras'])
+            _FITA_QUADROS[(f, 'frente')] = _idx_fita(cam['frente'])
+        except Exception as e:
+            print(f"[kirito] fita: {e}")
+            return False
+    Clock.schedule_interval(_passo, 0)
+
+
+_TEX_FITA = {}
+
+
+def _textura_fita(f, lado):
+    k = (f, lado)
+    tex = _TEX_FITA.get(k)
+    if tex is not None:
+        return tex
+    idx = _FITA_QUADROS.get(k)
+    if idx is None:
+        return None
+    buf = bytearray(len(idx) * 4)
+    for i in range(4):
+        buf[i::4] = idx.translate(_TAB[i])
+    dados = bytes(buf)
+    tex = Texture.create(size=(_FITA_W, _FITA_H), colorfmt='rgba')
+    tex.mag_filter = 'nearest'
+    tex.min_filter = 'nearest'
+    tex.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte')
+    tex.add_reload_observer(lambda t, d=dados: t.blit_buffer(d, colorfmt='rgba', bufferfmt='ubyte'))
+    _TEX_FITA[k] = tex
+    return tex
+
+
+class FitaFogo(Widget):
+    """A fita de fogo presa no Yoru (uma instancia atras dele, outra na
+    frente). forca 0..1: aparece/cresce; aperto < 1: as voltas se fecham em
+    volta dele (casulo); alfa geral."""
+
+    def __init__(self, k, frente=False, **kwargs):
+        kwargs.setdefault('size_hint', (None, None))
+        super().__init__(**kwargs)
+        self.size = (0, 0)
+        self.k = k
+        self.lado = 'frente' if frente else 'tras'
+        self.forca = 0.0
+        self.alvo = 0.0
+        self.aperto = 1.0
+        self.vel = 14.0
+        self.t = random.random()
+        with self.canvas:
+            self._cor = Color(1, 1, 1, 0)
+            self._rect = Rectangle(pos=(0, 0), size=(0, 0))
+        self._ev = Clock.schedule_interval(self._tick, 1 / 60.)
+
+    def _tick(self, dt):
+        try:
+            k = self.k
+            if k.parent is None or self.parent is None:
+                self._cor.a = 0
+                if self.parent is None:
+                    self._ev.cancel()
+                    return False
+                return True
+            self.t += dt
+            self.forca += (self.alvo - self.forca) * min(1.0, dt * 3.0)
+            if self.forca < 0.02:
+                self._cor.a = 0
+                return True
+            f = int(self.t * self.vel) % _N_FITA
+            tex = _textura_fita(f, self.lado)
+            if tex is None:
+                self._cor.a = 0
+                return True
+            te = k.ps / float(R)
+            ax, ay = k.ancora()
+            esc = 0.55 + 0.45 * self.forca
+            sx = te * esc * self.aperto
+            sy = te * esc
+            w, h = _FITA_W * sx, _FITA_H * sy
+            x = ax + _FITA_X0 * sx if not k.espelhar else ax - (_FITA_X0 + _FITA_W) * sx
+            self._rect.texture = tex
+            self._rect.pos = (x, ay + _FITA_Y0 * sy)
+            self._rect.size = (w, h)
+            self._rect.tex_coords = _TC_ESPELHO if k.espelhar else _TC_NORMAL
+            self._cor.a = min(1.0, self.forca * 1.4)
+            return True
+        except Exception as e:
+            print(f"[kirito] fita de fogo: {e}")
+            return False
+
+    def parar(self):
+        self.alvo = 0.0
 
 
 # ── fogo em quadros (flip-book de pixel art, como nos jogos) ─────────────
