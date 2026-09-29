@@ -26,6 +26,15 @@ TESTAR O APP (janela do tamanho do celular: 720x1560, densidade 1.75)
   golpes_teste.py   As cenas curtas do Yoru (apagar, +XP, finalizar...).
   plano.py          Desenha o plano dos golpes da abertura (sem abrir o app).
 
+ANIMACAO QUADRO A QUADRO (relogio simulado: 60 quadros/s exatos, a foto nao atrasa)
+  filme.py          CENA=abertura|rapida SEG=22 CADA=2 TOUR_PY=dev/filme.py
+                    bash dev/tour.sh 720 1560 SAIDA 1.75  -> fNNNNN.png + filme.json
+  analisa_filme.py  PASTA [quadros]: por trecho, desenhos novos x deslizando x
+                    girando; desenhos por segundo do corpo, sobretudo e cabeca
+                    (alvo: 12 a 18 por segundo)
+  folha_filme.py    PASTA ini fim passo SAIDA: folha de quadros recortada no Yoru
+  zoom_filme.py     PASTA SAIDA q1,q2,...: quadros ampliados (pixel duro)
+
 VER / FAZER PREVIAS
   folha2.py, folha_poses.py, cena_zoom.py   folhas de quadros para conferir
   gif_tour.py, gif_cenas.py, gif_folha.py    GIFs de previa

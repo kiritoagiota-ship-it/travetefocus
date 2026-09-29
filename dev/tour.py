@@ -120,7 +120,9 @@ _montar = K.montar
 def _montar_medido(p, **kw):
     t = time.perf_counter()
     r = _montar(p, **kw)
-    LOG['montar'].append([round(agora(), 3), round((time.perf_counter() - t) * 1000, 3)])
+    LOG['montar'].append([round(agora(), 3), round((time.perf_counter() - t) * 1000, 3),
+                          1 if kw.get('rapido') else 0, str(kw.get('camada')),
+                          repr(K._chave(p))[:400] if os.environ.get('MONTAR_CHAVE') else ''])
     return r
 
 

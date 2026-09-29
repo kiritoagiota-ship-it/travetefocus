@@ -25,13 +25,15 @@ gravacoes em dominio publico - licenca CC0 1.0
 
 CC0 nao exige credito; fica registrado por gentileza aos autores.
 
-Vozes do Yoru (voz_starburst, voz_stream, voz_mugetsu, voz_ha, voz_seiya, voz_teya
-e os gemidinhos dos golpes: gemido_ha, gemido_hun, gemido_ya, gemido_yaa,
-gemido_to, gemido_fun)
-------------------------------------------------------------------------------------
-Geradas no PC com o Kokoro (sintese de voz neural de codigo aberto, gratuita,
-licenca Apache 2.0 - pode usar ate em app vendido), voz masculina japonesa
-"jm_kumo", falando em japones como no anime: "Sutabasuto... Sutorimu!",
-"Mugetsu" e os gritos curtos dos golpes. Tratadas aqui: tom um pouco mais
-grave, voz dobrada, presenca e eco curto. Para usar uma voz gravada, basta
-trocar os arquivos (mesmo nome, formato WAV).
+Vozes do Yoru (gritos de espadachim gravados)
+---------------------------------------------
+- kiai_ha1, kiai_ha2, kiai_sei1, kiai_sei2, kiai_sei3, kiai_seiya, kiai_fun
+    "Nota no Mori" (notanomori.net) - licenca Creative Commons Atribuicao 3.0
+    (CC BY 3.0, https://creativecommons.org/licenses/by/3.0/). Credito:
+    "ノタの森 / Nota no Mori". Cortados e com o volume igualado aqui.
+- fala_tou ("Tou!"), fala_kurae ("Kurae!"), fala_ougi ("Ukete miro! Ougi!"),
+  fala_ikuzo ("Saa, iku zo!"), fala_yatta ("Yatta!")
+    "Efeito Lab" / 効果音ラボ (soundeffect-lab.info) - uso livre, inclusive
+    comercial, sem credito obrigatorio (voz: 吉田史記). Cortados aqui.
+Os originais e o script que prepara os arquivos ficam em
+travetefocus/ferramentas/vozes_kiai (para_app.py).

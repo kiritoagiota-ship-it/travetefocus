@@ -32,6 +32,7 @@ from collections import OrderedDict
 from kivy.uix.widget import Widget
 from kivy.graphics import (Color, Rectangle, Mesh, PushMatrix, PopMatrix,
                            Translate, Rotate, Scale)
+from kivy.graphics.stencil_instructions import StencilPush, StencilUse, StencilUnUse, StencilPop
 from kivy.graphics.texture import Texture
 from kivy.properties import BooleanProperty, NumericProperty
 from kivy.clock import Clock
@@ -106,7 +107,8 @@ _SEM_CONTORNO = set('xX!1FfL<>O0')
 # Mugetsu: a roupa escurece (o rosto continua claro, os olhos acendem)
 _SOMBRA = {'a': 'd', 'l': 'o', '$': 'd', '@': 'D', '*': 'o', 'O': 'o', '0': '8', 'C': '&', 'c': 'd', 'A': 'd', 'q': 'D', 'P': '&', 'B': 'D', 'M': 'D', 'G': 'd', 'E': 'D',
            '2': 'D', '4': 'D', '7': 'D', 'e': 'V', 'n': '!', 'K': 'D', 'Z': 'o', 'p': 'd', 'b': '&',
-           '3': 'V', 'm': 'L', 'i': 'd', 'U': 'o', '%': 'd', '9': 'L', 'x': '<', 'X': '>'}
+           '3': 'V', 'm': 'L', 'i': 'd', 'U': 'o', '%': 'd', '9': 'L', 'x': '<', 'X': '>',
+           'h': 'd', 'I': '&'}                      # cabelo: o brilho vira roxo
 _CORPO_M = set('HhSsDdVJIeTt&~^')
 # luz dinamica: pixels do corpo perto da lamina acesa clareiam um degrau
 _LAMINA = set('wjRrzY9!')                  # so as partes claras (a bainha usa W/u)
@@ -291,7 +293,7 @@ def _emote(px, qual, base_x, topo_cab):
 POSE_BASE = dict(dx=0, dy=0, pernas='repouso', olhos='a', cabelo=0.0, capa=0.0,
                  lift=0.0, sobe=0.0, fase=0.0, brilho=None, saia=1.0, frente1=False,
                  tipo1=1, fusao=False, emote=None, mugetsu=False, hx=0, hy=0, luz=0.0, incl=0,
-                 pernas_b=None, pt=0.0, vista='lado', cresce=1.0,
+                 pernas_b=None, pt=0.0, vista='lado', cresce=1.0, estica=0,
                  m1=(3, -5), a1=-40.0, c1=15, s1=None,
                  m2=None, a2=None, c2=15, s2=None)
 
@@ -315,7 +317,11 @@ def ps_inteiro(v):
     """Tamanho da unidade (px de tela): o que o Yoru tinha antes (degraus de
     3 px) e 15% a mais, exato. Os texels podem ficar com 1 px de diferenca
     entre si (invisivel no celular)."""
-    return max(R, int(round(3 * max(1, int(round(v / 3.0))) * TAMANHO)))
+    ps = max(R, int(round(3 * max(1, int(round(v / 3.0))) * TAMANHO)))
+    k = int(round(ps / float(R)))
+    if k >= 2 and abs(k * R - ps) <= ps * 0.12:
+        return k * R                 # pixels do boneco todos do mesmo tamanho
+    return ps
 
 
 def _ps_inteiro_antigo(v):
@@ -850,6 +856,20 @@ def _fundida2(px, hx, hy, ux, uy, nx, ny, comp, brilho, evo, fase):
             return 'k' if k < 1.5 else 'y'
         if evo and k < ini:
             return None
+        if evo:                                            # lamina do Bankai (referencia)
+            w = 6.5 if k < L - 16 else 6.5 * max(0.0, (L + 2 - k) / 18.0)
+            if abs(j) > w + 0.01:
+                return None
+            borda = w - abs(j)
+            if borda < 1.0:
+                return 'L' if j > 0 else 'V'                  # fio aceso (lado da luz mais claro)
+            if borda < 2.0:
+                return 'V' if j > 0 else 'F'
+            if borda < 3.0:
+                return 'F' if j > 0 else 'd'
+            if jn == 0:
+                return 'o' if (kk + mv) % 11 < 2 else 'K'    # sulco central com runas correndo
+            return 'W' if jn > 0 else 'D'
         corta = max(0.0, k - (L - 9))
         if j > 6.5 or j < -6.5 + corta:
             return None
@@ -875,16 +895,14 @@ def _fundida2(px, hx, hy, ux, uy, nx, ny, comp, brilho, evo, fase):
     if evo:
         def pp(k, j, ch):
             px[(int(round(hx + (ux * k + nx * j) * F)), int(round(hy + (uy * k + ny * j) * F)))] = ch
-        for (cx, cy) in _INF:                                  # guarda: o infinito
+        for (cx, cy) in _INF:                                  # guarda: o infinito (roxo)
             for dj in (-0.5, 0.0, 0.5):
-                pp(4.0 + cy * 6.0, cx * 10.5 + dj, 'Y')
+                pp(4.0 + cy * 6.0, cx * 10.5 + dj, 'V')
         for (cx, cy) in _INF[::4]:
-            pp(4.0 + cy * 6.0 * 0.82, cx * 10.5 * 0.9, 'F')
+            pp(4.0 + cy * 6.0 * 0.82, cx * 10.5 * 0.9, 'L')
         for j in (-6, 6):
-            pp(4.0, j, '9')
+            pp(4.0, j, 'L')
         pp(4.0, 0, '!')
-        pp(L + 2, 6, fio)
-        pp(L + 3, 6, fio)
 
 
 def _espada2(px, hx, hy, ang, comp, tipo, smear_de=None, brilho=None, fase=0.0):
@@ -1251,6 +1269,11 @@ _CABECAS2_M = {k: _rosto_mugetsu(v) for k, v in _CABECAS2.items()}
 _CABECAS_F_M = {k: _rosto_mugetsu(v) for k, v in _CABECAS_F.items()}
 
 
+def _ds(p):
+    """Quanto o tronco de cima sobe (estica) ou desce (encolhe), em texels."""
+    return int(round(p.get('estica', 0) or 0)) * 3
+
+
 def olhos_texel(p):
     """Centro do olho (texels, sem espelho) na pose - para o brilho e o
     rastro de luz dos olhos na forma Mugetsu."""
@@ -1260,7 +1283,7 @@ def olhos_texel(p):
     cx = _t(_X0 + dx + 6.5)
     hy = _t(hip_y)
     cab_x = cx + _GOLA[0] - _CAB_PESCOCO[0] + 4 * incl + int(round(p.get('hx', 0) or 0))
-    cab_ty = hy + _GOLA[1] + _CAB_PESCOCO[1] + int(round(p.get('hy', 0) or 0))
+    cab_ty = hy + _GOLA[1] + _CAB_PESCOCO[1] + int(round(p.get('hy', 0) or 0)) + _ds(p)
     return [(cab_x + _OLHO5[0], cab_ty - _OLHO5[1])]
 
 
@@ -1276,7 +1299,7 @@ def maos_texel(p, qual=1):
     else:
         ax, m, ang, comp = cx - int(3.5 * R), p['m2'] or (-1, -6), p['a2'], p['c2']
     mx = ax + R * incl + R * m[0]
-    my = hy + 5 * R + R * m[1]
+    my = hy + 5 * R + R * m[1] + _ds(p)
     if ang is None or (qual == 1 and p['m1'] is None) or (qual == 2 and p['m2'] is None):
         return (mx, my), (mx, my)
     a = math.radians(ang)
@@ -1965,14 +1988,19 @@ def _cabelao(px, cb, sobe, fase, cresce):
         fim = 0.84
         for q, (u, v, W) in f.items():
             vf = v / W if W else 0.5
-            if u > fim:                                    # ponta em fumaca e brasa
-                if (q[0] * 3 + q[1] + f6) % 3:
+            h = (q[0] * 3 + q[1] * 5 + f6 * 2) % 7
+            if u > fim + 0.08:                             # ponta: lascas de chama soltas
+                if h > 1:
                     continue
-                ch = 'o' if ((q[0] * 7 + q[1] * 3 + f6) % 9 == 0) else ('&' if u > fim + 0.06 else 'J')
+                ch = 'L' if h == 0 else 'V'
+            elif u > fim:                                  # a ponta pega fogo aos poucos
+                ch = 'F' if h < 2 else ('o' if h < 4 else 'd')
             elif vf > 0.66:
                 ch = 'J'
-            elif vf < 0.3 and u < 0.42:
-                ch = 'h' if (vf < 0.14 and 0.08 < u < 0.26) else 'I'
+            elif vf < 0.2 and 0.1 < u < fim - 0.04:
+                ch = 'h'                                   # brilho roxo pela borda da mecha
+            elif vf < 0.34 and u < 0.5:
+                ch = 'I'
             else:
                 ch = 'H'
             if q in cabelo and cabelo[q] in 'JHIh' and ch in 'JHIh' and                     any((q[0] + a, q[1] + b) not in f for (a, b) in _VIZ4):
@@ -2188,9 +2216,25 @@ def _braco5_desenho(meu, sx, sy, hx, hy, frente, luva, faixas, fase):
         return sombra
 
     def braco(j, t):
+        # deltoide cheio no ombro, afina ate o cotovelo (lado da luz mais cheio)
+        r = 6.4 - 1.3 * t + (0.5 if j > 0 and t < 0.35 else 0.0)
+        if abs(j) > r:
+            return None
+        if j <= -r + 1.0:
+            return sombra                          # borda de baixo sempre na sombra
         return couro(j, t, la)
 
     def antebraco(j, t):
+        if luva and 0.64 < t < 0.76:
+            r = 5.6                                # punho da luva mais largo
+        elif luva and t >= 0.76:
+            r = 4.6
+        else:
+            r = 5.2 - 0.9 * t
+        if abs(j) > r:
+            return None
+        if t < 0.08 and j <= -1:
+            return '2'                             # vinco na dobra do cotovelo
         if faixas and t < 0.84:                    # faixas enroladas na diagonal (Mugetsu)
             d = (int(t * lb) + j) % 6
             if d == 0:
@@ -2203,12 +2247,12 @@ def _braco5_desenho(meu, sx, sy, hx, hy, frente, luva, faixas, fase):
                 return 'G' if j >= 1 else 'K'      # punho da luva
             return 'K' if j >= 3 else 'M'
         return couro(j, t, lb)
-    _tubo(meu, (sx, sy), (ex, ey), 6.0, braco)
+    _tubo(meu, (sx, sy), (ex, ey), 7.0, braco)
     for ox in range(-5, 6):                        # cotovelo
         for oy in range(-5, 6):
             if ox * ox + oy * oy <= 26:
                 meu[(int(round(ex)) + ox, int(round(ey)) + oy)] = base_c if oy < 2 else luz
-    _tubo(meu, (ex, ey), (hx, hy), 5.0, antebraco)
+    _tubo(meu, (ex, ey), (hx, hy), 6.0, antebraco)
     for ox in range(-6, 7):                        # ombro
         for oy in range(-6, 7):
             if ox * ox + oy * oy <= 38:
@@ -2396,9 +2440,9 @@ def _casaco5_desenho(px, cx, top, chao, capa, lift, fase, saia, parte, mug=False
 
     def em_chamas(ch, u, fim_u, q):
         """As pontas do sobretudo do Mugetsu viram fogo roxo."""
-        if not mug or u < fim_u - 0.12:
+        if not mug or u < fim_u - 0.2:
             return ch
-        k2 = (fim_u - u) / 0.12                        # 1 longe da ponta .. 0 na ponta
+        k2 = (fim_u - u) / 0.2                         # 1 longe da ponta .. 0 na ponta
         h = (q[0] * 5 + q[1] * 3 + f6 * 2) % 7
         if k2 < 0.35:
             return 'L' if h < 2 else ('V' if h < 5 else None)
@@ -2527,7 +2571,8 @@ def ancoras(p):
     incl = int(round(p.get('incl', 0) or 0))
     cx = _t(_X0 + dx + 6.5)
     hy = _t(hip_y)
-    return (cx, hy + 6, cx + _GOLA[0] - _CAB_PESCOCO[0] + 4 * incl, hy + _GOLA[1] + _CAB_PESCOCO[1])
+    return (cx, hy + 6, cx + _GOLA[0] - _CAB_PESCOCO[0] + 4 * incl,
+            hy + _GOLA[1] + _CAB_PESCOCO[1] + _ds(p))
 
 
 def montar(p, rapido=False, camada=None):
@@ -2550,14 +2595,15 @@ def montar(p, rapido=False, camada=None):
     cx = _t(base + 6.5)                                    # centro do quadril (texels)
     hy = _t(hip_y)
     li = 4 * incl                                          # inclinacao do tronco (texels)
-    o1 = (cx + _OMBRO1[0] + li, hy + _OMBRO1[1])
-    o2 = (cx + _OMBRO2[0] + li, hy + _OMBRO2[1])
+    ds = _ds(p)                                            # tronco esticado/encolhido
+    o1 = (cx + _OMBRO1[0] + li, hy + _OMBRO1[1] + ds)
+    o2 = (cx + _OMBRO2[0] + li, hy + _OMBRO2[1] + ds)
     cab_x = cx + _GOLA[0] - _CAB_PESCOCO[0] + li + int(round(p.get('hx', 0) or 0))
-    cab_ty = hy + _GOLA[1] + _CAB_PESCOCO[1] + int(round(p.get('hy', 0) or 0))
+    cab_ty = hy + _GOLA[1] + _CAB_PESCOCO[1] + int(round(p.get('hy', 0) or 0)) + ds
     boca = (cx + int(2.5 * R), hy + int(1.6 * R))          # boca da bainha (cinto)
     # as maos continuam medidas a partir do ombro antigo (as poses sao as mesmas)
-    am1 = (cx + int(2.5 * R) + R * incl, hy + 5 * R)
-    am2 = (cx - int(3.5 * R) + R * incl, hy + 5 * R)
+    am1 = (cx + int(2.5 * R) + R * incl, hy + 5 * R + ds)
+    am2 = (cx - int(3.5 * R) + R * incl, hy + 5 * R + ds)
 
     def mao(anc, m):
         return (int(round(anc[0] + R * m[0])), int(round(anc[1] + R * m[1])))
@@ -2573,6 +2619,7 @@ def montar(p, rapido=False, camada=None):
             _sombra_mugetsu(px)
         return _contorno(px, mugetsu, None, None)
     if camada == 'cabeca':
+        fase = p.get('fase_cab', fase) or 0.0
         _cabeca5(px, p['olhos'], 0, 0, cb, sobe, fase, cresce)
         if sobe > 0.3:
             _espetos5(px, 0, 0, cb, sobe, fase)
@@ -2616,12 +2663,16 @@ def montar(p, rapido=False, camada=None):
     _casaco5(px, cx, topo_casaco, chao, p['capa'], p['lift'], fase, saia, 'frente', mug=mugetsu)
     # tronco (a parte de cima inclina junto com os ombros)
     qx, qy = _TOR_QUADRIL
-    for r, linha in enumerate(_YM.TRONCO):
+    CINTA = 20                                             # linha do mapa onde o tronco dobra
+    for r in range(len(_YM.TRONCO) - 1, -1, -1):          # de baixo para cima: o peito por cima
+        linha = _YM.TRONCO[r]
         desl = li if r < 12 else (li // 2 if r < 21 else 0)
-        y = hy + qy - r
-        for c, ch in enumerate(linha):
-            if ch != '.':
-                px[(cx - qx + c + desl, y)] = ch
+        y = hy + qy - r + (ds if r < CINTA else 0)
+        vezes = ds + 1 if (ds > 0 and r == CINTA) else 1   # esticado: a cintura repete no vao
+        for k in range(vezes):
+            for c, ch in enumerate(linha):
+                if ch != '.':
+                    px[(cx - qx + c + desl, y + k)] = ch
 
     if mugetsu:                              # faixas cruzando o peito
         for (xa, ya, xb, yb) in ((-12, 30, 13, 13), (-13, 21, 12, 5)):
@@ -2795,6 +2846,22 @@ def _facil(nome, t):
     return _ease(t)
 
 
+def _mao_arco(a, b, t):
+    """Mao de a para b girando no OMBRO (m1/m2 ja sao medidos a partir
+    dele): o braco varre um arco, como numa animacao desenhada, em vez de a
+    mao andar em linha reta pelo meio do corpo."""
+    ra, rb = math.hypot(a[0], a[1]), math.hypot(b[0], b[1])
+    if ra < 1.0 or rb < 1.0:
+        return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+    aa, ab = math.atan2(a[1], a[0]), math.atan2(b[1], b[0])
+    d = (ab - aa + math.pi) % (2 * math.pi) - math.pi
+    if abs(abs(d) - math.pi) < 0.15:               # meia volta exata: vai por cima
+        d = abs(d)
+    ang = aa + d * t
+    r = ra + (rb - ra) * t
+    return (r * math.cos(ang), r * math.sin(ang))
+
+
 def misturar(p0, p1, t, tl=None):
     """Pose entre p0 e p1: numeros e maos por `t` (ja com a curva de tempo);
     se as pernas mudam, passa pelo quadro do meio (escolhido pelo progresso
@@ -2808,7 +2875,7 @@ def misturar(p0, p1, t, tl=None):
     for k in ('m1', 'm2'):
         a, b = p0[k], p1[k]
         if a is not None and b is not None:
-            q[k] = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+            q[k] = _mao_arco(a, b, t)
     l0, l1 = p0['pernas'], p1['pernas']
     if l0 != l1:
         # as pernas passam de uma posicao para a outra continuamente (pes e
@@ -2820,23 +2887,37 @@ def misturar(p0, p1, t, tl=None):
     return q
 
 
-def sequencia(chaves):
+EM_DOIS = 2        # desenhos do meio "em 2s": cada um fica 2 quadros (15 por segundo)
+
+
+def sequencia(chaves, passo=None):
     """chaves: [(quadros, pose) ou (quadros, pose, curva), ...] -> lista de
-    poses (1 por quadro). `quadros` = duracao do trecho ate a proxima chave;
-    `curva` = como o tempo corre nele (ver _facil; padrao 'suave'). Campos
-    numericos e maos interpolam; as pernas passam por um quadro do meio."""
+    poses (1 por quadro, 30 por segundo). `quadros` = duracao do trecho ate
+    a proxima chave; `curva` = como o tempo corre nele (ver _facil; padrao
+    'suave'). Como numa animacao desenhada, os desenhos do meio ficam 2
+    quadros cada (`passo`): a chave segura e o movimento anda em degraus
+    (trechos de 3 quadros ou menos - o golpe rapido - vao de 1 em 1).
+    Numeros interpolam, as maos giram no ombro e as pernas passam por um
+    quadro do meio."""
+    passo = EM_DOIS if passo is None else max(1, int(passo))
     out = []
     for i, ch in enumerate(chaves):
         n, p0 = ch[0], ch[1]
         curva = ch[2] if len(ch) > 2 else 'suave'
         p1 = chaves[i + 1][1] if i + 1 < len(chaves) else p0
         n = max(1, int(n))
+        pa = passo if n > 3 else 1
+        ult = None
         for f in range(n):
-            tl = f / float(n)
-            if p1 is p0 or curva == 'segura' or f == 0:
+            fs = f - (f % pa)
+            if p1 is p0 or curva == 'segura' or fs == 0:
                 out.append(dict(p0))
+            elif fs == ult:
+                out.append(dict(out[-1]))
             else:
+                tl = fs / float(n)
                 out.append(misturar(p0, p1, _facil(curva, tl), tl))
+            ult = fs
     return out
 
 
@@ -2941,7 +3022,7 @@ def _rasteriza(px):
     return bytes(buf), (X0, Y0, w, h)
 
 
-_FISICA = ('capa', 'cabelo', 'lift', 'fase', 'hx', 'hy', 'sobe', 'cresce')
+_FISICA = ('capa', 'cabelo', 'lift', 'fase', 'fase_cab', 'hx', 'hy', 'sobe', 'cresce')
 
 
 def chave_camadas(q):
@@ -2953,8 +3034,9 @@ def chave_camadas(q):
     mug = bool(q.get('mugetsu'))
     cauda = ('cauda', q4(q['capa']), q4(q['lift']), round(q.get('fase', 0.0) or 0.0, 3),
              q4(q.get('saia', 1.0)), mug)
+    fcab = q.get('fase_cab', q.get('fase', 0.0))
     cabeca = None if _cabeca_no_corpo(q) else (
-        'cabeca', q['olhos'], q4(q['cabelo']), q4(q.get('sobe', 0.0)), round(q.get('fase', 0.0) or 0.0, 3),
+        'cabeca', q['olhos'], q4(q['cabelo']), q4(q.get('sobe', 0.0)), round(fcab or 0.0, 3),
         mug, round(q.get('cresce', 1.0) or 0.0, 2) if mug else None)
     return corpo, cauda, cabeca
 
@@ -2968,6 +3050,8 @@ def imagem_camada(q, qual, chave):
         return item
     _grava(qual, chave, q)
     pronto = _do_assado(qual, chave)
+    if not pronto and qual in ('cauda', 'cabeca') and not _GRAVA:
+        pronto = _assado_vizinho(qual, chave)
     item = (pronto[0], pronto[1]) if pronto else _rasteriza(montar(q, camada=qual))
     _CAM[k] = item
     while len(_CAM) > _CAM_MAX:
@@ -3083,6 +3167,59 @@ def _do_assado(qual, chave):
     buf[2::4] = idx.translate(_TAB[2])
     buf[3::4] = idx.translate(_TAB[3])
     return bytes(buf), rec, extra
+
+
+_VIZINHOS = {}            # (camada, assinatura) -> [(fisica, chave repr)]
+
+
+def _partes_fisica(qual, chave):
+    """(assinatura, fisica) de uma chave de camada: o que tem que bater
+    exato e o que pode ser so parecido."""
+    if qual == 'cauda':            # ('cauda', capa, lift, fase, saia, mug)
+        return (chave[4], chave[5]), (chave[1], chave[2], chave[3])
+    # ('cabeca', olhos, cabelo, sobe, fase, mug, cresce)
+    return (chave[1], chave[5], chave[6]), (chave[2], chave[3], chave[4])
+
+
+def _assado_vizinho(qual, chave):
+    """Desenho pronto mais parecido (so o balanco diferente), ou None."""
+    try:
+        if not _ASSADO or not _assado_valido():
+            return None
+        if not _VIZINHOS:
+            import ast
+            for ch in _ASSADO:
+                if ch.startswith("('cauda'") or ch.startswith("('cabeca'"):
+                    try:
+                        qq, cc = ast.literal_eval(ch)
+                        ass, fis = _partes_fisica(qq, cc)
+                        _VIZINHOS.setdefault((qq, ass), []).append((fis, ch))
+                    except Exception:
+                        pass
+            _VIZINHOS[None] = True
+        ass, fis = _partes_fisica(qual, chave)
+        lista = _VIZINHOS.get((qual, ass))
+        if not lista:
+            return None
+
+        def dist(f):
+            df = abs((f[2] or 0.0) - (fis[2] or 0.0)) % 1.0
+            return (abs((f[0] or 0.0) - (fis[0] or 0.0)) + abs((f[1] or 0.0) - (fis[1] or 0.0))
+                    + min(df, 1.0 - df) * 1.5)
+        melhor = min(lista, key=lambda it: dist(it[0]))
+        if dist(melhor[0]) > 1.6:
+            return None                  # longe demais: melhor desenhar certo
+        ini, tam, rec, extra = _ASSADO[melhor[1]]
+        idx = _zlib.decompress(_ASSADO_DADOS[0][ini:ini + tam])
+        buf = bytearray(len(idx) * 4)
+        buf[0::4] = idx.translate(_TAB[0])
+        buf[1::4] = idx.translate(_TAB[1])
+        buf[2::4] = idx.translate(_TAB[2])
+        buf[3::4] = idx.translate(_TAB[3])
+        return bytes(buf), rec, extra
+    except Exception as e:
+        print(f"[kirito] vizinho: {e}")
+        return None
 
 
 def _grava(qual, chave, q):
@@ -3305,6 +3442,12 @@ class KiritoPixel(Widget):
         self._m_hy = _Mola(150, 11)
         self._m_a = {1: None, 2: None}
         self._ult_base = None
+        # o que a fisica mostra fica preso em batidas (como desenhos em 2s):
+        # o sobretudo troca num tique, o cabelo no outro, a cabeca a cada 2 -
+        # o corpo vai primeiro e o resto chega depois, cada um no seu tempo
+        self._batida = 0
+        self._preso = {'capa': 0.0, 'lift': 0.0, 'fase': 0.0, 'cabelo': 0.0, 'fase_cab': 0.0,
+                       'hx': 0, 'hy': 0}
         self.luz = 0.0                   # luz da lamina (aura), 0..1
         self._luz_imp = 0.0              # luz de impacto (cai sozinha)
         self._fase = random.random()
@@ -3334,6 +3477,37 @@ class KiritoPixel(Widget):
         self._desenhar()
 
     # ── geometria ────────────────────────────────────────────────────
+    def recortar(self, y0=None, y1=None):
+        """Mostra so a faixa de altura y0..y1 do boneco (coordenadas do pai;
+        None = sem limite). recortar() tira o recorte. Na transformacao: o
+        Yoru normal por cima da linha de energia e o Bankai por baixo."""
+        if y0 is None and y1 is None:
+            if getattr(self, '_recorte', None) is not None:
+                for grupo, ins in self._recorte:
+                    for i in ins:
+                        try:
+                            grupo.remove(i)
+                        except Exception:
+                            pass
+                self._recorte = None
+            return
+        a = -100000.0 if y0 is None else float(y0)
+        b = 100000.0 if y1 is None else float(y1)
+        if getattr(self, '_recorte', None) is None:
+            r1 = Rectangle(pos=(-100000, a), size=(200000, b - a))
+            r2 = Rectangle(pos=(-100000, a), size=(200000, b - a))
+            antes = [StencilPush(), r1, StencilUse()]
+            depois = [StencilUnUse(), r2, StencilPop()]
+            for i in antes:
+                self.canvas.before.add(i)
+            for i in depois:
+                self.canvas.after.add(i)
+            self._recorte = [(self.canvas.before, antes), (self.canvas.after, depois)]
+            self._rec_rects = (r1, r2)
+        for r in self._rec_rects:
+            r.pos = (-100000, a)
+            r.size = (200000, max(0.0, b - a))
+
     def _virou(self, *_):
         """Ao virar de lado, o quadril fica no mesmo ponto da tela (sem o
         boneco dar um pulinho de lado no quadro da virada)."""
@@ -3400,6 +3574,11 @@ class KiritoPixel(Widget):
 
     # ── desenho ──────────────────────────────────────────────────────
     def mostrar(self, p):
+        if self._base is not p and self.fisica:
+            ant = self._base
+            if ant is None or any(ant.get(k) != p.get(k) for k in ('dx', 'dy', 'm1', 'm2', 'a1', 'a2',
+                                                                     'pernas', 'pt', 'olhos', 'incl')):
+                self._travar_batida(forcar=True)       # corpo mudou: o resto e redesenhado junto
         self._base = p
         self._desenhar()
 
@@ -3408,13 +3587,27 @@ class KiritoPixel(Widget):
         if not self.fisica:
             return b
         q = dict(b)
-        q['capa'] = b['capa'] + self._m_capa.x
-        q['cabelo'] = b['cabelo'] + self._m_cab.x
-        q['lift'] = b['lift'] + self._m_lift.x
-        q['fase'] = (int(self._fase * 6) % 6) / 6.0
+        pr = self._preso
+        q['capa'] = b['capa'] + pr['capa']
+        q['cabelo'] = b['cabelo'] + pr['cabelo']
+        q['lift'] = b['lift'] + pr['lift']
+        q['fase'] = pr['fase']
+        q['fase_cab'] = pr['fase_cab']
         # cabeca: +-1 px de atraso
-        q['hx'] = int(round(max(-1.0, min(1.0, self._m_hx.x))))
-        q['hy'] = int(round(max(-1.0, min(1.0, self._m_hy.x))))
+        q['hx'] = pr['hx']
+        q['hy'] = pr['hy']
+        if b.get('mugetsu'):
+            if (b.get('cresce', 1.0) or 0.0) < 0.999:          # crescendo: o cabelo so cresce
+                q['cabelo'] = b['cabelo']
+                q['fase_cab'] = 0.0
+            else:
+                q['cabelo'] = round(q['cabelo'] * 2) / 2.0
+                q['fase_cab'] = (int(q['fase_cab'] * 3 + 1e-6) % 3) / 3.0
+            q['fase'] = (int(q['fase'] * 3 + 1e-6) % 3) / 3.0
+        else:
+            q['cabelo'] = round(q['cabelo'] * 2) / 2.0
+        q['capa'] = round(q['capa'] * 2) / 2.0
+        q['lift'] = round(q['lift'] * 2) / 2.0
         # laminas: seguem a pose com um pouquinho de atraso/mola (max 8 graus)
         # (as laminas nao atrasam: o corpo e desenhado uma vez por pose)
 
@@ -3423,8 +3616,11 @@ class KiritoPixel(Widget):
         q['luz'] = 1.0 if luz >= 0.75 else (0.5 if luz >= 0.3 else 0.0)
         # brilho percorre as laminas a cada ~2,6 s
         ciclo = self._t % 2.6
-        q['brilho'] = (round(ciclo / 0.45 * 6) / 6.0) if (ciclo < 0.45 and self._loop
-                                                            and not b.get('mugetsu')) else None
+        if b.get('brilho') is not None:
+            q['brilho'] = b['brilho']
+        else:
+            q['brilho'] = (round(ciclo / 0.45 * 6) / 6.0) if (ciclo < 0.45 and self._loop
+                                                                and not b.get('mugetsu')) else None
         return q
 
     def _camadas_da_pose(self, q):
@@ -3497,9 +3693,29 @@ class KiritoPixel(Widget):
             vel = math.hypot(frente, cima)
             self._fase = (self._fase + dt * (1.6 + min(3.0, vel / 120.0))) % 1.0
             self._camadas(dt, frente, cima)
+            self._travar_batida()
             self._desenhar()
         except Exception as e:
             print(f"[kirito] fisica: {e}")
+
+    def _travar_batida(self, forcar=False):
+        """Copia o estado das molas para o desenho: junto com cada desenho
+        novo do corpo (forcar) ou, com o corpo parado, a cada 3 tiques da
+        fisica (10 por segundo). O atraso do cabelo e do sobretudo vem das
+        molas; a troca de desenho acontece no mesmo quadro do corpo."""
+        self._batida += 1
+        if not forcar and self._batida < 3:
+            return
+        self._batida = 0
+        pr = self._preso
+        f6 = (int(self._fase * 6) % 6) / 6.0
+        pr['capa'] = self._m_capa.x
+        pr['lift'] = self._m_lift.x
+        pr['fase'] = f6
+        pr['cabelo'] = self._m_cab.x
+        pr['fase_cab'] = (int(self._fase * 6 + 1) % 6) / 6.0     # o cabelo vai 1 passo atras do pano
+        pr['hx'] = int(round(max(-1.0, min(1.0, self._m_hx.x))))
+        pr['hy'] = int(round(max(-1.0, min(1.0, self._m_hy.x))))
 
     def _camadas(self, dt, frente, cima):
         """Movimento secundario: o que o tronco e as laminas fazem na pose
@@ -3543,15 +3759,21 @@ class KiritoPixel(Widget):
         """Quadro de impacto: a luz da lamina acende o corpo e o boneco
         pisca claro por 1-2 quadros (sem congelar a cena)."""
         self._luz_imp = 1.0
-        self.clarao = 0.9 if forte else 0.45
-        t = [0.0]
+        if getattr(self, 'clarao_preso', False):
+            return
+        # quadro de impacto: o boneco inteiro branco e chapado por 2 quadros
+        # (3 no forte) e volta de uma vez - nada de cinza meio transparente
+        self.clarao = 1.0
+        n = [3 if forte else 2]
 
         def _p(dt):
-            t[0] += dt
             if getattr(self, 'clarao_preso', False):
                 return False                        # um quadro de impacto esta usando a silhueta
-            self.clarao = max(0.0, (0.9 if forte else 0.45) * (1 - t[0] / 0.07))
-            return t[0] < 0.07
+            n[0] -= 1
+            if n[0] <= 0:
+                self.clarao = 0.0
+                return False
+            return True
         Clock.schedule_interval(_p, 1 / 60.)
 
     def empurrar(self, capa=0.0, cabelo=0.0, lift=0.0):
@@ -3676,9 +3898,12 @@ class KiritoPixel(Widget):
         self.tocar(quadros, loop=True)
 
     # ── afterimage ───────────────────────────────────────────────────
-    def fantasma(self, cor=(0.0, 0.85, 1.0), alfa=0.36, duracao=0.16):
-        """Afterimage: silhueta pontilhada (metade dos pixels) da pose atual,
-        bem curta - so uma indicacao de velocidade."""
+    def fantasma(self, cor=None, alfa=0.42, duracao=0.12):
+        """Afterimage: a silhueta da pose atual em cor chapada, que some em
+        3 degraus (sem pontilhado nem fade liso) - so uma indicacao de
+        velocidade. Sem cor: ciano (roxo no Bankai)."""
+        if cor is None:
+            cor = (0.42, 0.18, 0.78) if self._base.get('mugetsu') else (0.0, 0.5, 0.82)
         try:
             pai = self.parent
             if pai is None:
@@ -3692,7 +3917,7 @@ class KiritoPixel(Widget):
                 cor_sil = Color(cor[0], cor[1], cor[2], alfa)
                 if True:
                     for _r, _s, qual, ch, (ox, oy) in self._camadas_da_pose(self._pose):
-                        tex, rec = textura_camada(self._pose, qual, ch, silhueta=True, xadrez=True)
+                        tex, rec = textura_camada(self._pose, qual, ch, silhueta=True)
                         _no_retangulo(Rectangle(), tex, (rec[0] + ox, rec[1] + oy, rec[2], rec[3]),
                                       self.ps, self.espelhar, _PES * R if qual == 'cauda' else None)
                 PopMatrix()
@@ -3704,7 +3929,7 @@ class KiritoPixel(Widget):
                 try:
                     t[0] += dt
                     k = min(1.0, t[0] / duracao)
-                    cor_sil.a = alfa * (1 - k)
+                    cor_sil.a = alfa * (1.0 if k < 0.34 else (0.55 if k < 0.67 else 0.25))
                     if k >= 1:
                         if g.parent:
                             g.parent.remove_widget(g)
@@ -3940,9 +4165,10 @@ def golpe(arma, corta, olhos=('s', 'g', 's'), n_arma=3, prende=2, segue=3, volta
     ant['dx'] = arma['dx'] - 1                       # pende para tras
     ant['incl'] = -1                                 # ombros e cabeca vao para tras
     ant['vista'] = 'costas'                          # torce o corpo: mostra as costas
+    ant['estica'] = -1                               # encolhe juntando forca
     if altura(arma) > 3:
         ant['dy'] = arma['dy'] - 1                   # e abaixa (se nao estiver agachado)
-    imp = dict(corta, olhos=olhos[1], incl=1, vista='frente')   # corta de frente, peso a frente
+    imp = dict(corta, olhos=olhos[1], incl=1, vista='frente', estica=1)   # corta esticado, peso a frente
     if seg is None:
         seg = dict(imp)
         if corta['a1'] is not None and s1:
@@ -3954,9 +4180,10 @@ def golpe(arma, corta, olhos=('s', 'g', 's'), n_arma=3, prende=2, segue=3, volta
             seg['m2'] = _passo_mao(arma['m2'], corta['m2'], 1.0, False)
         seg['dx'] = corta['dx'] + 1                  # inclina para a frente
         seg['incl'] = 1
+        seg['estica'] = 0
         seg['vista'] = 'lado'                        # volta de perfil na acomodacao
     else:
-        seg = dict(seg, olhos=olhos[1], incl=1, vista='lado')
+        seg = dict(seg, olhos=olhos[1], incl=1, vista='lado', estica=0)
     fim = dict(corta, olhos=olhos[2])
     chaves = [(n_arma, arma, 'suave'), (prende, ant, 'segura')]
     if duplo:                                         # meio do golpe: 3 quadros de rastro
@@ -4003,12 +4230,26 @@ def encolhido(p):
     return q
 
 
+def bola(p):
+    """Mortal: todo encolhido (joelhos no peito, bracos junto das pernas,
+    cabeca para a frente) - a pose que gira de 90 em 90 graus no ar."""
+    q = encolhido(p)
+    q['m1'] = (3.0, -3.0)
+    if q.get('m2') is not None:
+        q['m2'] = (1.0, -3.5)
+    q['incl'] = 1
+    q['estica'] = -1
+    q['lift'] = max(q.get('lift', 0.0), 0.8)
+    return q
+
+
 def esticado(p):
     """A mesma pose com as pernas esticadas (impulso do pulo / indo pousar)."""
     q = dict(p)
     q['pernas'] = 'suspenso'
     q['pernas_b'] = None
     q['dy'] = 0
+    q['estica'] = 1                                  # o corpo todo estica no impulso
     return q
 
 
