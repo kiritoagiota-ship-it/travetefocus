@@ -1,0 +1,95 @@
+    def gravar_arco(self, i0, i1, arco, meia, cor=None):
+        """As letras [i0, i1) aparecem por onde o corte passa: uma faixa de
+        meia largura `meia` em volta do meio da mancha do `arco` mostra o
+        trecho ate onde a cabeca do corte chegou (as letras nascem brancas,
+        quentes). Devolve atualizar(s); em s = 1 o trecho fica inteiro e
+        esfria para a cor do titulo."""
+        cor = cor or self.cor
+        c = Color(1, 1, 1, 1)
+        m = Mesh(mode='triangles', texture=self._tex)
+        self._grupo.add(c)
+        self._grupo.add(m)
+        n = max(10, min(48, int(arco.comp / dp(8))))
+        meio = -0.4 * arco.esp
+        tc = self._tex.tex_coords
+        feito = [False]
+
+        def atualizar(s):
+            if feito[0]:
+                return
+            try:
+                if s >= 1.0:
+                    feito[0] = True
+                    self._fechar_gravura(i0, i1, c, m, cor)
+                    return
+                ox, oy = self._origem()
+                rx0, rx1 = ox + self._larg[i0], ox + self._larg[i1]
+                ry0, ry1 = oy, oy + self.th
+                ns = [0.0] + [i / float(n) for i in range(1, n) if i / float(n) < s] + [max(0.0, s)]
+                vs, ids = [], []
+                for j in range(1, len(ns)):
+                    sa, sb = ns[j - 1], ns[j]
+                    pol = _recorta([arco.ponto(sa, meio - meia), arco.ponto(sb, meio - meia),
+                                    arco.ponto(sb, meio + meia), arco.ponto(sa, meio + meia)],
+                                   rx0, ry0, rx1, ry1)
+                    if len(pol) < 3:
+                        continue
+                    b = len(vs) // 4
+                    for (x, y) in pol:
+                        fx, fy = (x - ox) / self.tw, (y - oy) / self.th
+                        vs.extend((x, y, tc[0] + (tc[2] - tc[0]) * fx, tc[1] + (tc[7] - tc[1]) * fy))
+                    for q in range(1, len(pol) - 1):
+                        ids.extend((b, b + q, b + q + 1))
+                m.vertices = vs
+                m.indices = ids
+            except Exception as e:
+                print(f"[titulo] gravar: {e}")
+                feito[0] = True
+                self._fechar_gravura(i0, i1, c, m, cor)
+        return atualizar
+
+    def _fechar_gravura(self, i0, i1, c, m, cor):
+        """O corte terminou: o trecho fica inteiro (um retangulo so) e esfria
+        branco -> cor do golpe -> cor do titulo."""
+        if (i0, i1) in self._gravados:            # outro corte ja completou o trecho
+            for ins in (m, c):
+                try:
+                    self._grupo.remove(ins)
+                except Exception:
+                    pass
+            return
+        self._gravados.add((i0, i1))
+        ox, oy = self._origem()
+        x0, x1 = self._larg[i0], self._larg[i1]
+        w = max(1.0, x1 - x0)
+        r = Rectangle(texture=self._tex.get_region(x0, 0, w, self.th), pos=(ox + x0, oy), size=(w, self.th))
+        try:                                       # no lugar da faixa, logo depois da cor dela
+            i = self._grupo.children.index(m)
+            self._grupo.remove(m)
+            self._grupo.insert(i, r)
+        except Exception:
+            self._grupo.add(c)
+            self._grupo.add(r)
+        self._trechos.append({'i0': i0, 'rect': r})
+        t = [0.0]
+
+        def _p(dt):
+            try:
+                t[0] += dt
+                k = min(1.0, t[0] / 0.55)
+                cc = [1 + (cor[i] - 1) * min(1.0, k * 2) for i in range(3)]
+                if k > 0.5:
+                    kk = (k - 0.5) * 2
+                    cc = [cor[i] + (self.cor[i] - cor[i]) * kk for i in range(3)]
+                c.rgba = (cc[0], cc[1], cc[2], 1)
+                return k < 1
+            except Exception:
+                return False
+        Clock.schedule_interval(_p, 1 / 60.)
+
+    def garantir(self, i0, i1):
+        """Se o trecho ainda nao apareceu (algum corte falhou), aparece agora."""
+        if (i0, i1) not in self._gravados and not any(tr['i0'] == i0 for tr in self._trechos):
+            self._gravados.add((i0, i1))
+            self.revelar(i0, i1, dur=0.12, cor=(1, 1, 1))
+

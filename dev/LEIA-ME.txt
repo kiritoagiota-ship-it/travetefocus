@@ -1,0 +1,44 @@
+FERRAMENTAS DE DESENVOLVIMENTO (ficam no GitHub, mas NAO vao para o APK)
+=======================================================================
+Tudo o que os testes gravam (fotos, logs, GIFs) vai para
+C:\Users\kirit\travetefocus\ferramentas\saida_testes (fora do codigo).
+Rodar pelo Git Bash, de dentro de C:\Users\kirit\travetefocus\app.
+
+MAIS IMPORTANTE
+  assar.py          Prepara os "desenhos prontos" do Yoru (yoru_quadros.bin).
+                    Sempre que o desenho do Yoru mudar (kirito.py), rodar:
+                      python dev/assar.py gravar   (roda o app e anota as poses)
+                      python dev/assar.py assar    (desenha tudo e grava o .bin)
+                    Sem isso o app continua funcionando, mas fica lento.
+  assar_rapido.sh   Versao curta (so a abertura), para testar mais rapido.
+
+TESTAR O APP (janela do tamanho do celular: 720x1560, densidade 1.75)
+  tour.sh LARG ALT SAIDA DENS   Tour completo: senha, abertura, todas as telas.
+                                FOTOS=0 mede so o desempenho; SO_TITULO=1 so a
+                                abertura; TITULO_DENSO="ini,fim,passo" mais fotos.
+  tela_teste.py     Roteiros especificos (usar com TOUR_PY=dev/tela_teste.py):
+                    CALC='1+1=;2*3=' calculadora, REGISTRO=1 teclado,
+                    MENU=1, RAPIDA=1 entrada rapida, PIN_ERRADO=3 (bloqueio),
+                    MEMORIAS=365 ABRIR=memorias (um ano de dados) + ROLAR=1
+                    (carregar mais ao rolar), SENHA=1 (trocar a senha),
+                    FINALIZAR=1 (data do turno), PULAR=4 (toca na tela 4 s
+                    depois da abertura comecar; com RAPIDA=1 na entrada rapida).
+  golpes_teste.py   As cenas curtas do Yoru (apagar, +XP, finalizar...).
+  plano.py          Desenha o plano dos golpes da abertura (sem abrir o app).
+
+VER / FAZER PREVIAS
+  folha2.py, folha_poses.py, cena_zoom.py   folhas de quadros para conferir
+  gif_tour.py, gif_cenas.py, gif_folha.py    GIFs de previa
+  ver5.py, ver_arco.py, ver_pontas.py        conferir partes do desenho
+
+SONS E VOZ
+  voz_jp.py, gemidos.py, grito2.py   tratam as falas geradas em
+                                     ferramentas\voz (Kokoro, voz jm_kumo)
+  audio.py, fazer_sons.py, sons_novos.py    efeitos sonoros (sons_cc0)
+
+DESENHO DO ROSTO/TRONCO A PARTIR DA REFERENCIA
+  nat_cab.py, nat_parte.py, fundo_flood.py, mapas2.py, gera_mapas.py,
+  retrato.py (closes)   -> usam os arquivos de dados\
+
+  p.py              ajudante para aplicar mudancas mantendo o fim de linha
+  historico\        remendos antigos (so para consulta)

@@ -154,12 +154,12 @@ class TelaGanhos(Screen):
         aberto   = next((p for p in reversed(periodos) if not p.get('data_fim')), None)
 
         if aberto is None:
-            self.ids.lbl_periodo_status.text = "[color=#8c96aa]--  Nenhum periodo aberto  --[/color]"
+            self.ids.lbl_periodo_status.text = "[color=#8c96aa]--  Nenhum período aberto  --[/color]"
             self.ids.lbl_periodo_pecas.text  = ""
             self.ids.lbl_periodo_ganho.text  = ""
-            self.ids.lbl_periodo_bonus.text  = "[color=#8c96aa]Configure abaixo e toque em ABRIR PERIODO[/color]"
-            self.ids.btn_fechar_periodo.opacity  = 0
-            self.ids.btn_fechar_periodo.disabled = True
+            self.ids.lbl_periodo_bonus.text  = "[color=#8c96aa]Configure abaixo e toque em ABRIR PERÍODO[/color]"
+            self._mostrar_botao(self.ids.btn_abrir_periodo, True)
+            self._mostrar_botao(self.ids.btn_fechar_periodo, False)
             return
 
         cfg      = self._cfg()
@@ -167,27 +167,36 @@ class TelaGanhos(Screen):
         ganho    = self._calcular_ganho(pecas)
         meta     = int(cfg['meta_bonus'])
         faltam   = max(0, meta - pecas)
-        tipo     = aberto.get('tipo', 'periodo').capitalize()
+        tipo     = aberto.get('tipo', 'período').capitalize()
         bonus_rs = _reais(cfg['valor_bonus'])
 
         self.ids.lbl_periodo_status.text = (
             f"[color=#00ff88]>> {tipo} aberto desde [b]{aberto['data_inicio']}[/b][/color]")
         contar(self.ids.lbl_periodo_pecas, pecas,
-               lambda v: f"[color=#9aa6bd]Pecas[/color]\n[color=#00e5ff][b]{fmt_br(v)}[/b][/color]")
+               lambda v: f"[color=#9aa6bd]Peças[/color]\n[color=#00e5ff][b]{fmt_br(v)}[/b][/color]")
         contar(self.ids.lbl_periodo_ganho, ganho,
-               lambda v: f"[color=#9aa6bd]Projecao[/color]\n[color=#00ff88][b]R$ {fmt_br(v, 2)}[/b][/color]",
+               lambda v: f"[color=#9aa6bd]Projeção[/color]\n[color=#00ff88][b]R$ {fmt_br(v, 2)}[/b][/color]",
                inteiro=False)
         if pecas >= meta and pecas > 0:
             extra = ganho - pecas * float(cfg['valor_base'])
             self.ids.lbl_periodo_bonus.text = (
-                f"[color=#ffcc00]{em('🔥')} META BATIDA! Todas as pecas valem {bonus_rs} "
-                f"(+{_reais(extra)} de bonus)[/color]")
+                f"[color=#ffcc00]{em('🔥')} META BATIDA! Todas as peças valem {bonus_rs} "
+                f"(+{_reais(extra)} de bônus)[/color]")
         else:
             self.ids.lbl_periodo_bonus.text = (
-                f"[color=#aab4c8]Faltam {fmt_br(faltam)} pecas para a meta de {fmt_br(meta)} - "
+                f"[color=#aab4c8]Faltam {fmt_br(faltam)} peças para a meta de {fmt_br(meta)} - "
                 f"batendo, TODAS passam a valer {bonus_rs}[/color]")
-        self.ids.btn_fechar_periodo.opacity  = 1
-        self.ids.btn_fechar_periodo.disabled = False
+        self._mostrar_botao(self.ids.btn_abrir_periodo, False)   # ja tem um aberto
+        self._mostrar_botao(self.ids.btn_fechar_periodo, True)
+
+    @staticmethod
+    def _mostrar_botao(btn, sim):
+        """Mostra o botao ocupando a linha toda, ou some com ele (sem espaco)."""
+        btn.opacity    = 1 if sim else 0
+        btn.disabled   = not sim
+        btn.size_hint_x = 1 if sim else None
+        if not sim:
+            btn.width = 0
 
     def _atualizar_historico(self):
         app  = App.get_running_app()
@@ -197,7 +206,7 @@ class TelaGanhos(Screen):
         fechados = [p for p in app.periodos_ganhos if p.get('data_fim')]
         if not fechados:
             vazio = Label(
-                text="[ SEM PERIODOS FECHADOS ]",
+                text="[ SEM PERÍODOS FECHADOS ]",
                 font_name="orbitron.ttf", font_size="11sp",
                 color=(0, 0.9, 1, 0.45), halign="center", valign="middle",
                 size_hint_y=None, height=dp(60))
@@ -252,7 +261,7 @@ class TelaGanhos(Screen):
                     height=min(dp(180), int(Window.height * 0.32)))
                 aplicar_fundo_holografico(cx2, (1.0, 0.08, 0.22, 0.9))
                 cx2.add_widget(Label(
-                    text=(f"[color=#ff2244]!!  APAGAR PERIODO?[/color]\n"
+                    text=(f"[color=#ff2244]!!  APAGAR PERÍODO?[/color]\n"
                           f"[color=#cccccc]{tipo}  {di} - {df}\n{_reais(ganho)}[/color]"),
                     markup=True, font_name="orbitron.ttf", font_size="12sp",
                     halign="center", size_hint_y=None, height=dp(80)))
@@ -310,7 +319,7 @@ class TelaGanhos(Screen):
         if bonus is not None:
             cfg['valor_bonus'] = bonus
         else:
-            invalidos.append("BONUS")
+            invalidos.append("BÔNUS")
         if meta is not None:
             cfg['meta_bonus'] = meta
         else:
@@ -322,13 +331,13 @@ class TelaGanhos(Screen):
         if invalidos:
             som.tocar_erro()
             tatil.erro()
-            self._aviso("VALOR INVALIDO: " + ", ".join(invalidos) + " (mantido o anterior)",
+            self._aviso("VALOR INVÁLIDO: " + ", ".join(invalidos) + " (mantido o anterior)",
                         (1, 0.35, 0.35, 1))
         else:
             som.tocar_salvar()
             tatil.confirmar()
             tremer_tela(5)
-            self._aviso("CALCULO SALVO: base " + _reais(cfg['valor_base']) + " / bonus "
+            self._aviso("CÁLCULO SALVO: base " + _reais(cfg['valor_base']) + " / bônus "
                         + _reais(cfg['valor_bonus']) + " ao bater " + fmt_br(cfg['meta_bonus']))
 
     def abrir_periodo(self):
@@ -401,7 +410,7 @@ class TelaGanhos(Screen):
         cfg = self._cfg()
 
         caixa.add_widget(Label(
-            text="[b][color=#00e5ff]>>  PERIODO ENCERRADO  <<[/color][/b]",
+            text="[b][color=#00e5ff]>>  PERÍODO ENCERRADO  <<[/color][/b]",
             markup=True, font_name="orbitron.ttf", font_size="15sp",
             size_hint_y=None, height=dp(34), halign="center"))
 
@@ -410,17 +419,17 @@ class TelaGanhos(Screen):
             linha_base = (f"[color=#ffcc00]{em('🔥')} META BATIDA: {fmt_br(n_bonus)} x "
                           f"{_reais(cfg['valor_bonus'])}   {_reais(v_bonus)}[/color]")
             linha_bonus = (f"[color=#8c96aa]sem a meta seriam {_reais(sem_meta)} "
-                           f"(+{_reais(v_bonus - sem_meta)} de bonus)[/color]")
+                           f"(+{_reais(v_bonus - sem_meta)} de bônus)[/color]")
         else:
             linha_base = (f"[color=#aab4c8]{fmt_br(n_base)} x {_reais(cfg['valor_base'])}[/color]"
                           f"   [color=#00e5ff]{_reais(v_base)}[/color]")
-            linha_bonus = (f"[color=#8c96aa]Meta de {fmt_br(cfg['meta_bonus'])} nao batida "
+            linha_bonus = (f"[color=#8c96aa]Meta de {fmt_br(cfg['meta_bonus'])} não batida "
                            f"(faltaram {fmt_br(int(cfg['meta_bonus']) - pecas)})[/color]")
 
         caixa.add_widget(Label(
-            text=(f"[color=#aab4c8]Periodo[/color]   "
+            text=(f"[color=#aab4c8]Período[/color]   "
                   f"[color=#00e5ff]{periodo['data_inicio']} - {periodo['data_fim']}[/color]\n"
-                  f"[color=#aab4c8]Total de pecas[/color]   "
+                  f"[color=#aab4c8]Total de peças[/color]   "
                   f"[color=#00e5ff][b]{fmt_br(pecas)} un.[/b][/color]\n\n"
                   f"{linha_base}\n{linha_bonus}\n\n"
                   f"[color=#aab4c8]Total a receber[/color]   "

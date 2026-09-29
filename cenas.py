@@ -3403,6 +3403,18 @@ class KiritoPin:
         except Exception as e:
             print(f"[kirito pin] bloqueado: {e}")
 
+    def voltar(self):
+        """O bloqueio acabou: sobe de novo devagar e volta a espiar."""
+        try:
+            if self.k is None or self._em_cima:
+                return
+            self._bloq = False
+            self._escondido = False
+            self.k.mostrar(_com(K.POSE_A['espia_baixo'], olhos='s'))
+            self._animar_desc(0.0, 0.6, on_fim=self._esperar)
+        except Exception as e:
+            print(f"[kirito pin] voltar: {e}")
+
     def sumir(self):
         """Acesso liberado: sobe na caixa, sorri, faz que sim e some num
         teleporte (ele volta pendurado na cena do titulo)."""

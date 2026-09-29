@@ -1,0 +1,277 @@
+# ═══════════════════════════════════════════════════════════════════
+#  PANO E MECHAS DESENHADOS COMO FITAS
+#  Um eixo que dobra aos poucos (a ponta atrasa em relacao a raiz) e uma
+#  largura que muda ao longo dele. Cada texel sabe onde esta na fita
+#  (u = 0 na raiz .. 1 na ponta; v = texels a partir da borda de tras/de
+#  cima, que e o lado da luz) e e isso que escolhe a cor: dobras que
+#  acompanham o pano, brilho so onde a luz pega, barra e forro. Sem faixas
+#  soltas e sem texel perdido na borda.
+# ═══════════════════════════════════════════════════════════════════
+_VIZ4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
+
+
+def _fita(x0, y0, ang0, comp, curva, larg, passo=0.5):
+    """-> {(x, y): (u, v, W)}. O eixo sai de (x0, y0) (texels) no angulo
+    ang0 (graus) e dobra curva(u) graus; larg(u) -> (a, b): quanto a fita
+    vai para o lado da luz (a) e para o outro (b). Cada texel fica com a
+    amostra mais perto do seu centro: a cor nao pisca de um quadro para o
+    outro."""
+    n = max(2, int(comp / passo))
+    ds = comp / float(n)
+    x, y = float(x0), float(y0)
+    melhor = {}
+    for i in range(n + 1):
+        u = i / float(n)
+        ang = math.radians(ang0 + curva(u))
+        ux, uy = math.cos(ang), math.sin(ang)
+        nx, ny = uy, -ux                          # lado da luz (tras / cima)
+        a, b = larg(u)
+        W = a + b
+        if W > 0.05:
+            lx, ly = x + nx * a, y + ny * a
+            m = int(W * 2.2) + 1
+            for k in range(m + 1):
+                t = k / float(m)
+                qx, qy = lx - nx * W * t, ly - ny * W * t
+                ix, iy = int(math.floor(qx + 0.5)), int(math.floor(qy + 0.5))
+                d = (qx - ix) * (qx - ix) + (qy - iy) * (qy - iy)
+                atual = melhor.get((ix, iy))
+                if atual is None or d < atual[0]:
+                    melhor[(ix, iy)] = (d, u, W * t, W)
+        x += ux * ds
+        y += uy * ds
+    f = {q: (u, v, W) for q, (d, u, v, W) in melhor.items()}
+    # acabamento de pixel art: sem texel pendurado (1 vizinho so) na borda
+    # e sem furinho de 1 texel no meio
+    for q in [q for q in f if f[q][0] < 0.92 and
+              sum(1 for (a, b) in _VIZ4 if (q[0] + a, q[1] + b) in f) <= 1]:
+        del f[q]
+    furos = {}
+    for (x, y) in f:
+        for (a, b) in _VIZ4:
+            q = (x + a, y + b)
+            if q not in f:
+                furos[q] = furos.get(q, 0) + 1
+    for q, n in furos.items():
+        if n >= 3:
+            for (a, b) in _VIZ4:
+                vz = f.get((q[0] + a, q[1] + b))
+                if vz is not None:
+                    f[q] = vz
+                    break
+    return f
+
+
+def _onda(fase, u, atraso, desloc=0.0):
+    """Ondulacao que desce pelo pano: a ponta chega depois da raiz."""
+    return math.sin(2 * math.pi * (fase - u * atraso + desloc))
+
+
+def _cauda(px, x0, y0, ang0, comp, curva, larg, ponta, cor, chao, barra=('Z', '2')):
+    """Uma cauda do sobretudo (ou a aba da frente). ponta(vf) = ate onde
+    (u) a fita vai em cada ponto da largura (vf 0 = borda da luz .. 1):
+    corta a barra na diagonal. cor(u, v, W) pinta o pano; a barra (a borda
+    do fim da fita, seguindo o contorno) ganha a linha escura e o friso."""
+    f = _fita(x0, y0, ang0, comp, curva, larg)
+    dentro = {}
+    for q, (u, v, W) in f.items():
+        if q[1] < chao:
+            continue                              # o pano nao atravessa o chao
+        if u <= ponta(v / W if W else 0.0):
+            dentro[q] = (u, v, W)
+    ang = math.radians(ang0 + curva(1.0))         # para onde a ponta aponta
+    sx = 1 if math.cos(ang) > 0.38 else (-1 if math.cos(ang) < -0.38 else 0)
+    sy = 1 if math.sin(ang) > 0.38 else (-1 if math.sin(ang) < -0.38 else 0)
+
+    def fora(q, n):
+        return ((sx and (q[0] + sx * n, q[1]) not in dentro) or
+                (sy and (q[0], q[1] + sy * n) not in dentro))
+    for q, (u, v, W) in dentro.items():
+        if u > 0.72 and fora(q, 1):
+            ch = barra[1]
+        elif u > 0.72 and fora(q, 2):
+            ch = barra[0]
+        else:
+            ch = cor(u, v, W)
+        if ch:
+            px[q] = ch
+
+
+def _casaco4(px, base, y0, capa, lift, fase, saia, parte):
+    """O sobretudo so muda com o vento, a queda, a ondulacao e a abertura das
+    pernas (e a altura do chao): o desenho fica guardado pronto e so e
+    copiado para o lugar."""
+    top = _t(y0) + R - 1
+    bx = _t(base)
+    chao = _PES * R - top
+    q4 = lambda v: round(v * 4) / 4.0
+    capa, lift, saia = q4(capa), q4(lift), round(saia, 2)
+    _parte(px, ('casaco', parte, capa, lift, round(fase, 3), saia, chao), bx, top,
+           lambda d: _casaco4_desenho(d, 0, 0, chao, capa, lift, fase, saia, parte))
+
+
+def _casaco4_desenho(px, bx, top, chao, capa, lift, fase, saia, parte):
+    """Sobretudo longo de couro, desenhado como pano: a aba do lado de ca
+    (abre na diagonal a partir do cinto, forro e costura ciano na borda) e
+    duas caudas atras que abrem em V (a de fora voa mais). Poucos blocos de
+    cor e grandes: lado da luz, lado da sombra separado por uma dobra que
+    desce e anda com a ondulacao, borda de tras acesa, forro roxo no vao e
+    barra com friso ciano cortada na diagonal. O vento (capa) e a queda
+    (lift) levantam o pano; a ponta sempre chega depois da raiz."""
+    vento = max(-1.0, min(2.2, capa))
+    ergue = max(-0.6, min(2.6, lift))
+    amp = 5.0 + 4.0 * min(3.0, abs(capa)) + 2.5 * abs(ergue)
+
+    if parte == 'frente':
+        def curva(u):
+            return (6.0 * (saia - 1.0) + 4.0) * u - vento * 24.0 * u ** 1.3 - ergue * 20.0 * u                 + amp * 0.6 * u * _onda(fase, u, 0.7, 0.37)
+
+        def cor(u, v, W):
+            if v > W - 1:
+                return 'Z'                       # costura ciano na abertura
+            if v > W - 2.5:
+                return 'q'                       # forro
+            if v < 1.5 and u > 0.1:
+                return 'A'                       # borda que pega luz
+            dob = W * 0.5 + 0.9 * _onda(fase, u, 0.8, 0.2) * u
+            if u > 0.3 and dob - 1 <= v < dob + 0.2 + 1.6 * u:
+                return '2'                       # dobra: cunha que abre para baixo
+            return 'C'
+        _cauda(px, bx + 31.0, top, -101.0, 17.0, curva,
+               lambda u: (5.0 + 1.5 * u, 4.5 - 1.5 * u + 0.8 * (saia - 1.0)),
+               lambda vf: 1.0 - 0.16 * vf, cor, chao)
+        return
+
+    # ── cauda de dentro (mais perto das pernas): quase toda na sombra, com o
+    #    forro roxo aparecendo no vao entre as duas
+    def curva_d(u):
+        return 4.0 * u - vento * 30.0 * u ** 1.3 - ergue * 22.0 * u ** 1.2             + amp * 0.8 * u * _onda(fase, u, 0.85, 0.3)
+
+    def cor_d(u, v, W):
+        if v < 2.2 and u > 0.25:
+            return 'q'                           # forro, no vao entre as caudas
+        if v < 3.2 and u > 0.35:
+            return 'C'                           # dobra do forro pega um pouco de luz
+        return '2'
+    estica = 1.0 + 0.12 * max(0.0, vento) + 0.08 * max(0.0, ergue)
+    _cauda(px, bx + 11.0, top, -88.0, 27.0 * estica, curva_d,
+           lambda u: (3.0 + 1.2 * u, 3.0 + 0.4 * u),
+           lambda vf: 1.0 - 0.12 * (1.0 - vf), cor_d, chao)
+
+    # ── cauda de fora (a de tras): a maior, abre para tras e voa mais
+    def curva_f(u):
+        return -(9.0 + 6.0 * max(0.0, saia - 0.6)) * u - vento * 48.0 * u ** 0.8             - ergue * 34.0 * u ** 0.9 + amp * u * _onda(fase, u, 0.85)
+
+    def cor_f(u, v, W):
+        if v < 1 and u > 0.06:
+            return 'c'                           # borda de tras acesa
+        if v < 2 and 0.12 < u < 0.8:
+            return 'A'
+        dob = W * 0.52 + 1.3 * _onda(fase, u, 0.9) * u
+        if u > 0.22:
+            if dob - 0.5 <= v < dob + 0.5 + 2.2 * (u - 0.22):
+                return '2'                       # dobra: cunha de sombra que abre
+            if dob - 1.5 <= v < dob - 0.5 and u > 0.3:
+                return 'A'                       # brilho da dobra, do lado da luz
+            if v >= dob:
+                return 'C' if int(v + u * 7) % 5 else '2'
+        return 'C'
+    _cauda(px, bx + 6.0, top, -94.0, 31.0 * estica, curva_f,
+           lambda u: (3.5 + 2.8 * u, 4.0 + 1.0 * u),
+           lambda vf: 1.0 - 0.15 * vf, cor_f, chao)
+
+
+# mechas de tras: (coluna, linha) da raiz no mapa da cabeca, angulo (graus),
+# comprimento e meia-largura na raiz (texels). De baixo para cima (as de
+# cima ficam por cima).
+_MECHAS = ((13, 25, 228.0, 13.0, 5.0), (10, 20, 207.0, 19.0, 6.5), (9, 14, 190.0, 21.0, 7.0),
+           (10, 8, 172.0, 19.0, 6.5), (15, 4, 140.0, 12.0, 4.6))
+
+
+def _mechas_tras(px, cx, ty, cb, sobe, fase):
+    q4 = lambda v: round(v * 4) / 4.0
+    cb, sobe = q4(cb), q4(sobe)
+    _parte(px, ('mechas', cb, sobe, round(fase, 3)), cx, ty,
+           lambda d: _mechas_desenho(d, 0, 0, cb, sobe, fase))
+
+
+def _mechas_desenho(px, cx, ty, cb, sobe, fase):
+    """Cabelo de tras em MECHAS de verdade: cada uma afina ate a ponta,
+    curva com o peso, tem brilho em cima e sombra embaixo, e a de cima
+    marca uma linha escura por cima da de baixo. No vento (cb) elas deitam
+    para tras e esticam; no reiatsu (sobe) levantam. A ponta atrasa."""
+    cabelo = {}
+    corre = max(0.0, min(1.0, cb * 0.28))
+    amp = 3.0 + 3.0 * min(3.0, abs(cb)) + 7.0 * sobe
+    for i, (col, lin, ang, comp, larg) in enumerate(_MECHAS):
+        alvo = 180.0 - 18.0 * sobe                  # para onde o vento puxa
+        a0 = ang + (alvo - ang) * corre * 0.7 - sobe * 10.0
+        cp = comp * (1.0 + 0.2 * corre + 0.2 * sobe)
+        cai = 14.0 * (1.0 - corre) * (1.0 - sobe)
+
+        def curva(u, i=i, cai=cai):
+            return cai * u * u + amp * u * _onda(fase * 1.3, u, 0.8, i * 0.13)
+
+        f = _fita(cx + col, ty - lin, a0, cp, curva,
+                  lambda u, w=larg: (w * (1.0 - u) ** 1.2, w * (1.0 - u) ** 0.8))
+        for q, (u, v, W) in f.items():
+            vf = v / W if W else 0.5
+            if vf > 0.74 or (u > 0.82 and vf > 0.45):
+                ch = 'J'                            # embaixo e na ponta: sombra
+            elif vf < 0.3 and 0.3 < u < 0.7:
+                ch = 'h' if (vf < 0.14 and 0.4 < u < 0.58 and i in (1, 2, 3)) else 'I'
+            else:
+                ch = 'H'
+            # a mecha de cima marca a de baixo com uma linha escura
+            if q in cabelo and any((q[0] + a, q[1] + b) not in f for (a, b) in _VIZ4):
+                ch = 'J'
+            cabelo[q] = ch
+    px.update(cabelo)
+
+
+# espetos do topo que crescem com o reiatsu: (coluna da raiz, angulo, tamanho)
+_ESPETOS = ((12, 118.0, 1.0), (19, 104.0, 1.25), (26, 92.0, 1.1), (32, 80.0, 0.8))
+
+
+def _espetos3(px, cx, ty, cb, sobe, fase):
+    """Com o reiatsu, mechas do topo se arrepiam para cima (fitas que afinam,
+    com brilho de um lado), balancando cada uma no seu tempo e deitando para
+    tras com o vento."""
+    cabelo = {}
+    for i, (col, ang, tam) in enumerate(_ESPETOS):
+        cresce = sobe * (0.75 + 0.25 * math.sin(2 * math.pi * (fase * 1.5 + i * 0.27)))
+        comp = (4.0 + 9.0 * cresce) * tam
+        if comp < 4.5:
+            continue
+        a0 = ang + 18.0 * min(1.0, max(0.0, cb) * 0.3) + 8.0 * math.sin(2 * math.pi * (fase + i * 0.31))
+
+        def curva(u, i=i):
+            return 14.0 * u * u + 6.0 * u * _onda(fase * 1.4, u, 0.7, i * 0.2)
+
+        f = _fita(cx + col, ty - 4, a0, comp, curva,
+                  lambda u: (3.2 * (1.0 - u) ** 1.1, 2.6 * (1.0 - u) ** 0.9))
+        for q, (u, v, W) in f.items():
+            vf = v / W if W else 0.5
+            if vf > 0.7 or u > 0.85:
+                ch = 'J'
+            elif vf < 0.32 and 0.2 < u < 0.7:
+                ch = 'I'
+            else:
+                ch = 'H'
+            cabelo[q] = ch
+    for q, ch in cabelo.items():
+        if q not in px:                             # por tras do que ja tem
+            px[q] = ch
+
+
+def _contorna(px, meu, tons):
+    """Contorno escuro de 1 texel em volta de `meu` onde ele encosta em
+    texels de `tons` (ex.: perna na frente do sobretudo)."""
+    for (x, y) in meu:
+        for (a, b) in _VIZ4:
+            q = (x + a, y + b)
+            if q not in meu and px.get(q) in tons:
+                px[q] = 'N'
+    px.update(meu)
+
+

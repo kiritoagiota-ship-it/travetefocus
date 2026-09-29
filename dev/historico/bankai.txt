@@ -1,0 +1,116 @@
+        def _fitas(alvo=None, aperto=None, vel=None):
+            for f in estado.get('fitas', ()):
+                if alvo is not None:
+                    f.alvo = alvo
+                if aperto is not None:
+                    f.aperto = aperto
+                if vel is not None:
+                    f.vel = vel
+
+        # ── BAN-KAI (como a primeira Bankai do Ichigo) ─────────────────
+        # BAN: ergue a katana apontando para a frente (a azul baixa, atras);
+        # KAI: a azul vem cruzar na frente - e a tela estoura numa nuvem de
+        # reiatsu. Quando a nuvem abre do meio, ele ja esta no Mugetsu.
+        ban = K.pose(pernas='base_larga', dx=1, m1=(9, 3), a1=2.0, m2=(-5, -3), a2=238.0, olhos='g')
+        ban_prep = K.pose(pernas='base_larga', dy=-1, m1=(4, 0), a1=-35.0, m2=(-4, -2), a2=230.0, olhos='s')
+        kai = K.pose(pernas='base_larga', dx=1, dy=-1, m1=(9, 5), a1=-20.0, m2=(7, -3), a2=25.0, olhos='g')
+        mug = K._fund(pernas='base_larga', m1=(8, 1), a1=-28.0, olhos='l', evo=True, mugetsu=True)
+        kk.precarregar([ban, ban_prep, kai, mug, _com(mug, cresce=0.4)])
+        nuvem_u = te * 3
+        oficina.pedir_bruto('nuvem', _desenho_nuvem(alt * 0.95, nuvem_u))
+
+        def _ban():
+            _som('pouso')
+            ax, ay = kk.ancora()
+            poeira(ax, ay - kk.extensao()[1], n=8)
+            cam[0].ir(1.12, foco=(ax, ay + alt * 0.35), dur=1.2)
+            _fundo(tela, reator=0.22, barra=0.1, dur=0.8)       # o mundo escurece um pouco
+            seq = K.sequencia([(2, _com(P['agacha'], olhos='s'), 'out'), (4, ban_prep, 'in'),
+                               (3, ban, 'mola'), (1, ban)])
+
+            def _q(i):
+                if i == 7:
+                    balao(camada, 'BAN!', kk, tipo='grito', dur=1.05)
+                    _som('carga')
+                    _tremer(6)
+                    kk.empurrar(capa=-10, cabelo=-8, lift=6)
+                    hx, hy = kk.ponta_espada(1)
+                    faiscas.estourar(hx, hy, CIANO, n=10, forca=dp(120), tam=ps)
+            kk.tocar(seq, on_quadro=_q,
+                     on_fim=lambda: kk.tocar(K.poder(ban, n=36, de=0.4), loop=True))
+            # o vento de energia sobe enquanto ele segura o BAN
+            t = [0.0]
+
+            def _vento(dt):
+                t[0] += dt
+                if t[0] > 1.2:
+                    return False
+                kk.empurrar(lift=1.6, cabelo=1.2, capa=-1.0)
+                if random.random() < 0.5:
+                    ax2, ay2 = kk.ancora()
+                    faiscas.estourar(ax2 + random.uniform(-1, 1) * 8 * ps, ay2 - 10 * ps, ROXO, n=1,
+                                     forca=dp(30), tam=max(2, ps * 0.6), gravidade=-dp(260))
+                return True
+            ag.cada(0.06, _vento)
+            ag.depois(1.25, _kai)
+
+        def _kai():
+            # a azul vem cruzar na frente num estalo
+            meio = K.smear(K.misturar(ban, kai, 0.5, 0.5), None, ban['a2'])
+            kk.tocar(K.sequencia([(1, meio, 'segura'), (2, kai, 'out'), (1, kai)]),
+                     on_fim=lambda: kk.tocar(K.poder(kai, n=36, de=0.8), loop=True))
+            _som('corte2')
+            ag.depois(0.07, _boom)
+
+        def _boom():
+            # KAI: estrondo - quadro de impacto, clarao, onda de choque, a
+            # tela treme e a nuvem de reiatsu cobre ele
+            balao(camada, 'KAI!', kk, tipo='grito', dur=1.15, font_size=sp(38))
+            ax, ay = kk.ancora()
+            cx_n, cy_n = ax, ay + alt * 0.3
+            _quadro_impacto(camada, kk, (cx_n, cy_n))
+            _som('golpe_final')
+            _som('absorve')
+            _tremer(34)
+            kk.pausar(0.1)
+            ag.depois(0.12, lambda: _brilho_tela(camada, 0.75, 0.35, (0.95, 0.85, 1.0)))
+            for r1, cor, e, dd in ((max(W, H) * 0.7, ROXO, dp(6), 0.55), (max(W, H) * 0.45, BRANCO, dp(4), 0.4),
+                                   (max(W, H) * 0.3, CIANO, dp(3), 0.35)):
+                _anel(camada, (cx_n, cy_n), ps * 3, r1, dd, cor, esp=e)
+            faiscas.estourar(cx_n, cy_n, ROXO, n=40, forca=dp(360), tam=ps)
+            faiscas.estourar(cx_n, cy_n, BRANCO, n=20, forca=dp(280), tam=ps)
+            _fundo(tela, reator=0.5, barra=0.1, dur=0.2)
+            quadros = oficina.obter('nuvem')
+            if not quadros:
+                _no_mugetsu()
+                ag.depois(0.5, _revela)
+                return
+            nuvem = NuvemReiatsu(quadros, nuvem_u, (cx_n, cy_n), dur=1.35,
+                                 on_coberto=_no_mugetsu, on_fim=_revela)
+            camada.add_widget(nuvem)
+
+        def _no_mugetsu():
+            # escondido na nuvem: as espadas viram uma so e ele vira o Mugetsu
+            kk.tocar(K.poder(_com(mug, cresce=0.4), n=36, de=0.9), loop=True)
+            _fitas(alvo=0.7, aperto=0.6, vel=20.0)
+            aura.alvo = 0.8
+            _som('fitas')
+
+        def _revela():
+            # a nuvem abre do meio: o Mugetsu aparece e o cabelo termina de crescer
+            rampa = []
+            for f, q in enumerate(K.poder(mug, n=12, de=0.9)):
+                rampa.append(dict(q, cresce=round((0.4 + 0.6 * min(1.0, (f + 1) / 10.0)) * 20) / 20.0))
+            kk.tocar(rampa, on_fim=lambda: kk.tocar(K.poder(mug, n=36, de=0.9), loop=True))
+            _fitas(alvo=1.0, aperto=1.0, vel=14.0)
+            aura.alvo = 1.0
+            kk.clarao = 0.8
+            ag.depois(0.08, lambda: _clarao_boneco(kk, 0.35))
+            ax, ay = kk.ancora()
+            faiscas.estourar(ax, ay + alt * 0.3, ROXO, n=24, forca=dp(200), tam=ps, gravidade=-dp(120))
+            _som('titulo')
+            _tremer(12)
+            cam[0].ir(1.2, foco=(ax, ay + alt * 0.4), dur=0.5)
+            # close: os olhos acendem roxos; depois a escuridao
+            ag.depois(0.55, lambda: close_rosto(camada, 'mugetsu', dur=0.95, y_rel=0.8, on_fim=_posiciona))
+

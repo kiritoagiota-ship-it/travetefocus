@@ -16,8 +16,12 @@ from datetime import datetime
 from efeitos import (BotaoAngular, BotaoAngularAlerta, ListaItem,
                      InputHolografico, tremer_tela, explodir_estilhacos)
 import som
-from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, _bind_teclado
+from helpers import (aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, _bind_teclado,
+                     anexar_teclado, formatar_data_digitada, ler_data, tremer_widget)
 import tatil
+
+PAGINA = 30          # turnos desenhados de cada vez (anos de dados abrem rapido)
+POR_QUADRO = 8       # ... montados aos poucos, alguns por quadro
 
 
 def _ordenadas(memorias):
@@ -49,6 +53,17 @@ class TelaMemorias(Screen):
                 self._filtro_ev = None
         except Exception:
             pass
+        self._cancelar_lote()
+
+    def on_kv_post(self, *_):
+        self._pendentes = []
+        self._max_t = 0
+        self._btn_mais = None
+        self._lote_ev = None
+        self._ancora = None
+        self._carregando = False
+        self.ids.lista_scroll.bind(scroll_y=self._ao_rolar)
+        self.ids.memorias_container.bind(height=self._manter_ancora)
 
     def on_enter(self):
         self.filtro_mes = "TODOS"   # nao herdar filtro de uma visita anterior
@@ -113,6 +128,7 @@ class TelaMemorias(Screen):
     def _atualizar_lista_impl(self):
         app   = App.get_running_app()
         cont  = self.ids.memorias_container
+        self._cancelar_lote()                 # lote de antes ainda montando
         for child in list(cont.children):
             Animation.cancel_all(child)
         cont.clear_widgets()
@@ -138,7 +154,7 @@ class TelaMemorias(Screen):
 
         if not mems:
             vazio = Label(
-                text="[ SEM REGISTROS ]\n\nFinalize um turno para\npopular o banco de memorias.",
+                text="[ SEM REGISTROS ]\n\nFinalize um turno para\npopular o banco de memórias.",
                 font_name="orbitron.ttf", font_size="12sp",
                 color=(0, 0.9, 1, 0), halign="center", valign="middle",
                 size_hint_y=None, height=dp(160))
@@ -148,23 +164,103 @@ class TelaMemorias(Screen):
                       transition='out_expo').start(vazio)
             return
 
-        novos = []
-        for m in reversed(mems):
-            is_rec = m['total'] == max_t and max_t > 0
-            crown  = "[REC] " if is_rec else ""
-            btn    = ListaItem(
-                text=f"  {crown}{m['data']}   ·   {m['total']} un.   ·   +{m.get('xp', 0)} XP")
-            btn.height = dp(52)
-            btn.valign = 'middle'
-            if is_rec:
-                btn.cor_borda    = [1.0, 0.82, 0.0, 1.0]
-                btn.cor_borda_kv = [1.0, 0.82, 0.0, 1.0]
-                btn.cor_fundo    = [0.10, 0.08, 0.0, 0.92]
-                btn.cor_texto    = [1.0, 0.88, 0.1, 1.0]
-            btn.bind(on_release=lambda x, mem=m: self.abrir_detalhes_memoria(mem))
-            cont.add_widget(btn)
-            novos.append(btn)
-        entrada_cascata(novos)
+        # so os PAGINA mais recentes agora; o resto entra ao rolar ate o fim
+        self._max_t = max_t
+        self._pendentes = list(reversed(mems))
+        self._btn_mais = None
+        self._desenhar_lote(ancora=0.0)       # comeca no topo
+
+    def _item(self, m):
+        is_rec = m['total'] == self._max_t and self._max_t > 0
+        crown  = "[REC] " if is_rec else ""
+        btn    = ListaItem(
+            text=f"  {crown}{m['data']}   ·   {m['total']} un.   ·   +{m.get('xp', 0)} XP")
+        btn.height = dp(52)
+        btn.valign = 'middle'
+        if is_rec:
+            btn.cor_borda    = [1.0, 0.82, 0.0, 1.0]
+            btn.cor_borda_kv = [1.0, 0.82, 0.0, 1.0]
+            btn.cor_fundo    = [0.10, 0.08, 0.0, 0.92]
+            btn.cor_texto    = [1.0, 0.88, 0.1, 1.0]
+        btn.bind(on_release=lambda x, mem=m: self.abrir_detalhes_memoria(mem))
+        return btn
+
+    def _cancelar_lote(self):
+        ev, self._lote_ev = getattr(self, '_lote_ev', None), None
+        if ev is not None:
+            ev.cancel()
+        self._ancora = None
+        self._carregando = False
+
+    def _desenhar_lote(self, ancora):
+        """Poe mais PAGINA turnos no fim da lista, POR_QUADRO por quadro (e o
+        botao 'mais' se sobrar). ancora: pixels do topo da lista ate a vista,
+        mantidos enquanto a lista cresce embaixo."""
+        cont = self.ids.memorias_container
+        self._cancelar_lote()
+        self._carregando = True
+        self._ancora = ancora
+        if self._btn_mais is not None:
+            cont.remove_widget(self._btn_mais)
+            self._btn_mais = None
+        lote, self._pendentes = self._pendentes[:PAGINA], self._pendentes[PAGINA:]
+        fila, novos = list(lote), []
+
+        def _passo(dt=0):
+            try:
+                parte, fila[:] = fila[:POR_QUADRO], fila[POR_QUADRO:]
+                for m in parte:
+                    b = self._item(m)
+                    b.opacity = 0                  # a cascata acende no fim
+                    cont.add_widget(b)
+                    novos.append(b)
+                if fila:
+                    self._lote_ev = Clock.schedule_once(_passo, 0)
+                    return
+                self._lote_ev = None
+                if self._pendentes:
+                    n = len(self._pendentes)
+                    b = BotaoAngular(text=f"MOSTRAR MAIS  ({n} {'turno' if n == 1 else 'turnos'})",
+                                     size_hint_y=None, height=dp(46), font_size="11sp")
+                    b.bind(on_release=lambda *_: self._carregar_mais())
+                    cont.add_widget(b)
+                    self._btn_mais = b
+                entrada_cascata(novos, atraso_max=0.4)
+                # solta a ancora depois que o layout assentar
+                Clock.schedule_once(lambda dt: self._soltar_ancora(), 0.12)
+            except Exception as e:
+                print(f"[memorias] lote: {e}")
+                self._soltar_ancora()
+        _passo()
+
+    def _manter_ancora(self, cont, h):
+        if self._ancora is None:
+            return
+        sv = self.ids.lista_scroll
+        faixa = h - sv.height
+        sv.scroll_y = max(0.0, min(1.0, 1.0 - self._ancora / faixa)) if faixa > 0 else 1.0
+
+    def _soltar_ancora(self):
+        self._ancora = None
+        self._carregando = False
+
+    def _ao_rolar(self, sv, y):
+        # chegou perto do fim da lista: carrega o proximo lote sozinho
+        if y <= 0.04 and self._pendentes and not self._carregando:
+            self._carregando = True
+            Clock.schedule_once(lambda dt: self._carregar_mais(), 0)
+
+    def _carregar_mais(self):
+        sv, cont = self.ids.lista_scroll, self.ids.memorias_container
+        try:
+            if not self._pendentes:
+                self._carregando = False
+                return
+            # quantos pixels do topo a pessoa estava: continua no mesmo lugar
+            self._desenhar_lote(ancora=(1.0 - sv.scroll_y) * max(0.0, cont.height - sv.height))
+        except Exception as e:
+            print(f"[memorias] carregar mais: {e}")
+            self._soltar_ancora()
 
     def _atualizar_grafico(self):
         app      = App.get_running_app()
@@ -223,6 +319,8 @@ class TelaMemorias(Screen):
             cursor_color=(0, 0.9, 1, 1),
             halign="center",
             size_hint_x=0.50)          # mais largo para caber a data completa
+        formatar_data_digitada(inp_data)
+        anexar_teclado(inp_data, 'numeros')
 
         header.add_widget(lbl_info)
         header.add_widget(inp_data)
@@ -283,7 +381,7 @@ class TelaMemorias(Screen):
                 items_box.add_widget(row)
         else:
             sem = Label(
-                text="[color=#555555]Nenhum item detalhado disponivel.[/color]",
+                text="[color=#555555]Nenhum item detalhado disponível.[/color]",
                 markup=True, font_name="rajdhani.ttf", font_size="14sp",
                 size_hint_y=None, height=dp(40),
                 halign="center", valign="middle")
@@ -313,23 +411,28 @@ class TelaMemorias(Screen):
 
         # ── Handlers ─────────────────────────────────────────────────────
         def _salvar_data(*_):
-            raw = inp_data.text.strip()
-            try:
-                d = datetime.strptime(raw, "%d/%m/%Y")
-                partes = memoria['data'].strip().split()
-                hora   = partes[1] if len(partes) > 1 else datetime.now().strftime("%H:%M")
-                memoria['data'] = f"{d.strftime('%d/%m/%Y')}  {hora}"
-                som.tocar_salvar()
-                tatil.confirmar()
-                App.get_running_app().salvar_dados()
-                self.atualizar_lista()
-                self._atualizar_grafico()
-            except ValueError:
+            d, motivo = ler_data(inp_data.text)
+            if d is None:
                 tatil.erro()
+                btn_salvar_data.text = motivo.split('.')[0].upper()
+                Clock.schedule_once(lambda dt: setattr(btn_salvar_data, 'text', ">>  SALVAR DATA"), 2.2)
+                tremer_widget(inp_data)
                 Animation.cancel_all(inp_data, 'borda_color')
                 (Animation(borda_color=[1, 0.1, 0.2, 1], duration=0.08) +
                  Animation(borda_color=[0.55, 0.05, 0.95, 1], duration=0.35)
                  ).start(inp_data)
+                return
+            partes = memoria['data'].strip().split()
+            hora   = partes[1] if len(partes) > 1 else datetime.now().strftime("%H:%M")
+            memoria['data'] = f"{d.strftime('%d/%m/%Y')}  {hora}"
+            som.tocar_salvar()
+            tatil.confirmar()
+            app = App.get_running_app()
+            app.recalcular_totais()          # melhor dia e sequencia mudam com a data
+            app.salvar_dados()
+            self._atualizar_filtros()
+            self.atualizar_lista()
+            self._atualizar_grafico()
 
         def _executar_delete():
             app = App.get_running_app()
@@ -337,6 +440,7 @@ class TelaMemorias(Screen):
                 app.memorias.remove(memoria)
                 app.recalcular_totais()
                 app.salvar_dados()
+            self._atualizar_filtros()
             self.atualizar_lista()
             self._atualizar_grafico()
             pop.dismiss()
@@ -357,7 +461,7 @@ class TelaMemorias(Screen):
                 ok, aviso = enviar_whatsapp(mensagem_turno(memoria))
             except Exception as e:
                 print(f"[whatsapp] {e}")
-                ok, aviso = False, "Nao consegui preparar a mensagem."
+                ok, aviso = False, "Não consegui preparar a mensagem."
             if aviso:
                 self._aviso(aviso, ok)
 
@@ -445,7 +549,7 @@ class TelaMemorias(Screen):
         try:
             from exportar import exportar_e_compartilhar
         except ImportError:
-            _on_erro("Modulo exportar.py nao encontrado no repositorio.")
+            _on_erro("Módulo exportar.py não encontrado no repositório.")
             return
         exportar_e_compartilhar(app.memorias, app.user_data_dir, _on_erro)
         tatil.confirmar()
@@ -460,7 +564,7 @@ class TelaMemorias(Screen):
         aplicar_fundo_holografico(caixa, (1.0, 0.08, 0.22, 0.9))
         caixa.add_widget(Label(
             text=("[color=#ff2244]  WIPE TOTAL[/color]\n"
-                  "[color=#cccccc]Apagar TODAS as memorias e XP?\nSem volta.[/color]"),
+                  "[color=#cccccc]Apagar TODAS as memórias e XP?\nSem volta.[/color]"),
             markup=True, font_name="orbitron.ttf", font_size="13sp",
             halign="center", size_hint_y=None, height=dp(84)))
         botoes = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(14))

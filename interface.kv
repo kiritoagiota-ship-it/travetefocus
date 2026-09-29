@@ -385,7 +385,7 @@
 
                 # MEMÓRIAS — roxo (arquivo/histórico)
                 BotaoAngularMenu:
-                    text:         ">>  MEMORIAS"
+                    text:         ">>  MEMÓRIAS"
                     font_size:    "14sp"
                     cor_borda:    [0.55, 0.10, 0.92, 0.9]
                     cor_borda_kv: [0.55, 0.10, 0.92, 0.9]
@@ -436,16 +436,26 @@
                         pos:  self.pos
                         size: self.size
 
-            # ── Liga/desliga a vibracao (resposta tatil) ──────
-            BotaoAngular:
-                text:        "VIBRAÇÃO:  LIGADA" if app.vibracao else "VIBRAÇÃO:  DESLIGADA"
-                font_name:   "orbitron.ttf"
-                font_size:   "11sp"
+            # ── Liga/desliga a vibracao + trocar a senha ─────
+            BoxLayout:
                 pos_hint:    {"center_x": 0.5, "center_y": 0.14}
-                size_hint:   (0.6, None)
+                size_hint:   (0.88, None)
                 height:      dp(40)
-                cor_texto:   [0.0, 0.9, 1.0, 1.0] if app.vibracao else [0.45, 0.5, 0.56, 1.0]
-                on_release:  app.alternar_vibracao()
+                spacing:     dp(10)
+                BotaoAngular:
+                    text:        "VIBRAÇÃO: LIGADA" if app.vibracao else "VIBRAÇÃO: DESLIGADA"
+                    font_name:   "orbitron.ttf"
+                    font_size:   "10sp"
+                    size_hint_x: 0.56
+                    cor_texto:   [0.0, 0.9, 1.0, 1.0] if app.vibracao else [0.45, 0.5, 0.56, 1.0]
+                    on_release:  app.alternar_vibracao()
+                BotaoAngular:
+                    text:        "TROCAR SENHA"
+                    font_name:   "orbitron.ttf"
+                    font_size:   "10sp"
+                    size_hint_x: 0.44
+                    cor_texto:   [0.0, 0.9, 1.0, 1.0]
+                    on_release:  app.trocar_senha()
 
             # ── Rodapé ────────────────────────────────────────
             Label:
@@ -629,6 +639,7 @@
                     pos:  self.pos
                     size: self.size
         ScrollView:
+            id:            lista_scroll
             GridLayout:
                 id:            memorias_container
                 cols:          1
@@ -681,10 +692,11 @@
         Label:
             text:        "SISTEMA DE PROGRESSO"
             font_name:   "orbitron.ttf"
-            font_size:   "14sp"
-            color:       rgba("#00e5ff44")
+            font_size:   "17sp"
+            color:       rgba("#00e5ff")
+            bold:        True
             size_hint_y: None
-            height:      dp(24)
+            height:      dp(30)
             halign:      "center"
             valign:      "middle"
             text_size:   self.size
@@ -1084,7 +1096,7 @@
 
             Label:
                 id:          lbl_periodo_status
-                text:        "[color=#444444]--  Nenhum periodo aberto  --[/color]"
+                text:        "[color=#444444]--  Nenhum período aberto  --[/color]"
                 markup:      True
                 font_name:   "orbitron.ttf"
                 font_size:   "11sp"
@@ -1132,9 +1144,10 @@
             BoxLayout:
                 size_hint_y: None
                 height:      dp(46)
-                spacing:     dp(10)
+                spacing:     0              # so um dos dois aparece de cada vez
                 BotaoAngular:
-                    text:         ">>  ABRIR PERIODO"
+                    id:           btn_abrir_periodo
+                    text:         ">>  ABRIR PERÍODO"
                     font_size:    "13sp"
                     cor_borda:    [0, 1, 0.55, 0.9]
                     cor_borda_kv: [0, 1, 0.55, 0.9]

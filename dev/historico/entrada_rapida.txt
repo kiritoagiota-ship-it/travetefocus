@@ -1,0 +1,142 @@
+def cena_entrada_rapida(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
+    """Entrada rapida (a senha ainda esta valendo): o Yoru mergulha de um
+    canto de cima girando, desliza cortando rente a frase - a luz da katana
+    grava TRAVETE FOCUS inteiro de uma vez -, freia do outro lado, embainha
+    e um balao de anime diz 'Bem-vindo!'. Uns 3 s."""
+    fim = _Uma(on_fim)
+    camada = Widget(size_hint=(None, None), size=tela.size, pos=(0, 0))
+    ag = _Agenda()
+    camada._agenda = ag
+
+    def encerrar():
+        ag.parar()
+        fim()
+
+    try:
+        tela.add_widget(camada)
+        W, H = tela.size
+        area = (0.0, 0.0, float(W), float(H))
+        wx, wy = label.to_window(label.x, label.y)
+        lx, ly = tela.to_widget(wx, wy)
+        titulo = TituloLuz(texto, label.font_size, pos=(lx, ly), size=label.size)
+        camada.add_widget(titulo)
+        camada._titulo = titulo
+        faiscas = K.Faiscas(n_max=100)
+        ps = _ps_titulo(titulo.th, W, H)
+        kk = K.KiritoPixel(ps=ps)
+        ps = kk.ps
+        _PX[0] = ps / float(K.R)
+        te = ps / float(K.R)
+        kk.opacity = 0
+        kk.espelhar = False
+        camada.add_widget(K.RastroLamina(kk, faiscas))
+        camada.add_widget(kk)
+        camada.add_widget(faiscas)
+        _precarregar_sons(['pulo', 'sacar_iai', 'corte', 'embainhar', 'pouso', 'titulo'] + _GEMIDOS)
+        P = K.POSE_A
+        th = titulo.th
+        ox_t, oy_t = titulo._origem()
+        cy = oy_t + th * 0.5
+        m = max(dp(4), ps)
+        pronto = _com(P['saca0'], olhos='s')
+        corta = _com(P['corta1'], olhos='g')
+        segue = _com(P['segue1'], olhos='s')
+        fim_p = _com(P['guardado'], olhos='v')
+        kk.precarregar([pronto, corta, segue, fim_p, P['chiburi1'], P['embainha1_a'],
+                        P['embainha1_b'], P['embainha1_c']])
+
+        # o corpo passa na altura da frase (a mao da katana rente as letras)
+        _, hy = kk._local_texel(*K.maos_texel(corta, 1)[0])
+        _, ay_l = kk.ancora_local()
+        y_corte = cy - (hy - ay_l)
+        A0 = _no_quadro(kk, ox_t - th * 0.9, y_corte, [pronto, corta], area, m)
+        A1 = _no_quadro(kk, ox_t + titulo.tw + kk.extensao(segue)[0] + th * 0.15, y_corte,
+                        [segue, fim_p], area, m)
+        # a luz do corte: rente a frase, de ponta a ponta (a cabeca da luz vai
+        # junto com ele)
+        te_c = te * max(1, int(round(2.4 / te)))
+        oficina = OficinaCortes(te_c)
+        arco = ArcoCorte.pelo_meio((ox_t + titulo.tw / 2.0, cy), 0, titulo.tw + th * 0.9, -0.05, th * 1.15)
+        oficina.pedir('frase', arco, 'katana')
+
+        def _mergulha():
+            p_pulo = _com(P['pulo'], olhos='s')
+            ini = (-kk.extensao(p_pulo)[2] - dp(10), H + ps * 10)
+            kk.ancorar(*ini)
+            kk.opacity = 1
+            n = max(6, int(0.42 * K.FPS))
+            kk.tocar(K.sequencia([(max(2, n // 3), K.esticado(p_pulo), 'out'),
+                                  (n - n // 3, K.encolhido(p_pulo), 'suave'), (1, pronto)]))
+            _som('pulo')
+            kk.empurrar(capa=-10, cabelo=-8, lift=10)
+            _mover(kk, ini, A0, 0.42, rot=(0, -720), fantasmas=4, ease='in', on_fim=_corta)
+        ag.depois(0.05, _mergulha)
+
+        def _corta():
+            # sai do giro direto no iai: desliza de ponta a ponta da frase
+            kk.rotacao = 0
+            chaves = [(1, pronto, 'segura'), (1, K.misturar(pronto, corta, 0.5, 0.5), 'segura'),
+                      (5, corta, 'out'), (4, segue, 'mola'), (1, segue)]
+            kk.tocar(K.sequencia(chaves))
+            _som('sacar_iai')
+            _gemido()
+            kk.empurrar(capa=16, cabelo=12)
+            mancha = oficina.obter('frase')
+            grava = titulo.gravar_arco(0, len(texto), arco, th * 0.95)
+            acesas = set()
+            dur = 0.2
+
+            def _passo(s):
+                grava(s)
+                hx = arco.ponto(min(s, 1.0))[0]
+                for li in range(len(texto)):
+                    if li not in acesas and texto[li].strip() and \
+                            ox_t + (titulo._larg[li] + titulo._larg[li + 1]) / 2.0 <= hx:
+                        acesas.add(li)
+                        titulo.gravar(li, li + 1)
+                        if li % 3 == 0:
+                            faiscas.estourar(hx, cy, CIANO, n=2, forca=dp(120), tam=max(2, te * 2),
+                                             gravidade=dp(200))
+            if mancha is not None:
+                camada.add_widget(CorteGravado(arco, mancha, dur=dur, decai=0.3, k=kk, on_passo=_passo),
+                                  index=len(camada.children) - 1)
+            else:
+                _passo(1.0)
+            _mover(kk, kk.ancora(), A1, dur, ease='out', fantasmas=4, limite=(area, m), on_fim=_freia)
+
+        def _freia():
+            # freia do outro lado: poeirinha, o sobretudo passa do ponto
+            _som('corte')
+            _tremer(8)
+            kk.impacto()
+            kk.pausar(0.05)
+            kk.empurrar(capa=-18, cabelo=-14)
+            ax, ay = kk.ancora()
+            faiscas.estourar(ax, ay - kk.extensao()[1], POEIRA, n=8, forca=dp(90), tam=max(2, ps * 0.8),
+                             gravidade=dp(300))
+            ag.depois(0.18, _embainha)
+
+        def _embainha():
+            seq = K.sequencia(_de_agora(kk, 2, 'out', proxima=P['chiburi1']) +
+                              [(3, _com(P['chiburi1'], olhos='s'), 'out'), (2, _com(P['chiburi1'], olhos='s'), 'segura'),
+                               (4, P['embainha1_a'], 'in'), (2, P['embainha1_b'], 'suave'),
+                               (2, P['embainha1_c'], 'mola'), (1, fim_p)])
+
+            def _q(q):
+                if q == 13:
+                    _som('embainhar')
+                    titulo.clarao_final()
+                    balao(camada, 'Bem-vindo!', kk, dur=1.5)
+            kk.tocar(seq, on_quadro=_q, on_fim=lambda: kk.idle(base=fim_p))
+            ag.depois(1.9, encerrar)
+
+        def _seguranca():
+            titulo.completo()
+            encerrar()
+        ag.depois(8.0, _seguranca)
+    except Exception as e:
+        print(f"[cena] entrada rapida falhou, seguindo sem ela: {e}")
+        encerrar()
+    return camada
+
+

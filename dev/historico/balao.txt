@@ -1,0 +1,182 @@
+# ═══════════════════════════════════════════════════════════════════
+#  BALAO DE FALA (anime, em pixel art) e GEMIDINHOS DOS GOLPES
+# ═══════════════════════════════════════════════════════════════════
+_GEMIDOS = ['gemido_ha', 'gemido_hun', 'gemido_ya', 'gemido_yaa', 'gemido_to', 'gemido_fun']
+_ult_gemido = [None]
+
+
+def _gemido():
+    """Kiai curtinho do Yoru num golpe ('Hah!', 'Hmph!', 'Yah!'...): varia
+    e nunca repete o ultimo."""
+    opcoes = [g for g in _GEMIDOS if g != _ult_gemido[0]]
+    g = random.choice(opcoes)
+    _ult_gemido[0] = g
+    _som(g)
+
+
+def _topo_cabeca(k):
+    """Ponto (coords do pai) logo acima da cabeca do boneco `k`."""
+    try:
+        te = k.ps / float(K.R)
+        ex, ey = K.olhos_texel(k._pose)[0]
+        if k.espelhar:
+            ex = K.TW - 1 - ex
+        return k.x + (ex + 0.5) * te, k.y + (ey + 16) * te
+    except Exception:
+        ax, ay = k.ancora()
+        return ax, ay + k.ps * 14
+
+
+def _pixels_balao(tipo, bw, bh, cauda, lado):
+    """Balao em celulas: corpo bw x bh em cima de uma cauda de `cauda`
+    celulas cuja ponta fica embaixo, do lado -lado (perto de quem fala).
+    Devolve (bytes RGBA, largura, altura, coluna da ponta, centro do corpo)."""
+    margem = 3
+    W, H = bw + 2 * margem, bh + cauda + margem + 1
+    cx, cy = W / 2.0, cauda + bh / 2.0
+    rx, ry = bw / 2.0, bh / 2.0
+    xt = int(round(cx - lado * bw * 0.36))                 # ponta da cauda
+    xb = cx - lado * bw * 0.16                             # meio da base da cauda
+    larg_base = max(3.0, bw * 0.13)
+    pontas = 13 if tipo == 'grito' else 0
+
+    def dentro(x, y):
+        dx, dy = (x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry
+        if pontas:
+            ang = math.atan2(dy, dx)
+            fr = (ang / (2 * math.pi) * pontas) % 1.0
+            tri = 1 - 2 * abs(fr - 0.5)
+            if math.hypot(dx, dy) <= 0.74 + 0.36 * tri ** 1.6:
+                return True
+        elif dx ** 4 + dy ** 4 <= 1.0:
+            return True
+        # cauda: triangulo da base (encostada no corpo) ate a ponta
+        yb = cauda + ry * (0.35 if pontas else 0.2)
+        if 0 <= y + 0.5 <= yb:
+            u = (y + 0.5) / yb                             # 0 na ponta, 1 na base
+            meio = xt + (xb - xt) * u
+            return abs(x + 0.5 - meio) <= larg_base * u * 0.5 + 0.3
+        return False
+    cheio = [[dentro(x, y) for x in range(W)] for y in range(H)]
+    PRETO, BRANCO, SOMBRA = (8, 8, 18, 255), (250, 250, 255, 255), (196, 204, 226, 255)
+    buf = bytearray(W * H * 4)
+    for y in range(H):
+        for x in range(W):
+            if cheio[y][x]:
+                borda_dir = x + 1 >= W or not cheio[y][x + 1]
+                borda_baixo = y - 1 < 0 or not cheio[y - 1][x]
+                c = SOMBRA if (borda_dir or borda_baixo) else BRANCO
+            elif any(0 <= x + a < W and 0 <= y + b < H and cheio[y + b][x + a]
+                     for a, b in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+                c = PRETO
+            else:
+                continue
+            i = (y * W + x) * 4
+            buf[i:i + 4] = bytes(c)
+    return bytes(buf), W, H, xt, (cx, cy)
+
+
+class BalaoFala(Widget):
+    """Balao de fala de anime (texto, sem voz) preso na cabeca do boneco
+    `k`. tipo 'fala' = balao redondo com rabinho; 'grito' = balao espetado
+    (BAN! / KAI!). Entra num pulo (cresce passando do ponto), balanca de leve
+    (o grito treme) e some encolhendo depois de `dur`."""
+
+    def __init__(self, texto, k, tipo='fala', dur=1.4, font_size=None, cor_texto=(0.04, 0.04, 0.10),
+                 lado=None, on_fim=None, **kwargs):
+        kwargs.setdefault('size_hint', (None, None))
+        kwargs.setdefault('size', (0, 0))
+        super().__init__(**kwargs)
+        self.k, self.tipo, self.dur = k, tipo, dur
+        self._on_fim = _Uma(on_fim)
+        self.t = 0.0
+        grito = tipo == 'grito'
+        fs = font_size or (sp(30) if grito else sp(15))
+        cl = CoreLabel(text=texto, font_name='orbitron.ttf', font_size=fs, bold=True)
+        cl.refresh()
+        self._tex_txt = cl.texture
+        tw, th_ = self._tex_txt.size
+        u = max(2.0, round(_PX[0] * 2))                  # pixel do balao
+        self.u = u
+        bw = int(math.ceil(tw / u)) + (14 if grito else 8)
+        bh = int(math.ceil(th_ / u)) + (12 if grito else 6)
+        cauda = 5 if grito else 7
+        px, py = _topo_cabeca(k)
+        W = Window.width
+        if lado is None:
+            lado = -1 if px > W * 0.55 else 1
+        dados, cw, ch, xt, (bcx, bcy) = _pixels_balao(tipo, bw, bh, cauda, lado)
+        tex = Texture.create(size=(cw, ch), colorfmt='rgba')
+        tex.mag_filter = tex.min_filter = 'nearest'
+        tex.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte')
+        tex.add_reload_observer(lambda t_, d=dados: t_.blit_buffer(d, colorfmt='rgba', bufferfmt='ubyte'))
+        self._w, self._h = cw * u, ch * u
+        self._xt = (xt + 0.5) * u                        # ponta da cauda (local)
+        self._corpo = (bcx * u, bcy * u)
+        with self.canvas:
+            PushMatrix()
+            self._tr = Translate(0, 0)
+            self._sc = Scale(1, 1, 1)
+            self._tr2 = Translate(0, 0)
+            self._c = Color(1, 1, 1, 1)
+            self._r = Rectangle(texture=tex, size=(self._w, self._h))
+            self._ct = Color(*cor_texto, 1)
+            self._rt = Rectangle(texture=self._tex_txt, size=(tw, th_),
+                                 pos=(self._corpo[0] - tw / 2.0, self._corpo[1] - th_ / 2.0))
+            PopMatrix()
+        self._ev = Clock.schedule_interval(self._tick, 1 / 60.)
+        self._tick(0)
+
+    def _tick(self, dt):
+        try:
+            self.t += dt
+            t, u = self.t, self.u
+            if t >= self.dur or self.k.parent is None:
+                return self.parar()
+            # entra num pulo, sai encolhendo
+            if t < 0.12:
+                s = 0.25 + (1.14 - 0.25) * (1 - (1 - t / 0.12) ** 2)
+            elif t < 0.2:
+                s = 1.14 - 0.14 * (t - 0.12) / 0.08
+            elif t > self.dur - 0.14:
+                s = max(0.05, 1.0 - (t - (self.dur - 0.14)) / 0.14)
+            else:
+                s = 1.0
+            px, py = _topo_cabeca(self.k)
+            px = math.floor(px / u) * u
+            py = math.floor(py / u) * u + u
+            boia = round(math.sin(t * 5.0) * 0.6) * u      # balanca de leve, de pixel em pixel
+            treme = 0.0
+            if self.tipo == 'grito' and 0.12 < t < 0.5:
+                treme = random.choice((-1, 0, 1)) * u
+            self._tr.xy = (px + treme, py + boia)
+            self._sc.x = self._sc.y = s
+            self._tr2.xy = (-self._xt, 0)
+            self._c.a = 1.0 if t < self.dur - 0.14 else max(0.0, s)
+            self._ct.a = self._c.a
+            return True
+        except Exception as e:
+            print(f"[balao] {e}")
+            return self.parar()
+
+    def parar(self):
+        if self._ev is not None:
+            self._ev.cancel()
+            self._ev = None
+        if self.parent:
+            self.parent.remove_widget(self)
+        self._on_fim()
+        return False
+
+
+def balao(camada, texto, k, tipo='fala', dur=1.4, **kw):
+    """Poe um balao de fala do Yoru na camada (nunca derruba a cena)."""
+    try:
+        b = BalaoFala(texto, k, tipo=tipo, dur=dur, **kw)
+        camada.add_widget(b)
+        return b
+    except Exception as e:
+        print(f"[balao] {e}")
+        return None
+
+

@@ -101,7 +101,7 @@ class TelaProgresso(Screen):
         contar(self.ids.lbl_total_xp, app.total_xp,
                lambda v: f"XP TOTAL\n[color=#00e5ff]{fmt_br(v)}[/color]", atraso=0.15)
         contar(self.ids.lbl_total_pecas, app.total_geral,
-               lambda v: f"PECAS TOTAL\n[color=#00e5ff]{fmt_br(v)}[/color]", atraso=0.22)
+               lambda v: f"PEÇAS TOTAL\n[color=#00e5ff]{fmt_br(v)}[/color]", atraso=0.22)
         contar(self.ids.lbl_melhor_dia, app.melhor_dia,
                lambda v: f"MELHOR DIA\n[color=#ffcc00]{fmt_br(v)} un.[/color]", atraso=0.29)
         self._cascata_cards()

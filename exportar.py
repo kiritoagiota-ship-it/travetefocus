@@ -38,15 +38,15 @@ def gerar_relatorio_whatsapp(memorias):
     melhor      = max(memorias, key=lambda m: m.get('total', 0))
 
     linhas = [
-        '*RELATORIO TRAVETEFOCUS*',
+        '*RELATÓRIO TRAVETEFOCUS*',
         f'Exportado em: {datetime.now().strftime("%d/%m/%Y %H:%M")}',
         '',
         f'Total de turnos: {len(memorias)}',
-        f'Total de pecas:  {total_pecas}',
+        f'Total de peças:  {total_pecas}',
         f'Total de XP:     {total_xp}',
-        f'Melhor dia:      {melhor.get("total", 0)} pecas ({melhor.get("data", "?")})',
+        f'Melhor dia:      {melhor.get("total", 0)} peças ({melhor.get("data", "?")})',
         '',
-        '*ULTIMOS 10 TURNOS:*',
+        '*ÚLTIMOS 10 TURNOS:*',
     ]
     for mem in reversed(memorias[-10:]):
         data  = mem.get('data', '?').split()[0]  # só data, sem hora
@@ -147,11 +147,11 @@ def enviar_whatsapp(texto):
         if compartilhar_android(texto):
             return True, None
         if _copiar(texto):
-            return False, "Nao consegui abrir o WhatsApp.\nA mensagem foi copiada: cole no grupo."
-        return False, "Nao consegui abrir o WhatsApp."
+            return False, "Não consegui abrir o WhatsApp.\nA mensagem foi copiada: cole no grupo."
+        return False, "Não consegui abrir o WhatsApp."
     if _copiar(texto):
         return True, "Mensagem copiada!\nCole no grupo do WhatsApp."
-    return False, "Nao consegui copiar a mensagem."
+    return False, "Não consegui copiar a mensagem."
 
 
 def _texto_java(texto):
@@ -215,7 +215,7 @@ def exportar_e_compartilhar(memorias, data_dir, callback_erro=None):
     except Exception as ex:
         print(f"[EXPORT] relatorio falhou: {ex}")
         if callback_erro:
-            callback_erro("Nao foi possivel gerar o relatorio (dados inconsistentes).")
+            callback_erro("Não foi possível gerar o relatório (dados inconsistentes).")
         return
     caminho   = None
     try:

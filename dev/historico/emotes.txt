@@ -1,0 +1,122 @@
+# ═══════════════════════════════════════════════════════════════════
+#  EMOTES DE ANIME (chibi): gota de suor, !!, ?, nota, brilho nos olhos e
+#  bochecha vermelha - pixel art por cima do Yoru, presos na cabeca dele
+# ═══════════════════════════════════════════════════════════════════
+_EMOTE_CORES = (('K', (0.03, 0.03, 0.08, 1.0)), ('W', (1.0, 1.0, 1.0, 1.0)), ('b', (0.55, 0.85, 1.0, 1.0)),
+                ('B', (0.25, 0.55, 1.0, 1.0)), ('Y', (1.0, 0.86, 0.25, 1.0)), ('y', (0.95, 0.6, 0.1, 1.0)),
+                ('R', (1.0, 0.42, 0.55, 0.85)), ('r', (1.0, 0.7, 0.78, 0.85)))
+_EMOTE_MAPAS = {
+    'gota': [".K...", "KbK..", "KbK..", "KbbK.", "KWbbK", "KbbbK", ".KKK."],
+    '!!': ["KKK.KKK", "KYK.KYK", "KYK.KYK", "KYK.KYK", "KyK.KyK", "KKK.KKK", "KKK.KKK", "KYK.KYK",
+           "KKK.KKK"],
+    '?': [".KKKK.", "KYYYYK", "KYKKYK", "KKK.YK", "..KYYK", "..KYK.", "..KKK.", "..KYK.", "..KKK."],
+    'nota': ["..KKKKK", "..KYYYK", "..KYKKK", "..KYK..", ".KKYK..", "KYYYK..", "KYYYK..", ".KKK..."],
+    'brilho': ["..W..", "..W..", "WWbWW", "..W..", "..W.."],
+    'rubor': [".RrRrR.", "RrRrRrR", ".RrRrR."],
+}
+
+
+class EmoteAnime(Widget):
+    """Um emote preso na cabeca do boneco `k` por `dur` segundos. Entra
+    num pulinho; a gota escorre, o ? balanca, a nota sobe, o brilho pisca."""
+
+    def __init__(self, k, tipo, dur=0.9, **kwargs):
+        kwargs.setdefault('size_hint', (None, None))
+        kwargs.setdefault('size', (0, 0))
+        super().__init__(**kwargs)
+        self.k, self.tipo, self.dur = k, tipo, dur
+        self.mapa = _EMOTE_MAPAS[tipo]
+        self.t = 0.0
+        self._lote = K.LotePixels(self.canvas, _EMOTE_CORES)
+        self._ev = Clock.schedule_interval(self._tick, 1 / 30.)
+        self._tick(0)
+
+    def _pontos(self):
+        """(x, y) do canto de baixo/esquerda do desenho e o tamanho do pixel."""
+        k = self.k
+        te = k.ps / float(K.R)
+        frente = -1 if k.espelhar else 1
+        ex, ey = K.olhos_texel(k._pose)[0]
+        if k.espelhar:
+            ex = K.TW - 1 - ex
+        olho = (k.x + (ex + 0.5) * te, k.y + (ey + 0.5) * te)
+        topo = _topo_cabeca(k)
+        u = max(1.0, round(te * 1.5))
+        h = len(self.mapa)
+        w = len(self.mapa[0])
+        if self.tipo == 'gota':               # do lado da cabeca, na frente
+            return topo[0] + frente * te * 11 - w * u / 2.0, topo[1] - te * 16 - h * u, u
+        if self.tipo == 'brilho':             # em cima do olho
+            u = max(1.0, round(te))
+            return olho[0] - w * u / 2.0, olho[1] - h * u / 2.0 + te, u
+        if self.tipo == 'rubor':              # na bochecha, embaixo do olho
+            u = max(1.0, round(te))
+            return olho[0] - frente * te * 2 - w * u / 2.0, olho[1] - te * 6, u
+        # !!, ?, nota: acima da cabeca, um pouco para tras
+        return topo[0] - frente * te * 6 - w * u / 2.0, topo[1] + te * 2, u
+
+    def _tick(self, dt):
+        try:
+            self.t += dt
+            t = self.t
+            if t >= self.dur or self.k.parent is None:
+                return self.parar()
+            x, y, u = self._pontos()
+            s = 1.0
+            if t < 0.1:
+                s = 0.4 + 0.8 * t / 0.1                  # entra num pulinho
+            elif t < 0.16:
+                s = 1.2 - 0.2 * (t - 0.1) / 0.06
+            dy = 0.0
+            if self.tipo == 'gota':
+                dy = -round(t / self.dur * 4) * u        # escorre
+            elif self.tipo == '?':
+                x += round(math.sin(t * 9) * 1.2) * u    # balanca
+            elif self.tipo == 'nota':
+                dy = round(t * 14) * u * 0.5             # sobe
+                x += round(math.sin(t * 7)) * u
+            elif self.tipo == '!!':
+                dy = (u if t < 0.25 and int(t * 20) % 2 else 0)
+            if self.tipo == 'brilho' and int(t * 12) % 3 == 2:
+                self._lote.desenhar({})
+                return True
+            uu = max(1.0, round(u * s))
+            h = len(self.mapa)
+            w = len(self.mapa[0])
+            x0 = math.floor((x + (w * u - w * uu) / 2.0) / u) * u
+            y0 = math.floor((y + dy) / u) * u
+            p = {}
+            for r, linha in enumerate(self.mapa):
+                for c, ch in enumerate(linha):
+                    if ch != '.':
+                        p.setdefault(ch, []).append((x0 + c * uu, y0 + (h - 1 - r) * uu, uu))
+            some = 1.0 if t < self.dur - 0.15 else max(0.0, (self.dur - t) / 0.15)
+            self._lote.desenhar(p, alfa=some)
+            return True
+        except Exception as e:
+            print(f"[emote] {e}")
+            return self.parar()
+
+    def parar(self):
+        if self._ev is not None:
+            self._ev.cancel()
+            self._ev = None
+        if self.parent:
+            self.parent.remove_widget(self)
+        return False
+
+
+def emote(camada, k, tipo, dur=0.9, atraso=0.0):
+    """Poe um emote de anime no Yoru (nunca derruba a cena)."""
+    def _poe(*_):
+        try:
+            if k.parent is not None:
+                camada.add_widget(EmoteAnime(k, tipo, dur))
+        except Exception as e:
+            print(f"[emote] {e}")
+    if atraso > 0:
+        Clock.schedule_once(_poe, atraso)
+    else:
+        _poe()
+
+

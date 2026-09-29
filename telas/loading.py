@@ -19,14 +19,15 @@ import tatil
 from infinito import InfinitoLoader  # noqa: F401  (usado no kv: id reator_shader)
 from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, _bind_teclado
 import som
+import seguranca
 
 # ══════════════════════════════════════════════════════════════
 #  CONFIGURACAO — altere aqui sem mexer em mais nada
 # ══════════════════════════════════════════════════════════════
 SESSION_HORAS  = 4
 SESSION_SEG    = SESSION_HORAS * 3600
-PIN_CORRETO    = "2004"
 ARQUIVO_SESSAO = ".tf_session"
+# a senha fica em seguranca.py (so a impressao digital; troca pelo menu)"
 # ══════════════════════════════════════════════════════════════
 
 
@@ -54,6 +55,9 @@ class TelaLoading(Screen):
         self._espadas_widget = None
         self._cena           = None
         self._kpin           = None
+        self._fim_titulo     = None     # fecha a abertura (usado ao pular)
+        self._pular_ok       = False
+        self._dica_pular     = None
 
     # ── Sessao ─────────────────────────────────────────────────────────────
 
@@ -92,6 +96,9 @@ class TelaLoading(Screen):
     def on_leave(self, *_):
         self._typing_ativo = False
         self._parar_particulas_dados()
+        self._pular_ok = False
+        self._fim_titulo = None
+        self._tirar_dica_pular()
         if self._cena is not None:
             from cenas import limpar_cena
             limpar_cena(self._cena)
@@ -205,6 +212,7 @@ class TelaLoading(Screen):
             return
 
         pop, layout = _make_popup()
+        pop.auto_dismiss = False          # nem o botao voltar fecha a senha
         caixa = BoxLayout(
             orientation='vertical',
             padding=[dp(24), dp(20), dp(24), dp(20)],
@@ -219,13 +227,13 @@ class TelaLoading(Screen):
         lbl_titulo.text_size = (Window.width * 0.80, None)
 
         lbl_sub = Label(
-            text="[color=#ff8855]VERIFICACAO DE IDENTIDADE NECESSARIA[/color]",
+            text="[color=#ff8855]VERIFICAÇÃO DE IDENTIDADE NECESSÁRIA[/color]",
             markup=True, font_name="orbitron.ttf", font_size="9sp",
             size_hint_y=None, height=dp(20), halign="center", valign="middle")
         lbl_sub.text_size = (Window.width * 0.80, None)
 
         lbl_inst = Label(
-            text="[color=#888888]Insira o codigo de acesso:[/color]",
+            text="[color=#888888]Insira o código de acesso:[/color]",
             markup=True, font_name="orbitron.ttf", font_size="10sp",
             size_hint_y=None, height=dp(22), halign="center", valign="middle")
         lbl_inst.text_size = (Window.width * 0.80, None)
@@ -256,7 +264,7 @@ class TelaLoading(Screen):
 
         layout.add_widget(caixa)
         caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-        tentativas = [3]
+        contagem = [None]
         # Kirito espiando por cima da caixa, num dos cantos, esperando o PIN
         try:
             from cenas import KiritoPin
@@ -273,9 +281,37 @@ class TelaLoading(Screen):
             except Exception as e:
                 print(f"[loading] kirito {metodo}: {e}")
 
+        def _bloquear(seg):
+            """3 erros: fica bloqueado (contagem regressiva) - nunca abre o app."""
+            btn.disabled = True
+            inp_pin.text = ""
+            inp_pin.disabled = True
+            if contagem[0] is not None:
+                contagem[0].cancel()
+
+            def _tique(dt=0):
+                falta = seguranca.bloqueio_restante()
+                if falta <= 0:
+                    contagem[0].cancel()
+                    contagem[0] = None
+                    btn.disabled = False
+                    inp_pin.disabled = False
+                    lbl_status.text = "[color=#ffaa55]Pode tentar de novo.[/color]"
+                    _k('voltar')
+                    return False
+                lbl_status.text = (f"[color=#ff2222]BLOQUEADO POR ERROS — tente de novo em "
+                                   f"{seguranca.tempo_legivel(falta)}[/color]")
+                return True
+            _tique()
+            contagem[0] = Clock.schedule_interval(_tique, 1.0)
+            pop.bind(on_dismiss=lambda *_: contagem[0] is not None and contagem[0].cancel() and None)
+
         def _verificar(*_):
             pin = inp_pin.text.strip()
-            if pin == PIN_CORRETO:
+            if seguranca.bloqueio_restante() > 0:
+                return
+            if seguranca.pin_confere(pin):
+                seguranca.registrar_acerto()
                 lbl_titulo.text = "[b][color=#00ff88]>>  ACESSO CONCEDIDO  <<[/color][/b]"
                 lbl_sub.text    = "[color=#00ff88]IDENTIDADE CONFIRMADA — BEM-VINDO, KIRITO[/color]"
                 aplicar_fundo_holografico(caixa, (0, 1, 0.55, 0.9))
@@ -307,17 +343,17 @@ class TelaLoading(Screen):
 
                 Clock.schedule_once(_fechar, 1.1)
             else:
-                tentativas[0] -= 1
+                sobram, espera = seguranca.registrar_erro()
                 inp_pin.text = ""
                 try: som.tocar_pin_erro()
                 except Exception: pass
                 tatil.erro()
                 _k('susto')
                 _safe_treme(12)
-                if tentativas[0] > 0:
+                if sobram > 0:
                     lbl_status.text = (
-                        f"[color=#ff4444]CODIGO INVALIDO — "
-                        f"{tentativas[0]} tentativa(s) restante(s).[/color]")
+                        f"[color=#ff4444]CÓDIGO INVÁLIDO — "
+                        f"{sobram} {'tentativa restante' if sobram == 1 else 'tentativas restantes'}.[/color]")
                     Animation.cancel_all(inp_pin, 'borda_color')
                     (Animation(borda_color=[1, 0.1, 0.2, 1],      duration=0.07) +
                      Animation(borda_color=[1, 0.1, 0.2, 0.4],    duration=0.07) +
@@ -328,15 +364,8 @@ class TelaLoading(Screen):
                     btn.disabled = True
                     Clock.schedule_once(lambda _: setattr(btn, 'disabled', False), 0.6)
                 else:
-                    lbl_status.text  = "[color=#ff2222]ACESSO NEGADO. BLOQUEIO ATIVADO.[/color]"
-                    btn.disabled     = True
-                    inp_pin.disabled = True
                     Clock.schedule_once(lambda dt: _k('bloqueado'), 0.35)
-                    def _bloqueado(_dt):
-                        _k('remover')
-                        pop.dismiss()
-                        _safe_mudar_tela("menu")
-                    Clock.schedule_once(_bloqueado, 2.5)
+                    _bloquear(espera)
 
         btn.bind(on_release=_verificar)
         inp_pin.bind(on_text_validate=_verificar)
@@ -358,6 +387,10 @@ class TelaLoading(Screen):
         _abrir_popup(caixa, pop)
         # depois da caixa abrir e subir com o teclado (ele acompanha a caixa)
         Clock.schedule_once(lambda dt: _k('aparecer'), 0.8)
+        # ainda bloqueado de antes (fechar o app nao zera o bloqueio)
+        if seguranca.bloqueio_restante() > 0:
+            Clock.schedule_once(lambda dt: (_k('bloqueado'), None)[1], 1.6)
+            _bloquear(seguranca.bloqueio_restante())
         _bind_teclado(caixa, pop)
         from helpers import anexar_teclado
         # teclado numerico com fechar via _verificar (OK no teclado = verificar PIN)
@@ -369,7 +402,7 @@ class TelaLoading(Screen):
         if not self._typing_ativo:
             return
         self.printar_texto(
-            "\n>[HACK] Forcando LIMIT BREAK...",
+            "\n>[HACK] Forçando LIMIT BREAK...",
             lambda: Clock.schedule_once(self.etapa_sucesso, 0.7))
         self.ids.barra_loading.cor_linha = [0.6, 0.1, 0.9, 1]
         self.reator.core_color           = [0.6, 0.1, 0.9]
@@ -421,6 +454,9 @@ class TelaLoading(Screen):
             if feito[0] or not self._typing_ativo:
                 return
             feito[0] = True
+            self._pular_ok = False
+            self._fim_titulo = None
+            self._tirar_dica_pular()
             try:
                 Animation(opacidade=1, escala=1.0, duration=0.6,
                           transition='out_back').start(self.ids.espada_esq)
@@ -443,6 +479,72 @@ class TelaLoading(Screen):
             print(f"[loading] cena do titulo ignorada: {e}")
             t.text = "TRAVETE FOCUS"
             _fim()
+            return
+        if not feito[0]:
+            # um toque na tela pula a abertura (liberado um instante depois,
+            # para o toque do VERIFICAR nao pular sem querer)
+            self._fim_titulo = _fim
+            Clock.schedule_once(self._liberar_pulo, 0.8)
+
+    # ── Pular a abertura ───────────────────────────────────────────────────
+
+    def _liberar_pulo(self, dt=0):
+        if self._cena is None or self._fim_titulo is None or not self._typing_ativo:
+            return
+        self._pular_ok = True
+        try:
+            dica = Label(
+                text="toque para pular", font_name="rajdhani.ttf", font_size="14sp",
+                color=(0.55, 0.85, 1, 1), size_hint=(None, None), size=(dp(220), dp(26)),
+                halign="center", valign="middle", opacity=0)
+            dica.text_size = dica.size
+            dica.pos = ((self.width - dica.width) / 2.0, dp(22))
+            self.add_widget(dica)
+            self._dica_pular = dica
+            pisca = (Animation(opacity=0.7, duration=0.7, transition='in_out_sine') +
+                     Animation(opacity=0.3, duration=0.9, transition='in_out_sine'))
+            pisca.repeat = True
+            pisca.start(dica)
+        except Exception as e:
+            print(f"[loading] dica pular: {e}")
+
+    def _tirar_dica_pular(self):
+        dica, self._dica_pular = self._dica_pular, None
+        if dica is None:
+            return
+        try:
+            Animation.cancel_all(dica)
+            if dica.parent is not None:
+                dica.parent.remove_widget(dica)
+        except Exception:
+            pass
+
+    def on_touch_down(self, touch):
+        if self._pular_ok and self._cena is not None and self._fim_titulo is not None:
+            self._pular_abertura()
+            return True
+        return super().on_touch_down(touch)
+
+    def _pular_abertura(self):
+        """Corta a cena na hora: o titulo aparece pronto e segue para o menu."""
+        self._pular_ok = False
+        fim, self._fim_titulo = self._fim_titulo, None
+        try:
+            from cenas import limpar_cena
+            limpar_cena(self._cena)
+        except Exception as e:
+            print(f"[loading] pular: {e}")
+        self._cena = None
+        try:
+            t = self.ids.titulo_label
+            t.text = "TRAVETE FOCUS"
+            t.opacity = 0
+            Animation(opacity=1, duration=0.25, transition='out_quad').start(t)
+        except Exception:
+            pass
+        tatil.botao()
+        if fim is not None:
+            fim()
 
     # ── Particulas ─────────────────────────────────────────────────────────
 

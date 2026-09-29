@@ -8,6 +8,7 @@ import os
 import threading
 import shutil
 import sys
+from datetime import datetime, timedelta
 from kivy.app import App
 from kivy.lang import Builder
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
@@ -160,6 +161,11 @@ class TraveteApp(App):
             import tatil
             tatil.confirmar()
 
+    def trocar_senha(self):
+        """Botao do menu: abre a janela de trocar a senha."""
+        from helpers import popup_trocar_senha
+        popup_trocar_senha()
+
     def recalcular_totais(self):
         total_g = 0; total_x = 0
         por_dia = {}                       # dois turnos no mesmo dia somam
@@ -183,6 +189,23 @@ class TraveteApp(App):
         self.total_geral = total_g
         self.total_xp    = total_x
         self.melhor_dia  = max(por_dia.values(), default=0)
+        # sequencia: dias seguidos com turno, terminando no dia mais recente
+        dias = set()
+        for dia in por_dia:
+            try:
+                dias.add(datetime.strptime(dia, "%d/%m/%Y").date())
+            except ValueError:
+                pass
+        if dias:
+            ultima = max(dias)
+            seq = 1
+            while ultima - timedelta(days=seq) in dias:
+                seq += 1
+            self.streak      = seq
+            self.ultima_data = ultima.strftime("%d/%m/%Y")
+        else:
+            self.streak      = 0
+            self.ultima_data = ""
 
     def salvar_dados(self, sincrono=False):
         snapshot = {
