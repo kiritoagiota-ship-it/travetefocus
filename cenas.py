@@ -195,6 +195,8 @@ def _mover(k, de, para, dur, altura=0.0, rot=None, fantasmas=3,
                 e = u
             elif ease == 'in':
                 e = u * u
+            elif ease == 'suave':
+                e = u * u * (3 - 2 * u)
             else:
                 e = 1 - (1 - u) ** 2
             x = de[0] + (para[0] - de[0]) * e
@@ -2999,11 +3001,10 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         kai = K.pose(pernas='base_larga', dx=1, dy=-1, m1=(9, 5), a1=-20.0, m2=(7, -3), a2=25.0, olhos='g')
         mug = K._fund(pernas='base_larga', m1=(8, 1), a1=-28.0, olhos='l', evo=True, mugetsu=True)
         kk.precarregar([ban, ban_prep, kai, _com(kai, olhos='l')])
-        for _n in ('p1', 'p2', 'p3', 'p4', 'p5', 'p6'):          # desenhos do Bankai: carrega antes
-            try:
-                K.desenho_dados(_n)
-            except Exception as _e:
-                print(f"[cena] desenho {_n}: {_e}")
+        try:
+            K.clipes_dados()                                      # clipes do Bankai: le antes
+        except Exception as _e:
+            print(f"[cena] clipes do Bankai: {_e}")
 
         def _ban():
             _som('pouso')
@@ -3084,9 +3085,12 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
 
         mug_b = _com(mug, cresce=1.0)          # a pose que os efeitos leem no Bankai (espada fundida)
 
-        def _bk(nome):
-            """Mostra o desenho `nome` do Bankai (copiado da referencia)."""
-            kk.mostrar_desenho(nome, base=mug_b)
+        def _bk(nome, loop=True, on_fim=None, on_quadro=None, k=None, t0=0.0):
+            """Toca o clipe `nome` do Bankai (boneco articulado da referencia)."""
+            (k or kk).mostrar_clipe(nome, loop=loop, on_fim=on_fim, on_quadro=on_quadro, base=mug_b, t0=t0)
+
+        def _bk_idle(k=None):
+            _bk('idle', k=k)
 
         def _queima():
             # a transformacao A MOSTRA: um anel de energia sobe dos pes a
@@ -3099,13 +3103,12 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             i = camada.children.index(kk) + 1 if kk in camada.children else 0
             camada.add_widget(kk2, index=i)
             kk2.ancorar(*kk.ancora())
-            kk2.mostrar_desenho('p1', base=mug_b)
+            _bk('nasce', loop=False, on_fim=lambda: _bk_idle(kk2), k=kk2)
             estado['kk2'] = kk2
             ax, ay = kk.ancora()
             esq, baixo, dir_, cima = kk.extensao(_com(kai, a1=None, a2=None))
-            e2 = kk2.extensao()
-            y0, y1 = ay - max(baixo, e2[1]) - te * 3, ay + max(cima, e2[3]) + te * 4
-            bx0, bx1, _, _ = kk2.corpo_desenho()
+            bx0, bx1, by_pe, b_alt = kk2.corpo_desenho()
+            y0, y1 = min(ay - baixo, by_pe) - te * 3, max(ay + cima, by_pe + b_alt) + te * 6
             cx_c = (ax + (dir_ - esq) / 2.0 + (bx0 + bx1) / 2.0) / 2.0
             larg = max((esq + dir_) * 1.05, (bx1 - bx0) * 1.3)
             passo = te * 2
@@ -3142,8 +3145,11 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             if anel.parent is not None:
                 anel.parent.remove_widget(anel)
             kk.recortar()
-            _bk('p1')
             if kk2 is not None:
+                if kk2._desenho == 'nasce' and kk2._clipe_fim is not None:
+                    _bk('nasce', loop=False, on_fim=_bk_idle, t0=kk2._clipe_t)
+                else:
+                    _bk('idle', t0=kk2._clipe_t)
                 kk2.recortar()
                 if kk2.parent is not None:
                     kk2.parent.remove_widget(kk2)
@@ -3181,12 +3187,12 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             ag.depois(0.6, _lua)
 
         def _lua():
-            # corta para ele DE FRENTE, com a lua negra atras (desenho 5) e o
-            # fogo rugindo
-            kk.fantasma()
-            kk.impacto(forte=True)
-            _bk('p5')
+            # a lua negra sobe atras dele e o fogo ruge (ele continua flutuando)
             ax, ay = kk.ancora()
+            lua = _LuaNegra((ax + (-1 if kk.espelhar else 1) * alt * 0.05, ay + alt * 0.62), alt * 0.7,
+                            te * 2, dur=0.7)
+            camada.add_widget(lua, index=len(camada.children))      # atras de tudo
+            estado['lua'] = lua
             chamas.alvo = 1.0
             aura.alvo = 1.0
             _som('trevas')
@@ -3195,7 +3201,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             faiscas.estourar(ax, ay + alt * 0.5, ROXO, n=26, forca=dp(230), tam=te * 2, gravidade=-dp(80))
             cam[0].ir(1.15, foco=(ax, ay + alt * 0.45), dur=0.6)
             # close: os olhos acendem roxos; depois a escuridao
-            ag.depois(1.05, lambda: close_rosto(camada, 'mugetsu', dur=0.95, y_rel=0.8, on_fim=_posiciona))
+            ag.depois(1.2, lambda: close_rosto(camada, 'mugetsu', dur=0.95, y_rel=0.8, on_fim=_posiciona))
 
         def _posiciona():
             # sobe para o meio da frase: dali a escuridao vai sair dele
@@ -3203,20 +3209,17 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             if lua is not None:
                 lua.sumir(0.3)
             kk.espelhar = False
-            kk.fantasma()
-            _bk('p2')                                  # no ar, cortando
             x_ini, y_ini = _dentro_girado(kk, cx_meio - th * 0.3, y_topo + alt * 0.45, area, m)
             ax, ay = kk.ancora()
-            _som('pulo')
-            cam[0].ir(1.0, dur=0.35)
-            h = _arco(ay, y_ini, th * 1.2, area[3] - m - kk.extensao()[3])
-            _mover(kk, (ax, ay), (x_ini, y_ini), 0.4, altura=h, fantasmas=4, on_fim=_trevas,
-                   limite=(area, m))
+            _som('reiatsu')
+            cam[0].ir(1.0, dur=0.6)
+            # levita: sobe devagar, o cabelo e o casaco flutuando
+            _mover(kk, (ax, ay), (x_ini, y_ini), 1.0, altura=th * 0.25, fantasmas=0, on_fim=_trevas,
+                   limite=(area, m), ease='suave')
 
         def _trevas():
             # MUGETSU: a escuridao sai dele e engole a tela inteira (a frase e
             # o infinito somem); so os olhos, o fogo e a espada brilham
-            _bk('p2')
             ax, ay = kk.ancora()
             tv = _Trevas(2 * ps / float(K.R))
             i = camada.children.index(titulo) if titulo in camada.children else len(camada.children)
@@ -3230,19 +3233,26 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             ag.depois(0.8, _ergue)
 
         def _ergue():
-            # silencio: ele diz o nome do golpe, a lamina vai para tras e o fogo sobe
-            kk.fantasma()
-            _bk('p4')                                  # agachado, carregando
+            # silencio: ele diz o nome do golpe, a lamina vai para tras (devagar)
+            # e segura tremendo
+            _bk('carga', loop=False, on_fim=lambda: _bk('carga_segura'))
             _som('fala_ougi')
-            kk.empurrar(capa=4, cabelo=4, lift=3)
-            ag.depois(1.2, _golpe_final)              # o corte cai no "GI!" do grito
+            ag.depois(1.12, _golpe_final)             # o corte cai no "GI!" do grito
 
         def _golpe_final():
             # UM corte so: a lamina atravessa e um risco de luz corta a tela de
             # um lado ao outro na altura da frase... e tudo congela
-            kk.fantasma()
+            feito = [False]
+
+            def _q(i):
+                if i >= 5 and not feito[0]:           # a lamina passa pela frente: o golpe
+                    feito[0] = True
+                    _impacto_final()
+            _bk('corte', loop=False, on_quadro=_q,
+                on_fim=lambda: _bk('fim', loop=False, on_fim=_bk_idle))
+
+        def _impacto_final():
             kk.impacto(forte=True)
-            _bk('p6')                                  # o corte
             _, cy = titulo.x_do_trecho(0, len(texto))
             tv = estado.get('trevas')
             if tv is not None:
@@ -3278,17 +3288,11 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         def _para():
             # para de costas para a frase: a lamina passa do ponto, o corpo
             # vai junto e volta com uma molinha... e o mundo segura a respiracao
-            kk.fantasma()
-            _bk('p3')                                  # de costas para a frase
-            kk.pausar(0.12)
-            kk.empurrar(capa=-20, cabelo=-16)
-            ag.depois(0.55, _separa)
+            ag.depois(0.9, _separa)
 
         def _separa():
             # a espada evoluida se divide de novo nas duas e ele desce para
             # pousar em cima da frase
-            kk.fantasma()
-            _bk('p1')
             hx2, hy2 = kk.ponto_mao(1)
             aura.alvo = 0.0
             chamas.alvo = 0.0
