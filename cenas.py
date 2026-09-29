@@ -2315,6 +2315,8 @@ class _ChamasBankai(Widget):
         """(x0, x1, y_pe, altura) do corpo, estimado pela ancora (quadril) e
         pelo tamanho da unidade - sem desenhar nada para medir."""
         k = self.k
+        if getattr(k, '_desenho', None) is not None:
+            return k.corpo_desenho()
         ps = k.ps
         ax, ay = k.ancora()
         frente = -1 if k.espelhar else 1
@@ -2996,10 +2998,12 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         ban_prep = K.pose(pernas='base_larga', dy=-1, m1=(4, 0), a1=-35.0, m2=(-4, -2), a2=230.0, olhos='s')
         kai = K.pose(pernas='base_larga', dx=1, dy=-1, m1=(9, 5), a1=-20.0, m2=(7, -3), a2=25.0, olhos='g')
         mug = K._fund(pernas='base_larga', m1=(8, 1), a1=-28.0, olhos='l', evo=True, mugetsu=True)
-        kai_m = _com(kai, mugetsu=True, olhos='l')
-        une_m = K.pose(pernas='base_larga', dx=1, dy=-1, m1=(8, 3), a1=4.0, m2=(7, 1), a2=-4.0, olhos='g',
-                       mugetsu=True)
-        kk.precarregar([ban, ban_prep, kai, mug, _com(kai, olhos='l'), _com(kai_m, cresce=0.08)])
+        kk.precarregar([ban, ban_prep, kai, _com(kai, olhos='l')])
+        for _n in ('p1', 'p2', 'p3', 'p4', 'p5', 'p6'):          # desenhos do Bankai: carrega antes
+            try:
+                K.desenho_dados(_n)
+            except Exception as _e:
+                print(f"[cena] desenho {_n}: {_e}")
 
         def _ban():
             _som('pouso')
@@ -3078,32 +3082,11 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             _tremer(10)
             ag.depois(0.5, _queima)
 
-        estado['cresce'] = 0.08
+        mug_b = _com(mug, cresce=1.0)          # a pose que os efeitos leem no Bankai (espada fundida)
 
-        def _dono_bankai():
-            return estado.get('kk2') or kk
-
-        def _aplica_cresce(c):
-            # o cabelo do Bankai cresce: a pose do boneco que ja e Bankai muda
-            # (mesmo tremor, mesmo quadro do loop)
-            estado['cresce'] = c
-            k = _dono_bankai()
-            if k._seq:
-                i = k._i
-                k._seq = [dict(q, cresce=c) if q.get('mugetsu') else q for q in k._seq]
-                k._i = min(i, len(k._seq))
-
-        def _cabelo_cresce():
-            passos = [round(0.08 + 0.92 * (i + 1) / 18.0, 2) for i in range(18)]
-
-            def _p():
-                if passos:
-                    _aplica_cresce(passos.pop(0))
-                    if len(passos) % 6 == 0:
-                        _dono_bankai().empurrar(cabelo=4, lift=2)
-                    ag.depois(0.05, _p)
-            _som('fitas')
-            _p()
+        def _bk(nome):
+            """Mostra o desenho `nome` do Bankai (copiado da referencia)."""
+            kk.mostrar_desenho(nome, base=mug_b)
 
         def _queima():
             # a transformacao A MOSTRA: um anel de energia sobe dos pes a
@@ -3111,29 +3094,27 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             # (o sobretudo rasgado em chamas aparece primeiro, depois o
             # peito, os bracos, a cabeca). O cabelo cresce quando o anel passa
             # do pescoco.
-            base_m = _com(kai_m, cresce=0.08)
             kk2 = K.KiritoPixel(ps=ps)
             kk2.espelhar = kk.espelhar
             i = camada.children.index(kk) + 1 if kk in camada.children else 0
             camada.add_widget(kk2, index=i)
             kk2.ancorar(*kk.ancora())
-            kk2.tocar(K.poder(base_m, n=36, de=0.9, sobe=1.2, lift=2.2), loop=True)
-            kk2._preso = dict(kk._preso)
+            kk2.mostrar_desenho('p1', base=mug_b)
             estado['kk2'] = kk2
             ax, ay = kk.ancora()
             esq, baixo, dir_, cima = kk.extensao(_com(kai, a1=None, a2=None))
-            y0, y1 = ay - baixo - te * 3, ay + cima + te * 8
-            cx_c = ax + (dir_ - esq) / 2.0
-            larg = (esq + dir_) * 1.05
+            e2 = kk2.extensao()
+            y0, y1 = ay - max(baixo, e2[1]) - te * 3, ay + max(cima, e2[3]) + te * 4
+            bx0, bx1, _, _ = kk2.corpo_desenho()
+            cx_c = (ax + (dir_ - esq) / 2.0 + (bx0 + bx1) / 2.0) / 2.0
+            larg = max((esq + dir_) * 1.05, (bx1 - bx0) * 1.3)
             passo = te * 2
-            y_pesc = ay + cima * 0.45
             anel = _AnelEnergia(te * 2)
             camada.add_widget(anel)
             chamas.alvo = 0.8
             _som('absorve')
             dur = 1.45
             t = [0.0]
-            cresceu = [False]
             kk.recortar(y0, None)
             kk2.recortar(None, y0)
 
@@ -3149,9 +3130,6 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                 if int(t[0] * 60) % 3 == 0:
                     faiscas.estourar(cx_c + random.uniform(-0.5, 0.5) * larg, yq, ROXO, n=2,
                                      forca=dp(70), tam=te * 2, gravidade=-dp(220))
-                if not cresceu[0] and yq >= y_pesc:
-                    cresceu[0] = True
-                    _cabelo_cresce()
                 if s >= 1.0:
                     _fim_queima(anel)
                     return False
@@ -3164,13 +3142,8 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             if anel.parent is not None:
                 anel.parent.remove_widget(anel)
             kk.recortar()
+            _bk('p1')
             if kk2 is not None:
-                kk.tocar(kk2._seq, loop=True)
-                kk._i = kk2._i
-                kk._preso = dict(kk2._preso)
-                for a in ('_m_capa', '_m_cab', '_m_lift'):
-                    getattr(kk, a).x = getattr(kk2, a).x
-                    getattr(kk, a).v = getattr(kk2, a).v
                 kk2.recortar()
                 if kk2.parent is not None:
                     kk2.parent.remove_widget(kk2)
@@ -3178,50 +3151,51 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             faiscas.estourar(ax, ay + alt * 0.55, ROXO, n=24, forca=dp(260), tam=te * 2, gravidade=-dp(60))
             _som('titulo')
             _tremer(8)
-            ag.depois(0.5, _funde)
+            ag.depois(0.35, _acende_lamina)
 
-        def _funde():
-            # as duas espadas se juntam na frente e viram uma so: clarao nas
-            # maos, e o fio roxo acende da guarda ate a ponta
-            c = estado.get('cresce', 1.0)
-            k_m = _com(kai_m, cresce=c)
-            u_m = _com(une_m, cresce=c)
-            kk.tocar(K.sequencia([(2, k_m, 'segura'), (6, u_m, 'in'), (3, u_m, 'segura'), (1, u_m)]),
-                     on_fim=_fundiu)
-            _som('giro')
-            aura.alvo = 0.6
-
-        def _fundiu():
-            c = estado.get('cresce', 1.0)
-            fim_m = _com(mug, cresce=c)
+        def _acende_lamina():
+            # o fio roxo da espada acende da guarda ate a ponta
             hx, hy = kk.ponto_mao(1)
-            kk.impacto(forte=True)
+            tx, ty = kk.ponta_espada(1)
+            aura.alvo = 0.7
+            kk.impacto()
             _estrela(camada, hx, hy, ps, BRANCO)
-            _anel(camada, (hx, hy), ps * 2, ps * 12, 0.3, ROXO)
-            faiscas.estourar(hx, hy, BRANCO, n=16, forca=dp(200), tam=ps)
-            faiscas.estourar(hx, hy, ROXO, n=16, forca=dp(160), tam=ps)
+            faiscas.estourar(hx, hy, BRANCO, n=10, forca=dp(150), tam=te * 2)
             _som('fusao')
-            _tremer(12)
-            acende = [(2, _com(fim_m, brilho=b / 8.0), 'segura') for b in range(9)]
-            kk.tocar(K.sequencia(acende + [(1, fim_m)]),
-                     on_fim=lambda: kk.tocar(K.poder(fim_m, n=36, de=0.9), loop=True))
-            ag.depois(0.55, _lua)
+
+            def forma(t, p, u):
+                s = min(1.0, t / 0.32)
+                for j in range(9):                        # cabeca clara e um rastro que esfria
+                    ss = s - j * 0.035
+                    if ss < 0:
+                        break
+                    x = hx + (tx - hx) * ss
+                    y = hy + (ty - hy) * ss
+                    nome = 'luz' if j < 2 else ('clara' if j < 5 else 'cor')
+                    g = 2 if j < 3 else 1
+                    p.setdefault(nome, []).append((math.floor(x / u) * u - (g - 1) * u,
+                                                   math.floor(y / u) * u - (g - 1) * u, g * u, g * u))
+            camada.add_widget(_EfeitoPixel(_cores_efeito(ROXO), 0.5, forma))
+            ag.depois(0.32, lambda: (faiscas.estourar(tx, ty, ROXO, n=14, forca=dp(170), tam=te * 2),
+                                     _estrela(camada, tx, ty, ps, ROXO)))
+            ag.depois(0.6, _lua)
 
         def _lua():
-            # a lua negra sobe atras dele e o fogo ruge
+            # corta para ele DE FRENTE, com a lua negra atras (desenho 5) e o
+            # fogo rugindo
+            kk.fantasma()
+            kk.impacto(forte=True)
+            _bk('p5')
             ax, ay = kk.ancora()
-            lua = _LuaNegra((ax + (-1 if kk.espelhar else 1) * alt * 0.05, ay + alt * 0.5), alt * 0.62,
-                            te * 2, dur=0.55)
-            camada.add_widget(lua, index=len(camada.children))      # atras de tudo
-            estado['lua'] = lua
             chamas.alvo = 1.0
             aura.alvo = 1.0
             _som('trevas')
-            _tremer(8)
-            kk.empurrar(capa=-6, cabelo=-5, lift=6)
-            cam[0].ir(1.15, foco=(ax, ay + alt * 0.4), dur=0.6)
+            _tremer(12)
+            _brilho_tela(camada, 0.35, 0.22, (0.8, 0.62, 1.0))
+            faiscas.estourar(ax, ay + alt * 0.5, ROXO, n=26, forca=dp(230), tam=te * 2, gravidade=-dp(80))
+            cam[0].ir(1.15, foco=(ax, ay + alt * 0.45), dur=0.6)
             # close: os olhos acendem roxos; depois a escuridao
-            ag.depois(0.9, lambda: close_rosto(camada, 'mugetsu', dur=0.95, y_rel=0.8, on_fim=_posiciona))
+            ag.depois(1.05, lambda: close_rosto(camada, 'mugetsu', dur=0.95, y_rel=0.8, on_fim=_posiciona))
 
         def _posiciona():
             # sobe para o meio da frase: dali a escuridao vai sair dele
@@ -3229,23 +3203,20 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             if lua is not None:
                 lua.sumir(0.3)
             kk.espelhar = False
-            poses_f = [M['evo_alto'], M['evo_carga'], M['evo_corte'], M['evo_fim']]
-            x_ini, y_ini = quadro(cx_meio - th * 0.3, y_topo + alt * 0.45, poses_f)
+            kk.fantasma()
+            _bk('p2')                                  # no ar, cortando
+            x_ini, y_ini = _dentro_girado(kk, cx_meio - th * 0.3, y_topo + alt * 0.45, area, m)
             ax, ay = kk.ancora()
-            alto_p = _com(M['evo_alto'], sobe=1.0, olhos='l')
-            kk.parar()
-            kk.mostrar(K.esticado(alto_p))
             _som('pulo')
             cam[0].ir(1.0, dur=0.35)
-            h = _arco(ay, y_ini, th * 1.2, area[3] - m - _ext(kk, [K.esticado(alto_p)])[3])
+            h = _arco(ay, y_ini, th * 1.2, area[3] - m - kk.extensao()[3])
             _mover(kk, (ax, ay), (x_ini, y_ini), 0.4, altura=h, fantasmas=4, on_fim=_trevas,
-                   limite=(area, m),
-                   on_passo=_voo(kk, K.esticado(alto_p), K.encolhido(alto_p), alto_p, (0.25, 0.65)))
+                   limite=(area, m))
 
         def _trevas():
             # MUGETSU: a escuridao sai dele e engole a tela inteira (a frase e
             # o infinito somem); so os olhos, o fogo e a espada brilham
-            kk.tocar(K.poder(_com(M['evo_alto'], olhos='l'), n=36, de=0.8), loop=True)
+            _bk('p2')
             ax, ay = kk.ancora()
             tv = _Trevas(2 * ps / float(K.R))
             i = camada.children.index(titulo) if titulo in camada.children else len(camada.children)
@@ -3260,7 +3231,8 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
 
         def _ergue():
             # silencio: ele diz o nome do golpe, a lamina vai para tras e o fogo sobe
-            kk.tocar(K.poder(_com(M['evo_carga'], olhos='g'), n=36, de=0.7), loop=True)
+            kk.fantasma()
+            _bk('p4')                                  # agachado, carregando
             _som('fala_ougi')
             kk.empurrar(capa=4, cabelo=4, lift=3)
             ag.depois(1.2, _golpe_final)              # o corte cai no "GI!" do grito
@@ -3268,11 +3240,9 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         def _golpe_final():
             # UM corte so: a lamina atravessa e um risco de luz corta a tela de
             # um lado ao outro na altura da frase... e tudo congela
-            corte = _com(M['evo_corte'], sobe=1.0)
-            meio = K.smear(K.misturar(M['evo_carga'], corte, 0.5, 0.5), P['evo_carga']['a1'])
+            kk.fantasma()
             kk.impacto(forte=True)
-            kk.tocar(K.sequencia([(1, meio, 'segura'), (1, K.smear(corte, P['evo_carga']['a1']), 'segura'),
-                                  (6, corte, 'segura'), (1, corte)]))
+            _bk('p6')                                  # o corte
             _, cy = titulo.x_do_trecho(0, len(texto))
             tv = estado.get('trevas')
             if tv is not None:
@@ -3308,10 +3278,8 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         def _para():
             # para de costas para a frase: a lamina passa do ponto, o corpo
             # vai junto e volta com uma molinha... e o mundo segura a respiracao
-            fim_p = M['evo_fim']
-            seg = _com(fim_p, a1=fim_p['a1'] - 20, dx=fim_p['dx'] + 1, sobe=0.6)
-            kk.tocar(K.sequencia([(2, _com(M['evo_corte'], sobe=1.0), 'out'), (6, seg, 'mola'),
-                                  (6, fim_p, 'segura'), (1, fim_p)]))
+            kk.fantasma()
+            _bk('p3')                                  # de costas para a frase
             kk.pausar(0.12)
             kk.empurrar(capa=-20, cabelo=-16)
             ag.depois(0.55, _separa)
@@ -3319,14 +3287,14 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         def _separa():
             # a espada evoluida se divide de novo nas duas e ele desce para
             # pousar em cima da frase
+            kk.fantasma()
+            _bk('p1')
             hx2, hy2 = kk.ponto_mao(1)
             aura.alvo = 0.0
             chamas.alvo = 0.0
             dupla = _com(P['dupla'], olhos='s')
-            dupla_m = _com(dupla, mugetsu=True)
-            # a lamina se divide nas duas (ainda no Bankai): estalo nas maos
-            kk.tocar(K.sequencia([(4, _com(dupla_m, dx=dupla['dx'] + 1, a1=dupla['a1'] + 12,
-                                             a2=dupla['a2'] - 12), 'mola'), (1, dupla_m)]))
+            dupla_m = None
+            # a lamina se divide nas duas: estalo nas maos
             kk.impacto()
             faiscas.estourar(hx2, hy2, BRANCO, n=18, forca=dp(160), tam=ps)
             faiscas.estourar(hx2, hy2, AZUL, n=10, forca=dp(120), tam=ps)
@@ -3346,7 +3314,8 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             kk2._preso = dict(kk._preso)
             ax, ay = kk.ancora()
             esq, baixo, dir_, cima = kk.extensao(_com(dupla, a1=None, a2=None))
-            y_alto, y_baixo = ay + cima + te * 10, ay - baixo - te * 3
+            eb = kk.extensao()                             # o desenho do Bankai e mais alto
+            y_alto, y_baixo = ay + max(cima, eb[3]) + te * 6, ay - max(baixo, eb[1]) - te * 3
             cx_c = ax + (dir_ - esq) / 2.0
             larg = (esq + dir_) * 1.05
             passo = te * 2

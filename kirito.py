@@ -3363,6 +3363,38 @@ def _criar_textura(dados, rec, silhueta=False, xadrez=False):
     return tex
 
 
+# ═══════════════════════════════════════════════════════════════════
+#  DESENHOS PRONTOS (Bankai copiado pixel a pixel da referencia)
+# ═══════════════════════════════════════════════════════════════════
+_DESENHOS = {}
+
+
+def desenho_dados(nome):
+    """(quadros, silhuetas, meta) do desenho pronto `nome` (bankai/nome.png)."""
+    d = _DESENHOS.get(nome)
+    if d is not None:
+        return d
+    import bankai_desenhos as _BD
+    from kivy.core.image import Image as _CoreImage
+    meta = _BD.POSES[nome]
+    base = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'bankai')
+    w, h = meta['tam']
+    n = meta['n']
+    tiras = []
+    for arq in (nome + '.png', nome + '_sil.png'):
+        tex = _CoreImage(_os.path.join(base, arq)).texture
+        tex.mag_filter = tex.min_filter = 'nearest'
+        tiras.append([tex.get_region(i * w, 0, w, h) for i in range(n)])
+    d = (tiras[0], tiras[1], meta)
+    _DESENHOS[nome] = d
+    return d
+
+
+def _tc_espelhado(tc):
+    u0, v0, u1, _, _, v1 = tc[0], tc[1], tc[2], tc[3], tc[4], tc[5]
+    return (u1, v0, u0, v0, u0, v1, u1, v1)
+
+
 def _no_retangulo(rect, tex, rec, ps, espelhar, chao=None):
     """Poe a textura recortada no lugar certo do quadro do boneco. chao: o
     que ficar abaixo dessa linha (texels) nao aparece (as caudas do
@@ -3423,6 +3455,7 @@ class KiritoPixel(Widget):
         self._base = pose()               # pose da sequencia (sem fisica)
         self._pose = self._base           # pose desenhada (com fisica)
         self._ult_chave = None
+        self._desenho = None              # nome do desenho pronto (None = boneco montado)
         self._ev = None
         self._ev_vida = None
         self._seq = []
@@ -3539,7 +3572,28 @@ class KiritoPixel(Widget):
             x = TW - 1 - x
         return (x + 0.5) * te, (y + 0.5) * te
 
+    def _local_desenho(self, sx, sy):
+        """Pixel (sx, sy) do desenho pronto (y para baixo) -> px locais."""
+        meta = desenho_dados(self._desenho)[2]
+        te = self.ps / float(R)
+        ax, ay = self.ancora_local()
+        qx, qy = meta['quadril']
+        dx = (sx + 0.5 - qx) * te
+        return (ax - dx if self.espelhar else ax + dx), ay + (qy - sy - 0.5) * te
+
+    def corpo_desenho(self):
+        """(x0, x1, y_pe, altura) da parte firme do desenho pronto, no pai."""
+        meta = desenho_dados(self._desenho)[2]
+        cx, meia = meta['corpo']
+        qx, qy = meta['quadril']
+        bx0, by0, bx1, by1 = meta['caixa']
+        xa, ya = self._local_desenho(cx - meia * 1.8, by1)
+        xb, yb = self._local_desenho(cx + meia * 1.8, by0)
+        return (self.x + min(xa, xb), self.x + max(xa, xb), self.y + ya, yb - ya)
+
     def mao_local(self, qual=1, p=None):
+        if p is None and self._desenho is not None:
+            return self._local_desenho(*desenho_dados(self._desenho)[2]['mao'])
         return self._local_texel(*maos_texel(p or self._base, qual)[0])
 
     def ponto_mao(self, qual=1):
@@ -3548,11 +3602,23 @@ class KiritoPixel(Widget):
         return self.x + lx, self.y + ly
 
     def ponta_espada(self, qual=1, p=None):
+        if p is None and self._desenho is not None:
+            lx, ly = self._local_desenho(*desenho_dados(self._desenho)[2]['ponta'])
+            return self.x + lx, self.y + ly
         """(x, y) da ponta da lamina `qual` (coords do pai), sem rotacao."""
         lx, ly = self._local_texel(*maos_texel(p or self._base, qual)[1])
         return self.x + lx, self.y + ly
 
     def extensao(self, p=None):
+        if p is None and self._desenho is not None:
+            meta = desenho_dados(self._desenho)[2]
+            te = self.ps / float(R)
+            qx, qy = meta['quadril']
+            bx0, by0, bx1, by1 = meta['caixa']
+            esq, dir_ = (qx - bx0) * te, (bx1 + 1 - qx) * te
+            if self.espelhar:
+                esq, dir_ = dir_, esq
+            return esq, (by1 + 1 - qy) * te, dir_, (qy - by0) * te
         """(esq, baixo, dir, cima): quanto a pose (com espadas) se estende a
         partir da ancora, em px de tela. Para manter o boneco no quadro."""
         x0, y0, x1, y1 = caixa(p or self._base)
@@ -3573,7 +3639,18 @@ class KiritoPixel(Widget):
         self._sc.y = self.escala_y
 
     # ── desenho ──────────────────────────────────────────────────────
+    def mostrar_desenho(self, nome, base=None):
+        """Mostra o desenho pronto `nome` (tocando os quadros dele) no lugar
+        do boneco montado. base = a pose que os efeitos consultam (forma,
+        espada acesa)."""
+        self.parar()
+        self._desenho = nome
+        if base is not None:
+            self._base = base
+        self._desenhar(forcar=True)
+
     def mostrar(self, p):
+        self._desenho = None
         if self._base is not p and self.fisica:
             ant = self._base
             if ant is None or any(ant.get(k) != p.get(k) for k in ('dx', 'dy', 'm1', 'm2', 'a1', 'a2',
@@ -3637,7 +3714,43 @@ class KiritoPixel(Widget):
             self._rect_clarao_cab.size = (0, 0)
         return out
 
+    def _desenhar_desenho(self, forcar=False):
+        quadros, silhuetas, meta = desenho_dados(self._desenho)
+        import bankai_desenhos as _BD
+        f = int(self._t * _BD.FPS) % meta['n']
+        chave = ('des', self._desenho, f, self.espelhar, self.clarao > 0)
+        if chave == self._ult_chave and not forcar:
+            return
+        self._ult_chave = chave
+        te = self.ps / float(R)
+        w, h = meta['tam']
+        x0, y0 = self._local_desenho(0, h - 1)
+        if self.espelhar:
+            x0 -= (w - 1) * te
+        x0 -= 0.5 * te
+        y0 -= 0.5 * te
+        for rect, tex, ligado in ((self._rect, quadros[f], True),
+                                  (self._rect_clarao, silhuetas[f], self.clarao > 0)):
+            if not ligado:
+                rect.size = (0, 0)
+                continue
+            rect.texture = tex
+            rect.pos = (x0, y0)
+            rect.size = (w * te, h * te)
+            rect.tex_coords = _tc_espelhado(tex.tex_coords) if self.espelhar else tex.tex_coords
+        for rect in (self._rect_cauda, self._rect_cab, self._rect_clarao_cauda, self._rect_clarao_cab):
+            rect.size = (0, 0)
+        self._cor_clarao.a = self.clarao
+        if self.ao_redesenhar is not None:
+            self.ao_redesenhar()
+
     def _desenhar(self, forcar=False):
+        if self._desenho is not None:
+            try:
+                return self._desenhar_desenho(forcar)
+            except Exception as e:
+                print(f"[kirito] desenho pronto: {e}")
+                self._desenho = None
         try:
             self._pose = self._composta()
             if True:
@@ -3915,7 +4028,13 @@ class KiritoPixel(Widget):
                 Translate(self.x, self.y)
                 Rotate(angle=self.rotacao, origin=orig)
                 cor_sil = Color(cor[0], cor[1], cor[2], alfa)
-                if True:
+                if self._desenho is not None:
+                    quadros, silhuetas, meta = desenho_dados(self._desenho)
+                    import bankai_desenhos as _BD
+                    tex = silhuetas[int(self._t * _BD.FPS) % meta['n']]
+                    Rectangle(texture=tex, pos=self._rect.pos, size=self._rect.size,
+                              tex_coords=_tc_espelhado(tex.tex_coords) if self.espelhar else tex.tex_coords)
+                else:
                     for _r, _s, qual, ch, (ox, oy) in self._camadas_da_pose(self._pose):
                         tex, rec = textura_camada(self._pose, qual, ch, silhueta=True)
                         _no_retangulo(Rectangle(), tex, (rec[0] + ox, rec[1] + oy, rec[2], rec[3]),

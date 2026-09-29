@@ -35,6 +35,14 @@ ANIMACAO QUADRO A QUADRO (relogio simulado: 60 quadros/s exatos, a foto nao atra
   folha_filme.py    PASTA ini fim passo SAIDA: folha de quadros recortada no Yoru
   zoom_filme.py     PASTA SAIDA q1,q2,...: quadros ampliados (pixel duro)
 
+BANKAI (desenhos da referencia do usuario, copiados pixel a pixel)
+  bankai_ref.py     copia uma pose da referencia (referencias/2026-09-29_bankai_referencia.png)
+                    para pixel art limpa (paleta curta, 1 pixel por bloco, fundo tirado)
+  bankai_folhas.py  gera app/bankai/p1..p6.png (6 quadros cada: cabelo, casaco e chamas
+                    ondulando), as silhuetas _sil.png e o app/bankai_desenhos.py com os
+                    pontos de cada pose (quadril, mao, ponta da espada...). Rodar de novo
+                    se mudar a referencia ou os pontos.
+
 VER / FAZER PREVIAS
   folha2.py, folha_poses.py, cena_zoom.py   folhas de quadros para conferir
   gif_tour.py, gif_cenas.py, gif_folha.py    GIFs de previa
