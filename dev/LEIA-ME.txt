@@ -38,10 +38,12 @@ ANIMACAO QUADRO A QUADRO (relogio simulado: 60 quadros/s exatos, a foto nao atra
 BANKAI (desenhos da referencia do usuario, copiados pixel a pixel)
   bankai_ref.py     copia uma pose da referencia (referencias/2026-09-29_bankai_referencia.png)
                     para pixel art limpa (paleta curta, 1 pixel por bloco, fundo tirado)
-  bankai_folhas.py  gera app/bankai/p1..p6.png (6 quadros cada: cabelo, casaco e chamas
-                    ondulando), as silhuetas _sil.png e o app/bankai_desenhos.py com os
-                    pontos de cada pose (quadril, mao, ponta da espada...). Rodar de novo
-                    se mudar a referencia ou os pontos.
+  bankai_rig.py     BONECO ARTICULADO do Bankai feito com o desenho 1: previa (pecas
+                    coloridas), gerar/gif (clipes idle, nasce, carga, corte, fim a 30/s ->
+                    app/bankai/clipes.bin). Mudou pose/tempo de um golpe: editar clipes() e
+                    rodar de novo.
+  continuidade.py   mede, num filme com CADA=1, quanto o Yoru muda de um quadro para o
+                    outro (barras vermelhas = "pisca")
 
 VER / FAZER PREVIAS
   folha2.py, folha_poses.py, cena_zoom.py   folhas de quadros para conferir
