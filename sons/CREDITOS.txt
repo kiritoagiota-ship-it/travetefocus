@@ -25,7 +25,9 @@ gravacoes em dominio publico - licenca CC0 1.0
 
 CC0 nao exige credito; fica registrado por gentileza aos autores.
 
-Vozes do Yoru (voz_starburst, voz_stream, voz_mugetsu, voz_ha, voz_seiya, voz_teya)
+Vozes do Yoru (voz_starburst, voz_stream, voz_mugetsu, voz_ha, voz_seiya, voz_teya
+e os gemidinhos dos golpes: gemido_ha, gemido_hun, gemido_ya, gemido_yaa,
+gemido_to, gemido_fun)
 ------------------------------------------------------------------------------------
 Geradas no PC com o Kokoro (sintese de voz neural de codigo aberto, gratuita,
 licenca Apache 2.0 - pode usar ate em app vendido), voz masculina japonesa

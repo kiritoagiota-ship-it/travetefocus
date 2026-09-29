@@ -138,10 +138,11 @@ class TelaLoading(Screen):
         self.ids.barra_loading.opacity = 0
         self.reator.core_color = [0, 0.89, 1]
         Animation(opacity=1, duration=0.3, transition='out_expo').start(self.ids.barra_loading)
-        Animation(build_progress=1.0, duration=1.0, transition='out_expo').start(self.reator)
-        Animation(progresso=100, duration=1.0).start(self.ids.barra_loading)
+        Animation(build_progress=1.0, duration=0.6, transition='out_expo').start(self.reator)
+        Animation(progresso=100, duration=0.6).start(self.ids.barra_loading)
 
-        Clock.schedule_once(lambda dt: self.animar_materializacao(), 0.9)
+        # senha ainda valendo: entrada rapida (a animacao inteira so depois do PIN)
+        Clock.schedule_once(lambda dt: self.animar_materializacao(rapida=True), 0.45)
 
     # ── Full Load — texto ──────────────────────────────────────────────────
 
@@ -401,10 +402,12 @@ class TelaLoading(Screen):
         # chamada agendada aqui dava NameError 3s depois e derrubava o app)
         self.animar_materializacao()
 
-    def animar_materializacao(self):
-        """O Kirito surge numa borda, pula e escreve TRAVETE FOCUS com o
-        rastro das espadas (cenas.cena_titulo). Depois: espadas holograficas,
-        versao e menu. Se a cena falhar, o titulo aparece direto."""
+    def animar_materializacao(self, rapida=False):
+        """O Yoru escreve TRAVETE FOCUS com as espadas: a abertura inteira
+        (cenas.cena_titulo) logo depois da senha; com a senha ainda valendo,
+        a entrada rapida (cenas.cena_entrada_rapida). Depois: espadas
+        holograficas, versao e menu. Se a cena falhar, o titulo aparece
+        direto."""
         if not self._typing_ativo:
             return
         t = self.ids.titulo_label
@@ -430,8 +433,12 @@ class TelaLoading(Screen):
             Clock.schedule_once(lambda _: _safe_mudar_tela("menu"), 1.4)
 
         try:
-            from cenas import cena_titulo
-            self._cena = cena_titulo(self, t, on_fim=_fim, texto="TRAVETE FOCUS")
+            if rapida:
+                from cenas import cena_entrada_rapida
+                self._cena = cena_entrada_rapida(self, t, on_fim=_fim, texto="TRAVETE FOCUS")
+            else:
+                from cenas import cena_titulo
+                self._cena = cena_titulo(self, t, on_fim=_fim, texto="TRAVETE FOCUS")
         except Exception as e:
             print(f"[loading] cena do titulo ignorada: {e}")
             t.text = "TRAVETE FOCUS"

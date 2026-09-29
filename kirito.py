@@ -3157,6 +3157,7 @@ def caixa(p):
     if not p.get('mugetsu'):
         p = dict(p, capa=0.0, cabelo=0.0, lift=0.0, fase=0.0, hx=0, hy=0)
     ch = _chave(p)
+    _grava('caixa', ch, p)               # (so anota quando esta assando os quadros)
     item = _CACHE.get(ch)
     if item is not None:
         return item[1]
@@ -3164,7 +3165,6 @@ def caixa(p):
     if cx is None and _ASSADO_CAIXAS and _assado_valido():
         cx = _ASSADO_CAIXAS.get(repr(ch))
     if cx is None:
-        _grava('caixa', ch, p)
         px = montar(p, rapido=True)
         xs = [q[0] for q, c in px.items() if c not in 'xX<>']
         ys = [q[1] for q, c in px.items() if c not in 'xX<>']
@@ -3470,6 +3470,8 @@ class KiritoPixel(Widget):
         """Fisica do sobretudo/cabelo a partir da velocidade real do boneco."""
         try:
             if self._pausa > 0:
+                if self._ev is None:          # sem sequencia tocando, o hit-stop acaba sozinho
+                    self._pausa = max(0.0, self._pausa - dt)
                 return
             dt = min(dt, 1 / 15.)
             self._t += dt
@@ -4213,7 +4215,8 @@ class LotePixels:
     def desenhar(self, pontos, alfa=1.0):
         for nome, (c, a0, mesh) in self.m.items():
             vs, ids = [], []
-            for i, r in enumerate(pontos.get(nome, ())):
+            # um Mesh aceita no maximo 65535 vertices (16383 quadradinhos)
+            for i, r in enumerate(pontos.get(nome, ())[:16000]):
                 x, y, w = r[0], r[1], r[2]
                 h = r[3] if len(r) > 3 else w
                 vs.extend((x, y, 0, 0, x + w, y, 0, 0, x + w, y + h, 0, 0, x, y + h, 0, 0))
@@ -4259,7 +4262,7 @@ def _caminhos_fita():
         t = 2 * math.pi * 1.55 * u + 0.6
         r = 30.0 + 6.0 * u
         x = r * math.cos(t)
-        y = -70.0 + 115.0 * u + 9.0 * math.sin(t)
+        y = -70.0 + 88.0 * u + 9.0 * math.sin(t)           # para no peito (nao passa no rosto)
         pts.append((x, y, math.sin(t), i * 1.1))
     out.append((pts, 6.0))
     return out
@@ -4441,7 +4444,8 @@ class FitaFogo(Widget):
             self._rect.pos = (x, ay + _FITA_Y0 * sy)
             self._rect.size = (w, h)
             self._rect.tex_coords = _TC_ESPELHO if k.espelhar else _TC_NORMAL
-            self._cor.a = min(1.0, self.forca * 1.4)
+            # a parte da frente e um pouco transparente: o corpo aparece atras
+            self._cor.a = min(1.0, self.forca * 1.4) * (0.78 if self.lado == 'frente' else 1.0)
             return True
         except Exception as e:
             print(f"[kirito] fita de fogo: {e}")
