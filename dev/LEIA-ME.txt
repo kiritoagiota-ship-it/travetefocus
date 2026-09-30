@@ -21,7 +21,9 @@ TESTAR O APP (janela do tamanho do celular: 720x1560, densidade 1.75)
                     MENU=1, RAPIDA=1 entrada rapida, PIN_ERRADO=3 (bloqueio),
                     MEMORIAS=365 ABRIR=memorias (um ano de dados) + ROLAR=1
                     (carregar mais ao rolar), SENHA=1 (trocar a senha),
-                    FINALIZAR=1 (data do turno), PULAR=4 (toca na tela 4 s
+                    FINALIZAR=1 (data do turno), VAZA=1 (toque no vao entre
+                    as teclas por cima da lista/botoes NAO pode chegar neles:
+                    adicionar peca, memorias, ganhos), PULAR=4 (toca na tela 4 s
                     depois da abertura comecar; com RAPIDA=1 na entrada rapida).
   golpes_teste.py   As cenas curtas do Yoru (apagar, +XP, finalizar...).
   plano.py          Desenha o plano dos golpes da abertura (sem abrir o app).

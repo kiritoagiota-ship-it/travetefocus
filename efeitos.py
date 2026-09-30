@@ -1390,6 +1390,28 @@ class _TecladoBase(BoxLayout):
         self._bg.size   = self.size
         self._top.points = [self.x, self.top, self.right, self.top]
 
+    # O teclado SEGURA todo toque que cai na area dele: nas teclas, nos vaos
+    # entre elas, nas bordas e na linha de sugestoes. Antes, o toque num vao
+    # "vazava" para o que estava embaixo (abria o aviso de apagar uma peca da
+    # lista, apertava o Voltar escondido na tela de Ganhos, rolava a lista).
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            super().on_touch_down(touch)
+            return True
+        return super().on_touch_down(touch)
+
+    def on_touch_move(self, touch):
+        if self.collide_point(*touch.pos):
+            super().on_touch_move(touch)
+            return True
+        return super().on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        if self.collide_point(*touch.pos):
+            super().on_touch_up(touch)
+            return True
+        return super().on_touch_up(touch)
+
     def _press(self, char):
         t = self.target
         if not t:

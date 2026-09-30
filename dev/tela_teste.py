@@ -625,6 +625,148 @@ def roteiro_teste():
                                          f'sequencia {App.get_running_app().streak}, '
                                          f'ultima {App.get_running_app().ultima_data}')))
         passos.append((0.1, lambda: foto('finalizar-salvo')))
+    if _os.environ.get('VAZA') == '1':                # toque "vazando" do teclado para o que esta embaixo
+        estado = {}
+        # como no celular: o campo com o teclado do app nao liga o teclado do
+        # sistema (no PC o Kivy tiraria o foco a cada toque fora do campo)
+        import efeitos as _ef
+        _orig_bind = _ef.InputHolografico._bind_keyboard
+
+        def _bind_como_android(self):
+            if getattr(self, '_teclado_custom_ok', False):
+                return
+            _orig_bind(self)
+        _ef.InputHolografico._bind_keyboard = _bind_como_android
+
+        def _ret(w):
+            x, y = w.to_window(w.x, w.y)
+            return (x, y, x + w.width, y + w.height)
+
+        def _corta(a, b):
+            r = (max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3]))
+            return r if r[2] > r[0] and r[3] > r[1] else None
+
+        def _no_vao(kb, alvos):
+            """Ponto dentro do teclado, fora de qualquer tecla, em cima de um alvo."""
+            from efeitos import _BotaoTecla
+            teclas = [_ret(b) for b in kb.walk() if isinstance(b, _BotaoTecla)]
+            k = _ret(kb)
+            for y in range(int(k[1]) + 1, int(k[3]) - 1, 2):
+                for x in range(int(k[0]) + 1, int(k[2]) - 1, 2):
+                    if any(r[0] <= x <= r[2] and r[1] <= y <= r[3] for r in teclas):
+                        continue
+                    for nome, r in alvos:
+                        if r[0] + 2 <= x <= r[2] - 2 and r[1] + 2 <= y <= r[3] - 2:
+                            return (x, y, nome)
+            return None
+
+        # A) adicionar peca: lista cheia de pecas embaixo do teclado de letras
+        def _encher():
+            app = App.get_running_app()
+            for i in range(12):
+                app.registros.append([f'Peca teste {i}', str(10 + i), 30])
+        passos.append((0.5, _encher))
+        passos.append((0.5, lambda: ir('registro')))
+        passos.append((1.8, lambda: foto('vaza-registro-teclado')))
+
+        def _testa_registro():
+            kb = teclado_aberto()
+            if kb is None:
+                LOG['erros'].append('vaza: teclado nao abriu no registro')
+                return
+            t = tela()
+            chamados = estado.setdefault('apagar', [])
+            orig = t.confirmar_delete
+            t.confirmar_delete = lambda d, w, orig=orig: (chamados.append(d[0]), orig(d, w))
+            sv = t.ids.lista_container.parent
+            visivel = _ret(sv)
+            alvos = []
+            for w in t.ids.lista_container.children:
+                r = _corta(_ret(w), visivel)
+                if r:
+                    alvos.append((w.text.strip()[:18], r))
+            p = _no_vao(kb, alvos)
+            fase(f'vaza registro: {len(alvos)} pecas visiveis; ponto no vao do teclado em cima de peca: {p}')
+            if p:
+                tocar_tela(p[0], p[1])
+        passos.append((0.2, _testa_registro))
+        passos.append((0.6, lambda: fase(f"vaza registro RESULTADO: tentou apagar={estado.get('apagar')}, "
+                                         f"aviso de apagar aberto={popup_aberto() is not None}")))
+        passos.append((0.1, lambda: foto('vaza-registro-depois')))
+        passos.append((0.3, lambda: popup_aberto() and popup_aberto().dismiss()))
+
+        def _tecla_digita():
+            # a tecla de verdade continua digitando (toque no meio da tecla Q)
+            kb = teclado_aberto()
+            if kb is None:
+                fase('vaza registro: teclado fechou (o aviso de apagar tinha aberto)')
+                return
+            from efeitos import _BotaoTecla
+            q = next((b for b in kb.walk() if isinstance(b, _BotaoTecla) and b.text == 'Q'), None)
+            estado['antes'] = tela().ids.nome_input.text
+            r = _ret(q)
+            tocar_tela((r[0] + r[2]) / 2, (r[1] + r[3]) / 2)
+        passos.append((0.3, _tecla_digita))
+        passos.append((0.3, lambda: fase(f"vaza registro: tecla Q digitou? antes='{estado.get('antes')}' "
+                                         f"depois='{tela().ids.nome_input.text}'")))
+
+        # B) memorias: detalhe do dia, teclado de numeros da data por cima dos botoes
+        passos.append((0.6, lambda: ir('memorias')))
+        passos.append((1.5, lambda: tela().abrir_detalhes_memoria(App.get_running_app().memorias[-1])))
+
+        def _foco_data():
+            p = popup_aberto()
+            for w in (p.walk() if p else []):
+                if isinstance(w, TextInput):
+                    w.focus = True
+                    return
+            LOG['erros'].append('vaza: campo da data nao achado')
+        passos.append((0.9, _foco_data))
+        passos.append((0.9, lambda: foto('vaza-memoria-teclado')))
+
+        def _testa_mem():
+            kb, p = teclado_aberto(), popup_aberto()
+            if kb is None or p is None:
+                LOG['erros'].append(f'vaza memoria: teclado={kb is not None} popup={p is not None}')
+                return
+            botoes = [(w.text.strip(), _ret(w)) for w in p.walk()
+                      if any(s in str(getattr(w, 'text', '')) for s in ('APAGAR', 'FECHAR', 'WHATSAPP'))]
+            estado['n_mem'] = len(App.get_running_app().memorias)
+            fase('vaza memoria: botoes ' + ', '.join(f"{n} y={int(r[1])}-{int(r[3])}" for n, r in botoes) +
+                 f"; teclado y={int(_ret(kb)[1])}-{int(_ret(kb)[3])}")
+            ponto = _no_vao(kb, botoes)
+            fase(f'vaza memoria: ponto no vao do teclado em cima de botao: {ponto}')
+            if ponto:
+                tocar_tela(ponto[0], ponto[1])
+        passos.append((0.2, _testa_mem))
+        passos.append((1.6, lambda: fase(f"vaza memoria RESULTADO: popup ainda aberto={popup_aberto() is not None}, "
+                                         f"turnos antes={estado.get('n_mem')} depois={len(App.get_running_app().memorias)}")))
+        passos.append((0.1, lambda: foto('vaza-memoria-depois')))
+
+        # C) ganhos: campos de valor com teclado de numeros, botoes embaixo
+        passos.append((0.3, lambda: popup_aberto() and popup_aberto().dismiss()))
+        passos.append((0.6, lambda: ir('ganhos')))
+        passos.append((1.5, lambda: setattr(tela().ids.inp_valor_base, 'focus', True)))
+        passos.append((0.9, lambda: foto('vaza-ganhos-teclado')))
+
+        def _testa_ganhos():
+            kb = teclado_aberto()
+            if kb is None:
+                LOG['erros'].append('vaza ganhos: teclado nao abriu')
+                return
+            from kivy.uix.button import Button
+            botoes = [(w.text.strip()[:24], _ret(w)) for w in tela().walk()
+                      if isinstance(w, Button) and w.get_root_window() is not None and w.opacity > 0.05]
+            ponto = _no_vao(kb, botoes)
+            estado['per'] = [dict(p) for p in App.get_running_app().periodos_ganhos]
+            fase(f'vaza ganhos: {len(botoes)} botoes na tela; ponto no vao do teclado em cima de botao: {ponto}')
+            if ponto:
+                tocar_tela(ponto[0], ponto[1])
+        passos.append((0.2, _testa_ganhos))
+        passos.append((0.8, lambda: fase(f"vaza ganhos RESULTADO: popup aberto={popup_aberto() is not None}, "
+                                         f"periodos mudaram={estado.get('per') != [dict(p) for p in App.get_running_app().periodos_ganhos]}, "
+                                         f"tela agora={App.get_running_app().root.ids.sm.current}")))
+        passos.append((0.1, lambda: foto('vaza-ganhos-depois')))
     passos.append((1.5, lambda: fim(0)))
     Roteiro(passos).rodar()
 
