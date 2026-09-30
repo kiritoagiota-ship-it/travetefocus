@@ -2707,6 +2707,10 @@ def montar(p, rapido=False, camada=None):
         _cabo_cintura5(px, boca[0], boca[1])
     if not ergue:
         _braco_frente()
+    if p.get('agarra') and p['m2'] is not None:
+        # a outra mao SEGURA o braco da espada (gesto do BAN-KAI): o punho de
+        # tras aparece por cima do antebraco da frente
+        _mao5(px, h2[0], h2[1])
     if p.get('emote'):
         t = {}
         _emote(t, p['emote'], int(round(cab_x / float(R))) + 2, int(round(cab_ty / float(R))) - 1)
@@ -3515,6 +3519,10 @@ class KiritoPixel(Widget):
         self._loop = False
         self.ao_redesenhar = None         # chamado quando a imagem da pose muda
         self._pausa = 0.0                 # hit-stop: segundos congelado no impacto
+        self.aura = 0.0                   # borda de energia fervendo (0 = desligada)
+        self._aura_camadas = []
+        self._aura_t = 0.0
+        self._aura_n = 0
         # fisica secundaria
         self._m_capa = _Mola(95, 9)
         self._m_cab = _Mola(110, 10)
@@ -3543,6 +3551,9 @@ class KiritoPixel(Widget):
             self._tr = Translate(0, 0)
             self._rot = Rotate(angle=0, origin=(0, 0))
             self._sc = Scale(1, 1, 1)
+            # borda de energia (BAN...): a silhueta repetida em volta, em roxo
+            self._cor_aura = Color(0.66, 0.40, 1.0, 0)
+            self._aura_rects = [Rectangle(pos=(0, 0), size=(0, 0)) for _ in range(24)]
             Color(1, 1, 1, 1)
             self._rect_cauda = Rectangle(pos=(0, 0), size=(0, 0))
             self._rect = Rectangle(pos=(0, 0), size=(GW * self.ps, GH * self.ps))
@@ -3641,9 +3652,23 @@ class KiritoPixel(Widget):
         """(x0, x1, y_pe, altura) do corpo do Bankai (sem cabelo/espada), no pai."""
         cab = clipes_dados()
         qx, qy = cab['quadril']
-        xa, ya = self._local_desenho(qx - 14, qy + 60)
-        xb, yb = self._local_desenho(qx + 16, qy - 105)
+        if cab.get('corpo'):
+            x0, x1, y_topo, y_pe = cab['corpo']
+            xa, ya = self._local_desenho(x0, y_pe)
+            xb, yb = self._local_desenho(x1, y_topo)
+        else:
+            xa, ya = self._local_desenho(qx - 14, qy + 60)
+            xb, yb = self._local_desenho(qx + 16, qy - 105)
         return (self.x + min(xa, xb), self.x + max(xa, xb), self.y + ya, yb - ya)
+
+    def olhos_desenho(self):
+        """(x, y) dos olhos do Bankai no pai (para acenderem dentro do reiatsu)."""
+        cab = clipes_dados()
+        o = cab.get('olhos')
+        if not o:
+            return None
+        lx, ly = self._local_desenho(o[0], o[1])
+        return self.x + lx, self.y + ly
 
     def mao_local(self, qual=1, p=None):
         if p is None and self._desenho is not None:
@@ -3822,9 +3847,50 @@ class KiritoPixel(Widget):
             rect.tex_coords = _tc_espelhado(t.tex_coords) if self.espelhar else t.tex_coords
         for rect in (self._rect_cauda, self._rect_cab, self._rect_clarao_cauda, self._rect_clarao_cab):
             rect.size = (0, 0)
+        self._pos_aura()
         self._cor_clarao.a = self.clarao
         if self.ao_redesenhar is not None:
             self.ao_redesenhar()
+
+    def borda_energia(self, v):
+        """Borda de energia fervendo em volta do boneco (o BAN... do Ichigo):
+        a silhueta repetida 1-2 pixels para fora em roxo, trocando 12 vezes
+        por segundo (sobe mais que desce, como chama). v = 0 desliga."""
+        self.aura = max(0.0, float(v))
+        self._desenhar(forcar=True)
+        if self.aura <= 0:
+            self._aura_camadas = []
+            self._pos_aura()
+
+    def _pos_aura(self):
+        rects = self._aura_rects
+        if self.aura <= 0 or not self._aura_camadas or self._desenho is not None:
+            for r in rects:
+                r.size = (0, 0)
+            self._cor_aura.a = 0
+            return
+        te = self.ps / float(R)
+        rnd = random.Random(self._aura_n)
+        dirs = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1))
+        i = 0
+        for (tex, pos, size, tc) in self._aura_camadas:
+            for (dx, dy) in dirs:
+                if i >= len(rects):
+                    break
+                k = 1 + (1 if rnd.random() < 0.5 * self.aura else 0)
+                if dy > 0 and rnd.random() < 0.6 * self.aura:          # sobe mais (chama)
+                    k += 1
+                if dx and dy:
+                    k = max(1, k - 1)
+                r = rects[i]
+                i += 1
+                r.texture = tex
+                r.pos = (pos[0] + dx * k * te, pos[1] + dy * k * te)
+                r.size = size
+                r.tex_coords = tc
+        for r in rects[i:]:
+            r.size = (0, 0)
+        self._cor_aura.a = 1.0 if self.aura >= 0.5 else 0.55
 
     def _desenhar(self, forcar=False):
         if self._desenho is not None:
@@ -3841,6 +3907,7 @@ class KiritoPixel(Widget):
                 if chave == self._ult_chave and not forcar:
                     return
                 self._ult_chave = chave
+                aura = []
                 for rect, rect_s, qual, ch, (ox, oy) in camadas:
                     tex, rec = textura_camada(self._pose, qual, ch)
                     rec2 = (rec[0] + ox, rec[1] + oy, rec[2], rec[3])
@@ -3851,6 +3918,13 @@ class KiritoPixel(Widget):
                         _no_retangulo(rect_s, tex, rec2, self.ps, self.espelhar, chao)
                     else:
                         rect_s.size = (0, 0)
+                    if self.aura > 0:
+                        tex_s, rec = textura_camada(self._pose, qual, ch, silhueta=True)
+                        r0 = self._aura_rects[-1]
+                        _no_retangulo(r0, tex_s, rec2, self.ps, self.espelhar, chao)
+                        aura.append((tex_s, tuple(r0.pos), tuple(r0.size), tuple(r0.tex_coords)))
+                self._aura_camadas = aura
+                self._pos_aura()
             self._cor_clarao.a = self.clarao
             if self.ao_redesenhar is not None:
                 self.ao_redesenhar()
@@ -3867,6 +3941,12 @@ class KiritoPixel(Widget):
             dt = min(dt, 1 / 15.)
             self._t += dt
             self._avanca_clipe(dt)
+            if self.aura > 0:                        # a borda de energia ferve (12/s)
+                self._aura_t += dt
+                if self._aura_t >= 1 / 12.:
+                    self._aura_t = 0.0
+                    self._aura_n += 1
+                    self._pos_aura()
             ax, ay = self.ancora()
             if self._ult is not None and dt > 0:
                 vx = (ax - self._ult[0]) / dt

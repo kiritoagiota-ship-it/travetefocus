@@ -38,10 +38,15 @@ ANIMACAO QUADRO A QUADRO (relogio simulado: 60 quadros/s exatos, a foto nao atra
 BANKAI (desenhos da referencia do usuario, copiados pixel a pixel)
   bankai_ref.py     copia uma pose da referencia (referencias/2026-09-29_bankai_referencia.png)
                     para pixel art limpa (paleta curta, 1 pixel por bloco, fundo tirado)
-  bankai_rig.py     BONECO ARTICULADO do Bankai feito com o desenho 1: previa (pecas
-                    coloridas), gerar/gif (clipes idle, nasce, carga, corte, fim a 30/s ->
-                    app/bankai/clipes.bin). Mudou pose/tempo de um golpe: editar clipes() e
-                    rodar de novo.
+  bankai_rig.py     O Bankai = desenho 1 da referencia animado PECA POR PECA: o cabelo
+                    cortado em mechas e o casaco em abas (espinhas MECHAS/ABAS seguindo os
+                    fios do desenho), cada pedaco anda inteiro em passos de pixel (nada de
+                    entortar). mechas SAIDA.png (pedacos coloridas), gerar (clipes idle,
+                    revela, carga, carga_segura, corte, fim + o reiatsu -> app/bankai/
+                    clipes.bin), gif [clipes] (previa). Mudou pose/tempo: editar clipes().
+  reiatsu.py        o REIATSU do BAN-KAI em pixel art (rei_estouro, rei_ferve em loop,
+                    rei_dissipa): campo de chama + ruido subindo, faixas de cor sem degrade.
+                    Vai junto no clipes.bin (o bankai_rig.py chama).
   continuidade.py   mede, num filme com CADA=1, quanto o Yoru muda de um quadro para o
                     outro (barras vermelhas = "pisca")
 

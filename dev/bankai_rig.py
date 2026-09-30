@@ -1,23 +1,28 @@
-"""BONECO ARTICULADO do Bankai feito com o DESENHO 1 da referencia do usuario
-(de lado, espada baixa), copiado pixel a pixel (bankai_ref.py).
+"""BANKAI do Yoru: o DESENHO 1 da referencia do usuario (referencias/
+2026-09-29_bankai_referencia.png, de lado, espada baixa), copiado pixel a pixel
+(bankai_ref.extrair, s=3.0: do tamanho do Yoru normal), animado PECA POR PECA.
 
-O desenho e recortado em pecas com "ossos":
-  cabelo/casaco - a massa de cabelo atras e as caudas do sobretudo: um campo
-            de deformacao continuo (as mechas flutuam, a onda desce da raiz
-            para as pontas; perto do corpo quase nao mexe);
-  tronco, pernas - firmes (o tronco respira e inclina no quadril);
-  cabeca  - gira um pouco no pescoco;
-  braco -> antebraco -> espada - giram no ombro, no cotovelo e no punho.
-Girar pixel art sem entortar: cada pixel de saida olha 4x4 pontos do desenho
-girado e fica com a cor que MAIS aparece (estilo RotSprite, sem cor nova).
-Onde o braco/espada cobriam o corpo, o buraco e preenchido com as cores
-vizinhas (so por dentro do corpo; por fora vira vazio).
+Versao 1 (erro): um campo de onda entortava o cabelo e o casaco inteiros de
+uma vez - cada pixel ia para um lado, virava listras ("lona").
+Agora:
+  cabelo  - cortado em MECHAS que seguem os fios do proprio desenho (cada
+            pixel vai para a mecha cuja espinha esta mais perto);
+  casaco  - cortado em ABAS do mesmo jeito;
+  cada mecha/aba se mexe INTEIRA: a espinha dobra (a onda sai da raiz e
+            chega atrasada na ponta) e cada pixel so ANDA em passos de pixel
+            inteiro, junto com o pedaco da mecha em que esta - o desenho nao
+            e reamostrado, nenhum detalhe some;
+  tronco, pernas, cabeca - firmes (o corpo sobe e desce 1 pixel);
+  braco -> antebraco -> espada - giram no ombro/cotovelo/punho so nos
+            golpes (girar e reamostrar; parado eles ficam como no desenho).
+Os desenhos trocam 10 (parado) a 15 (golpe) vezes por segundo - cada um
+fica 3 ou 2 quadros de 30/s, como animacao desenhada.
 
-Cada CLIPE (idle, nasce, carga, corte, fim) e uma lista de quadros a 30/s
-gerados aqui no PC; o app so toca os quadros (app/bankai/clipes.bin).
-uso: python dev/bankai_rig.py previa     (pecas coloridas, para conferir o recorte)
-     python dev/bankai_rig.py gerar      (gera os clipes e o arquivo do app)
-     python dev/bankai_rig.py gif        (GIF de previa de todos os clipes)"""
+Os clipes vao para app/bankai/clipes.bin (quadros repetidos sao guardados
+uma vez so); o app so toca os quadros.
+uso: python dev/bankai_rig.py mechas SAIDA.png   (as mechas/abas coloridas)
+     python dev/bankai_rig.py gerar             (clipes -> app/bankai/clipes.bin)
+     python dev/bankai_rig.py gif [clipes]      (GIF de previa)"""
 import os
 import sys
 import math
@@ -32,20 +37,42 @@ from bankai_ref import extrair                                          # noqa: 
 APP = os.path.join('C:' + os.sep, 'Users', 'kirit', 'travetefocus', 'app')
 SAIDA_TESTE = os.path.join('C:' + os.sep, 'Users', 'kirit', 'travetefocus', 'ferramentas', 'saida_testes', 'rig')
 FPS = 30
-CW, CH = 330, 330                 # tela de cada quadro (sobra para a espada erguida)
-OX, OY = 70, 100                  # onde o desenho 1 (193x193) fica dentro dela
+S_DESENHO = 3.0                   # px da referencia por pixel: do tamanho do Yoru normal
+CW, CH = 320, 320                 # tela de cada quadro
+OX, OY = 70, 110                  # onde o desenho (170x170) fica dentro dela
 
-# ── pontos do desenho 1 (pixels, y para baixo) ──────────────────────────
-OMBRO = (95, 52)
-COTOVELO = (98, 71)
-MAO = (106, 90)
-PONTA = (184, 180)
-PESCOCO = (95, 47)
-QUADRIL = (95, 124)               # vai na ancora do Yoru (pes no mesmo chao)
-CINTURA_Y = 108
-RAIZ_CABELO = (92, 34)
-# cores extras (rastro do golpe e brilho da espada nascendo)
+# ── pontos do desenho (pixels do desenho, y para baixo) ─────────────────
+OMBRO = (84.0, 46.0)
+COTOVELO = (86.6, 62.7)
+MAO = (93.6, 79.5)
+PONTA = (162.5, 159.0)
+PESCOCO = (84.0, 41.5)
+QUADRIL = (84.0, 109.5)           # vai na ancora do Yoru
+CINTURA_Y = 95.4
+CABECA = (87.4, 30.9, 11.5)       # centro e raio
+# cores extras (rastro do golpe e brilho)
 EXTRAS = [(238, 222, 255, 255), (214, 150, 255, 255), (160, 76, 255, 255), (96, 40, 190, 255)]
+
+# ── espinhas das MECHAS do cabelo (seguem os fios do desenho, raiz -> ponta)
+MECHAS = [
+    [(72, 16), (55, 20), (40, 28), (25, 38), (12, 50), (5, 58)],
+    [(74, 20), (58, 26), (42, 36), (28, 46), (17, 58), (10, 70), (8, 80)],
+    [(76, 24), (60, 32), (46, 44), (35, 56), (26, 68), (20, 80), (16, 88)],
+    [(77, 28), (64, 40), (52, 52), (42, 64), (34, 76), (28, 88), (24, 96)],
+    [(78, 32), (68, 46), (58, 58), (50, 70), (44, 82), (40, 94)],
+    [(79, 36), (72, 52), (64, 64), (58, 76), (54, 88), (50, 98)],
+    [(80, 40), (76, 56), (72, 68), (68, 80), (66, 92)],
+]
+# ── espinhas das ABAS do sobretudo (da cintura para a barra)
+ABAS = [
+    [(72, 96), (55, 108), (40, 120), (25, 132), (10, 142)],
+    [(74, 98), (60, 114), (47, 128), (35, 142), (22, 152)],
+    [(76, 100), (66, 118), (57, 134), (48, 150), (42, 158)],
+    [(78, 102), (72, 120), (66, 138), (62, 152)],
+    [(80, 104), (76, 124), (73, 142), (71, 156)],
+    [(97, 96), (101, 112), (104, 128), (106, 142)],
+    [(101, 94), (107, 110), (111, 124)],
+]
 
 
 def _c(p):
@@ -61,38 +88,49 @@ def _dist_seg(xs, ys, a, b):
     return np.hypot(xs - (ax + t * vx), ys - (ay + t * vy)), t
 
 
+def _reamostra(pts, n=14):
+    """Espinha com n pontos igualmente espacados (suavizada)."""
+    pts = np.asarray(pts, float)
+    d = np.hypot(*np.diff(pts, axis=0).T)
+    s = np.concatenate([[0], np.cumsum(d)])
+    alvo = np.linspace(0, s[-1], n)
+    out = np.stack([np.interp(alvo, s, pts[:, 0]), np.interp(alvo, s, pts[:, 1])], axis=1)
+    for _ in range(2):                               # suaviza os cotovelos da espinha
+        out[1:-1] = 0.25 * out[:-2] + 0.5 * out[1:-1] + 0.25 * out[2:]
+    return out
+
+
 # ═════════════════════════════════════════════════════════════════════
-#  DESENHO E PECAS
+#  DESENHO, PECAS E MECHAS
 # ═════════════════════════════════════════════════════════════════════
 def base():
-    a = extrair(1)
-    a[:, 172:, 3] = 0
+    a = extrair(1, s=S_DESENHO)
+    a[:, 152:, 3] = 0                                # pedaco do desenho vizinho
     tela = np.zeros((CH, CW, 4), np.uint8)
     tela[OY:OY + a.shape[0], OX:OX + a.shape[1]] = a
     return tela
 
 
 def pecas(rgba):
-    """Mascaras (bool, CHxCW) de cada peca."""
-    h, w = rgba.shape[:2]
-    ys, xs = np.mgrid[0:h, 0:w]
+    """Mascaras (bool, CHxCW) das pecas firmes; o resto (cabelo + casaco) e
+    'mole' e vai ser dividido em mechas/abas."""
     tem = rgba[..., 3] > 0
+    ys, xs = np.mgrid[0:CH, 0:CW]
     d_esp, t_esp = _dist_seg(xs, ys, _c(MAO), _c(PONTA))
-    # a lamina e larga (miolo escuro + fio aceso dos dois lados)
-    espada = tem & (((d_esp <= 5.5) & (t_esp > 0.02)) | ((d_esp <= 9.5) & (t_esp > 0.1)))
+    espada = tem & (((d_esp <= 4.9) & (t_esp > 0.02)) | ((d_esp <= 8.4) & (t_esp > 0.1)))
     d_b, _ = _dist_seg(xs, ys, _c(OMBRO), _c(COTOVELO))
     d_a, _ = _dist_seg(xs, ys, _c(COTOVELO), _c(MAO))
-    braco = tem & (d_b <= 4.5) & ~espada
-    antebraco = tem & (d_a <= 4.8) & ~espada & ~braco
-    cabeca = tem & (np.hypot(xs - (99 + OX), ys - (35 + OY)) <= 13) & ~braco
-    frente = 84 + OX + (ys - 40 - OY) * 0.05
-    col = (xs >= frente) & (xs <= 112 + OX)
-    tronco = tem & col & (ys >= 44 + OY) & (ys < CINTURA_Y + 6 + OY) & ~braco & ~antebraco & ~espada & ~cabeca
-    pernas = tem & (xs >= 78 + OX) & (xs <= 115 + OX) & (ys >= 150 + OY) & ~espada
-    casaco = tem & (ys >= CINTURA_Y + OY) & ~pernas & ~espada & ~braco & ~antebraco & ~tronco
-    cabelo = tem & ~(espada | braco | antebraco | cabeca | tronco | pernas | casaco)
-    return dict(cabelo=cabelo, casaco=casaco, pernas=pernas, tronco=tronco, cabeca=cabeca,
-                braco=braco, antebraco=antebraco, espada=espada)
+    braco = tem & (d_b <= 4.0) & ~espada
+    antebraco = tem & (d_a <= 4.3) & ~espada & ~braco
+    cx, cy, r = CABECA
+    cabeca = tem & (np.hypot(xs - (cx + OX), ys - (cy + OY)) <= r) & ~braco
+    X, Y = xs - OX, ys - OY
+    frente = 74.2 + (Y - 35.3) * 0.05
+    tronco = tem & (X >= frente) & (X <= 98.9) & (Y >= 38.9) & (Y < 100.7) & ~braco & ~antebraco & ~espada & ~cabeca
+    pernas = tem & (X >= 73) & (X <= 100) & (Y >= 114) & ~espada
+    mole = tem & ~(espada | braco | antebraco | cabeca | tronco | pernas)
+    return dict(mole=mole, pernas=pernas, tronco=tronco, cabeca=cabeca, braco=braco,
+                antebraco=antebraco, espada=espada)
 
 
 def indexar(rgba):
@@ -114,23 +152,6 @@ def indexar(rgba):
         idx[y, x] = i
     assert len(pal) <= 256, len(pal)
     return idx, pal
-
-
-def _dilata(m, n):
-    """Distancia (em passos de 4-vizinhos) ate a mascara m, ate n."""
-    dist = np.full(m.shape, n + 1, np.int32)
-    dist[m] = 0
-    atual = m.copy()
-    for k in range(1, n + 1):
-        viz = atual.copy()
-        viz[1:, :] |= atual[:-1, :]
-        viz[:-1, :] |= atual[1:, :]
-        viz[:, 1:] |= atual[:, :-1]
-        viz[:, :-1] |= atual[:, 1:]
-        novos = viz & ~atual
-        dist[novos] = k
-        atual = viz
-    return dist
 
 
 def preencher(idx, buraco, corpo):
@@ -168,8 +189,61 @@ def preencher(idx, buraco, corpo):
     return out
 
 
+class Mecha:
+    """Um pedaco mole (mecha de cabelo ou aba do casaco): os pixels do
+    desenho que ficam mais perto desta espinha, cada um com o seu u
+    (0 na raiz .. 1 na ponta)."""
+
+    def __init__(self, espinha, ys, xs, cores, u, amp, fase, rigidez, aba):
+        self.esp = espinha                            # (n, 2) na tela
+        self.ys, self.xs, self.cores, self.u = ys, xs, cores, u
+        self.amp, self.fase, self.rigidez, self.aba = amp, fase, rigidez, aba
+        d = np.hypot(*np.diff(espinha, axis=0).T)
+        self.s = np.concatenate([[0], np.cumsum(d)]) / max(1e-6, d.sum())
+
+    def deslocamento(self, t, vento):
+        """Quanto cada pixel anda (dx, dy inteiros) neste desenho."""
+        e = self.esp
+        n = len(e)
+        per = vento.get('per', 2.4)
+        onda = vento.get('onda', 7.0) * self.amp * (0.7 if self.aba else 1.0)
+        sobe = vento.get('sobe', 0.0)
+        vx = vento.get('x', 0.0)
+        pts = [e[0].copy()]
+        for k in range(n - 1):
+            f = (k + 0.5) / (n - 1)
+            g = max(0.0, f - self.rigidez) / (1.0 - self.rigidez)   # perto da raiz nao mexe
+            th = onda * g ** 1.3 * math.sin(2 * math.pi * t / per - 2.6 * f + self.fase)
+            th += 0.35 * onda * g ** 1.6 * math.sin(4 * math.pi * t / per - 4.1 * f + 2 * self.fase)
+            th += (sobe * 38.0 * g ** 0.8) + vx * g
+            r = math.radians(th)
+            v = e[k + 1] - e[k]
+            c, s = math.cos(r), math.sin(r)
+            pts.append(pts[-1] + np.array([c * v[0] - s * v[1], s * v[0] + c * v[1]]))
+        D = np.array(pts) - e
+        dx = np.interp(self.u, self.s, D[:, 0])
+        dy = np.interp(self.u, self.s, D[:, 1])
+        return np.rint(dx).astype(int), np.rint(dy).astype(int)
+
+
+def _dilata(m, n):
+    out = m.copy()
+    for _ in range(n):
+        v = out.copy()
+        v[1:, :] |= out[:-1, :]
+        v[:-1, :] |= out[1:, :]
+        v[:, 1:] |= out[:, :-1]
+        v[:, :-1] |= out[:, 1:]
+        out = v
+    return out
+
+
+def _erode(m, n):
+    return ~_dilata(~m, n)
+
+
 # ═════════════════════════════════════════════════════════════════════
-#  TRANSFORMACOES (matrizes 3x3, pixels da tela, y para baixo)
+#  GIRAR PECAS FIRMES (so braco/antebraco/espada nos golpes)
 # ═════════════════════════════════════════════════════════════════════
 def rot(pivo, graus):
     a = math.radians(graus)
@@ -188,11 +262,17 @@ def aplica(M, p):
 
 
 def desenha_peca(dest, fonte, masc, M, sub=4):
-    """Desenha a peca (fonte[masc]) transformada por M em dest (indices),
-    girando sem entortar: 4x4 amostras por pixel, fica a cor mais comum
-    (vazio se a maioria for vazio)."""
+    """Desenha a peca (fonte[masc]) transformada por M em dest (indices).
+    Sem giro: so copia deslocada (nenhum pixel muda). Com giro: 4x4 amostras
+    por pixel e fica a cor mais comum (sem cor nova, estilo RotSprite)."""
     ys, xs = np.nonzero(masc)
     if len(ys) == 0:
+        return
+    if abs(M[0, 1]) < 1e-9 and abs(M[1, 0]) < 1e-9 and abs(M[0, 0] - 1) < 1e-9:
+        dx, dy = int(round(M[0, 2])), int(round(M[1, 2]))
+        yy, xx = ys + dy, xs + dx
+        ok = (yy >= 0) & (yy < dest.shape[0]) & (xx >= 0) & (xx < dest.shape[1])
+        dest[yy[ok], xx[ok]] = fonte[ys[ok], xs[ok]]
         return
     cantos = np.array([[xs.min() - 1, ys.min() - 1], [xs.max() + 2, ys.min() - 1],
                        [xs.min() - 1, ys.max() + 2], [xs.max() + 2, ys.max() + 2]], float)
@@ -225,7 +305,6 @@ def desenha_peca(dest, fonte, masc, M, sub=4):
             k += 1
     cheios = (amostras > 0).sum(axis=2)
     visivel = cheios * 2 >= sub * sub
-    # cor mais comum entre as amostras cheias
     moda = np.zeros((h, w), np.int32)
     melhor = np.zeros((h, w), np.int32)
     for j in range(sub * sub):
@@ -248,88 +327,103 @@ class Boneco:
         self.idx, self.pal = indexar(rgba)
         m = self.m
         corpo = rgba[..., 3] > 0
-        moveis = m['braco'] | m['antebraco'] | m['espada'] | m['cabeca']
-        self.fundo = preencher(self.idx, moveis, corpo)
-        # o fundo sem o que e firme (tronco e pernas vao por cima dele)
-        self.mole = (self.fundo > 0) & ~(m['tronco'] | m['pernas'])
-        firme = m['tronco'] | m['pernas'] | m['cabeca'] | m['braco'] | m['antebraco'] | m['espada']
-        self.dist = _dilata(firme, 60).astype(float)            # distancia ao corpo firme
+        moveis = m['braco'] | m['antebraco'] | m['espada']
+        self.fundo = preencher(self.idx, moveis, corpo)       # corpo sem braco/espada
         ys, xs = np.mgrid[0:CH, 0:CW]
-        self.ys, self.xs = ys, xs
-        rx, ry = _c(RAIZ_CABELO)
-        self.r_cab = np.hypot(xs - rx, ys - ry)
-        self.r_cab /= max(1.0, self.r_cab[m['cabelo']].max())
-        self.r_cas = np.clip((ys - (CINTURA_Y + OY)) / 80.0, 0, 1)
+        self.xs, self.ys = xs, ys
         _, self.t_esp = _dist_seg(xs, ys, _c(MAO), _c(PONTA))
-        self.ruido = np.random.default_rng(5).random((CH, CW))
         self.claro = self.pal.index(EXTRAS[0])
         self.lilas = self.pal.index(EXTRAS[1])
         self.roxo = self.pal.index(EXTRAS[2])
         self.roxo_esc = self.pal.index(EXTRAS[3])
+        # a parte mole (cabelo + casaco, ja sem o braco por cima) vira mechas
+        mole = (self.fundo > 0) & ~(m['tronco'] | m['pernas'] | m['cabeca'])
+        self.mole = mole
+        esp_c = [_reamostra([_c(p) for p in e]) for e in MECHAS]
+        esp_a = [_reamostra([_c(p) for p in e]) for e in ABAS]
+        todas = esp_c + esp_a
+        py, px = np.nonzero(mole)
+        melhor = np.full(len(py), 1e9)
+        dono = np.zeros(len(py), int)
+        uu = np.zeros(len(py))
+        for i, e in enumerate(todas):
+            d = np.hypot(*np.diff(e, axis=0).T)
+            acum = np.concatenate([[0], np.cumsum(d)]) / d.sum()
+            for k in range(len(e) - 1):
+                dist, t = _dist_seg(px + 0.5, py + 0.5, e[k], e[k + 1])
+                # casaco nao pega cabelo muito acima da cintura e vice-versa
+                if i >= len(esp_c):
+                    dist = dist + np.where(py < _c((0, CINTURA_Y - 8))[1], 30.0, 0.0)
+                melhor_k = dist < melhor
+                melhor = np.where(melhor_k, dist, melhor)
+                dono = np.where(melhor_k, i, dono)
+                uu = np.where(melhor_k, acum[k] + t * (acum[k + 1] - acum[k]), uu)
+        rnd = np.random.default_rng(3)
+        self.mechas = []
+        for i, e in enumerate(todas):
+            sel = dono == i
+            aba = i >= len(esp_c)
+            f = i / float(len(esp_c) - 1) if not aba else (i - len(esp_c)) / float(len(esp_a) - 1)
+            amp = (0.8 + 0.5 * f + rnd.uniform(-0.1, 0.1)) if not aba else (1.1 - 0.5 * f)
+            fase = (2.4 * f + rnd.uniform(0, 0.5)) if not aba else (1.8 * f + 0.7)
+            rig = 0.12 if not aba else 0.18
+            self.mechas.append(Mecha(e, py[sel], px[sel], self.fundo[py[sel], px[sel]], uu[sel],
+                                     amp, fase, rig, aba))
+        self.dono = np.full((CH, CW), -1, int)
+        self.dono[py, px] = dono
+        # o que fica atras quando duas mechas se afastam: o proprio cabelo,
+        # parado, so por dentro (a borda de fora e sempre das mechas)
+        self.miolo = _erode(mole, 3)
+        # olhos (para acender): o roxo dentro do rosto
+        cx, cy, r = CABECA
+        rosto = (np.hypot(xs - (cx + 3 + OX), ys - (cy + 4 + OY)) <= 7)
+        cor = np.array(self.pal, np.int32)[self.idx]
+        roxo = (cor[..., 2] > cor[..., 1] + 40) & (cor[..., 0] > 60) & (cor[..., 3] > 0)
+        self.olhos = rosto & roxo & (self.idx > 0)
 
-    # ── deformacao do cabelo e do casaco (flutuar) ──────────────────────
-    def mole_deformado(self, t, amp=1.0, incl=0.0, bob=0.0, cresc_cab=1.0, cresc_cas=1.0):
-        xs, ys = self.xs, self.ys
-        A = np.clip(self.dist * 0.19, 0, 9.0) * amp
-        s = self.dist / 22.0
-        w = 2 * math.pi * t / 2.2
-        dx = A * np.sin(w - s * 1.6) + 0.45 * A * np.sin(2 * w - s * 2.7 + 0.5)
-        dy = 0.55 * A * np.sin(w - s * 1.6 + 1.3) - 0.25 * A          # flutua: sobe um pouco
-        # o que esta acima do quadril vai junto com o tronco (inclina/respira)
-        qx, qy = _c(QUADRIL)
-        peso = np.clip((qy - ys) / 30.0, 0, 1)
-        if incl:
-            a = math.radians(incl)
-            ux, uy = xs - qx, ys - qy
-            dx = dx + peso * (math.cos(a) * ux - math.sin(a) * uy - ux)
-            dy = dy + peso * (math.sin(a) * ux + math.cos(a) * uy - uy)
-        dy = dy + peso * bob
-        sx = np.clip(np.rint(xs - dx).astype(int), 0, CW - 1)
-        sy = np.clip(np.rint(ys - dy).astype(int), 0, CH - 1)
-        fonte = np.where(self.mole, self.fundo, 0)
-        out = fonte[sy, sx]
-        if cresc_cab < 1.0 or cresc_cas < 1.0:
-            mc = self.m['cabelo'][sy, sx]
-            mk = self.m['casaco'][sy, sx]
-            rn = self.ruido[sy, sx] * 0.07
-            esconde = (mc & (self.r_cab[sy, sx] > cresc_cab + rn)) | (mk & (self.r_cas[sy, sx] > cresc_cas + rn))
-            out = np.where(esconde, 0, out)
-        return out
-
-    # ── um quadro ───────────────────────────────────────────────────────
-    def quadro(self, t, b=0.0, a=0.0, e=0.0, cab=0.0, incl=0.0, bob=0.0, amp=1.0,
-               cresc_cab=1.0, cresc_cas=1.0, cresc_esp=1.0, rastro=None):
-        """Angulos em graus (+ = sentido horario na tela): b = braco no
-        ombro, a = antebraco no cotovelo, e = espada no punho, cab = cabeca;
-        incl = tronco inclinando no quadril; bob = tronco sobe/desce (px).
-        rastro = (angulo_espada_antes) para o rastro do golpe."""
+    def quadro(self, t, vento, b=0.0, a=0.0, e=0.0, bob=0, olhos='a', cresce_esp=1.0, rastro=None):
+        """Um desenho. t = tempo do cabelo/casaco (ja em degraus); b/a/e =
+        giro do braco/antebraco/espada (graus, + = horario); bob = o corpo
+        inteiro sobe (-) ou desce (+) em pixels. -> (indices, mao, ponta)"""
         m = self.m
-        img = self.mole_deformado(t, amp, incl, bob, cresc_cab, cresc_cas)
-        img = np.where(m['pernas'], self.idx, img).astype(np.int32)
-        H = rot(_c(QUADRIL), incl) @ mov(0, bob)
-        desenha_peca(img, self.idx, m['tronco'], H)
-        desenha_peca(img, self.idx, m['cabeca'], H @ rot(_c(PESCOCO), cab))
-        Mb = H @ rot(_c(OMBRO), b)
+        img = np.zeros((CH, CW), np.int32)
+        # 1) miolo parado (so aparece nos vaos entre mechas)
+        img[self.miolo] = self.fundo[self.miolo]
+        # 2) mechas e abas: cada uma inteira, em passos de pixel
+        for mc in self.mechas:
+            if len(mc.ys) == 0:
+                continue
+            dx, dy = mc.deslocamento(t, vento)
+            yy, xx = mc.ys + dy, mc.xs + dx
+            ok = (yy >= 0) & (yy < CH) & (xx >= 0) & (xx < CW)
+            img[yy[ok], xx[ok]] = mc.cores[ok]
+        # 3) corpo firme (pernas, tronco, cabeca como no desenho)
+        firme = m['pernas'] | m['tronco'] | m['cabeca']
+        img[firme] = self.fundo[firme]
+        if olhos == 'l':
+            img[self.olhos] = self.claro
+        # 4) braco, espada, antebraco
+        Mb = rot(_c(OMBRO), b)
         Ma = Mb @ rot(_c(COTOVELO), a)
         Me = Ma @ rot(_c(MAO), e)
         esp = m['espada']
-        if cresc_esp < 1.0:
-            esp = esp & (self.t_esp <= cresc_esp)
+        if cresce_esp < 1.0:
+            esp = esp & (self.t_esp <= cresce_esp)
         if rastro is not None:
             self._rastro(img, Ma, rastro, e)
         desenha_peca(img, self.idx, m['braco'], Mb)
         desenha_peca(img, self.idx, esp, Me)
         desenha_peca(img, self.idx, m['antebraco'], Ma)
-        if cresc_esp < 1.0:                                   # a ponta que nasce brilha
-            ponta = m['espada'] & (self.t_esp > cresc_esp - 0.05) & (self.t_esp <= cresc_esp)
-            tmp = np.where(ponta, self.claro, 0).astype(np.int32)
-            desenha_peca(img, tmp, ponta, Me)
         mao = aplica(Ma, _c(MAO))
-        ponta_p = aplica(Me, _c(PONTA))
-        return img.astype(np.uint8), mao, ponta_p
+        ponta = aplica(Me, _c(PONTA))
+        if bob:
+            img = np.roll(img, int(bob), axis=0)
+            mao = (mao[0], mao[1] + bob)
+            ponta = (ponta[0], ponta[1] + bob)
+        return img.astype(np.uint8), mao, ponta
 
     def _rastro(self, img, Ma, e_antes, e_agora):
-        """Rastro (smear) do golpe: a faixa que a lamina varreu entre o angulo
+        """Rastro (smear) do golpe: meia-lua solida entre o angulo da lamina
         de antes e o de agora, lilas perto do fio e roxo por dentro."""
         cx, cy = aplica(Ma, _c(MAO))
         L = math.hypot(PONTA[0] - MAO[0], PONTA[1] - MAO[1])
@@ -342,18 +436,16 @@ class Boneco:
             return
         xs, ys = self.xs, self.ys
         ang = np.degrees(np.arctan2(ys - cy, xs - cx))
-        # coloca o angulo perto do intervalo
         ang = np.where(ang < lo - 180, ang + 360, ang)
         ang = np.where(ang > hi + 180, ang - 360, ang)
         r = np.hypot(xs - cx, ys - cy) / L
-        fr = (ang - lo) / max(1e-6, hi - lo)
-        k = fr if a1 > a0 else 1 - fr                       # 1 junto da lamina atual, 0 na cauda
-        # meia-lua solida: larga junto da lamina, afina ate a ponta na cauda
+        fr = np.clip((ang - lo) / max(1e-6, hi - lo), 0.0, 1.0)
+        k = fr if a1 > a0 else 1 - fr
         r_fora = 1.02 - 0.18 * (1 - k)
         r_dentro = 0.5 + 0.42 * (1 - k) ** 1.4
         dentro = (ang >= lo) & (ang <= hi) & (r > r_dentro) & (r < r_fora)
         larg = np.maximum(1e-6, r_fora - r_dentro)
-        pos = (r - r_dentro) / larg                          # 0 por dentro .. 1 no fio
+        pos = (r - r_dentro) / larg
         cor = np.where(pos > 0.82, self.claro, np.where(pos > 0.5, self.lilas,
                        np.where(k > 0.45, self.roxo, self.roxo_esc)))
         pinta = dentro & (img == 0)
@@ -361,17 +453,14 @@ class Boneco:
 
 
 # ═════════════════════════════════════════════════════════════════════
-#  CLIPES (cada chave: tempo em quadros -> valores; tudo interpolado com
-#  curvas de animacao; o que nao muda fica no valor de repouso)
+#  CLIPES: cada quadro (30/s) -> (pose, tempo do cabelo, vento). O desenho
+#  so muda em degraus; entre eles o quadro repete (guardado uma vez so).
 # ═════════════════════════════════════════════════════════════════════
-REPOUSO = dict(b=0.0, a=0.0, e=0.0, cab=0.0, incl=0.0, bob=0.0, amp=1.0)
-
-
-def _suave(u):
-    return u * u * (3 - 2 * u)
+REPOUSO = dict(b=0.0, a=0.0, e=0.0, bob=0)
 
 
 def _curva(nome, u):
+    u = max(0.0, min(1.0, u))
     if nome == 'in':
         return u * u * u
     if nome == 'out':
@@ -379,135 +468,202 @@ def _curva(nome, u):
     if nome == 'mola':
         c1 = 1.5
         return 1 + (c1 + 1) * (u - 1) ** 3 + c1 * (u - 1) ** 2
-    return _suave(u)
+    if nome == 'linear':
+        return u
+    return u * u * (3 - 2 * u)
 
 
-def trilha(chaves, n):
-    """chaves: [(quadro, {valores}, curva_ate_a_proxima), ...] -> lista de n dicts."""
-    out = []
-    for f in range(n):
-        ant = chaves[0]
-        prox = chaves[-1]
-        for i in range(len(chaves) - 1):
-            if chaves[i][0] <= f <= chaves[i + 1][0]:
-                ant, prox = chaves[i], chaves[i + 1]
-                break
-        f0, v0, cur = ant[0], ant[1], ant[2] if len(ant) > 2 else 'suave'
-        f1, v1 = prox[0], prox[1]
-        u = 0.0 if f1 == f0 else (f - f0) / float(f1 - f0)
-        k = _curva(cur, max(0.0, min(1.0, u)))
-        q = dict(REPOUSO)
-        for chave in set(v0) | set(v1):
-            a = v0.get(chave, REPOUSO.get(chave, 0.0))
-            b = v1.get(chave, REPOUSO.get(chave, 0.0))
-            q[chave] = a + (b - a) * k
-        out.append(q)
-    return out
-
-
-def respira(q, t, forca=1.0):
-    """O vivo em cima de qualquer pose: respira, o braco balanca de leve, a
-    ponta da espada flutua, a cabeca acompanha."""
-    w = 2 * math.pi * t / 2.2
-    q = dict(q)
-    q['bob'] = q.get('bob', 0.0) + forca * 1.2 * math.sin(w)
-    q['b'] = q.get('b', 0.0) + forca * 2.5 * math.sin(w + 0.5)
-    q['a'] = q.get('a', 0.0) + forca * 2.0 * math.sin(w + 1.0)
-    q['e'] = q.get('e', 0.0) + forca * 1.5 * math.sin(w + 1.6)
-    q['cab'] = q.get('cab', 0.0) + forca * 1.2 * math.sin(w + 0.3)
+def trilha(chaves, t):
+    """chaves: [(tempo_s, {valores}, curva_ate_a_proxima), ...] -> valores no tempo t."""
+    ant, prox = chaves[0], chaves[-1]
+    for i in range(len(chaves) - 1):
+        if chaves[i][0] <= t <= chaves[i + 1][0]:
+            ant, prox = chaves[i], chaves[i + 1]
+            break
+    if t >= chaves[-1][0]:
+        ant = prox = chaves[-1]
+    t0, v0 = ant[0], ant[1]
+    cur = ant[2] if len(ant) > 2 else 'suave'
+    t1, v1 = prox[0], prox[1]
+    k = 0.0 if t1 == t0 else _curva(cur, (t - t0) / float(t1 - t0))
+    q = {}
+    for ch in set(v0) | set(v1):
+        a = v0.get(ch, REPOUSO.get(ch, 0.0))
+        b = v1.get(ch, REPOUSO.get(ch, 0.0))
+        q[ch] = a + (b - a) * k if isinstance(a, (int, float)) and isinstance(b, (int, float)) else b
     return q
 
 
+def degrau(t, por_s):
+    return math.floor(t * por_s + 1e-6) / float(por_s)
+
+
+P_IDLE = 2.4                      # ciclo do cabelo parado (s)
 # golpe (graus a partir do desenho, + = horario): carrega com a lamina baixa
-# para tras (como o desenho 4 da referencia) e corta SUBINDO pela frente -
-# o braco passa na altura do peito, o rosto fica sempre a vista.
-# direcao do braco = 74 + b; da lamina = 49 + b + a + e (graus na tela)
-CARGA = dict(b=46.0, a=10.0, e=70.0, incl=6.0, bob=3.0, cab=2.0)      # lamina para tras, baixa
-MEIO = dict(b=-4.0, a=-5.0, e=0.0, incl=2.0, bob=1.0)                  # passa embaixo, pela frente
-CORTOU = dict(b=-74.0, a=-10.0, e=-10.0, incl=-4.0, cab=-3.0)          # lamina para cima e para a frente
-SEGUE = dict(b=-99.0, a=-12.0, e=-12.0, incl=-6.0, cab=-4.0)
+# para tras e corta SUBINDO pela frente (o rosto fica sempre a vista)
+CARGA = dict(b=46.0, a=10.0, e=70.0, bob=2)
+MEIO = dict(b=-4.0, a=-5.0, e=0.0, bob=1)
+CORTOU = dict(b=-74.0, a=-10.0, e=-10.0, bob=-1)
+SEGUE = dict(b=-99.0, a=-12.0, e=-12.0, bob=-2)
+
+
+def _vivo(q, tc, forca=1.0):
+    """Respira: o corpo sobe e desce 1 pixel e o braco balanca de leve."""
+    w = 2 * math.pi * tc / P_IDLE
+    q = dict(q)
+    q['bob'] = int(round(q.get('bob', 0) + forca * 1.2 * math.sin(w)))
+    q['b'] = q.get('b', 0.0) + forca * 1.5 * math.sin(w + 0.6)
+    q['a'] = q.get('a', 0.0) + forca * 1.2 * math.sin(w + 1.1)
+    q['e'] = q.get('e', 0.0) + forca * 1.0 * math.sin(w + 1.6)
+    return q
 
 
 def clipes():
-    """{nome: (lista de parametros por quadro, loop)}"""
-    C = {}
-    n = 66                                                       # 2,2 s: um ciclo inteiro
-    C['idle'] = ([respira(dict(REPOUSO), f / FPS) for f in range(n)], True)
-    # nasce: o cabelo cresce da raiz, as caudas descem, a lamina nasce da guarda
-    n = 48
-    lst = []
-    for f in range(n):
-        u = f / float(n - 1)
-        q = respira(dict(REPOUSO), f / FPS, forca=0.6)
-        q['cresc_cab'] = 0.12 + 0.88 * _curva('out', min(1.0, u / 0.7))
-        q['cresc_cas'] = 0.15 + 0.85 * _curva('out', max(0.0, min(1.0, (u - 0.1) / 0.65)))
-        q['cresc_esp'] = _curva('in', max(0.0, min(1.0, (u - 0.35) / 0.6)))
-        q['amp'] = 0.4 + 0.6 * u
-        lst.append(q)
-    C['nasce'] = (lst, False)
-    # carga: ergue a espada devagar (antecipacao) e segura tremendo
-    lst = trilha([(0, dict(REPOUSO), 'in'), (6, dict(b=-6.0, a=-4.0, e=-6.0, incl=-2.0), 'suave'),
-                  (22, CARGA, 'out'), (27, dict(CARGA, b=CARGA['b'] + 4), 'suave')], 28)
-    lst = [respira(q, f / FPS, 0.4) for f, q in enumerate(lst)]
-    C['carga'] = (lst, False)
-    trem = []
-    for f in range(12):                                         # segura a carga tremendo
+    """{nome: (funcao t -> (pose, t_cabelo, vento), duracao_s, loop)}"""
+    CL = {}
+
+    # PARADO flutuando (o braco fica como no desenho: sem girar)
+    def idle(t):
+        tc = degrau(t, 10)
+        q = dict(REPOUSO)
+        q['bob'] = int(round(1.2 * math.sin(2 * math.pi * tc / P_IDLE)))
+        return q, tc, dict(onda=7.0, per=P_IDLE, sobe=0.05)
+    CL['idle'] = (idle, P_IDLE, True)
+
+    # REVELA: o reiatsu se desfaz e ele aparece com o cabelo e o casaco
+    # levantados pelo vento de energia, que cai e assenta (passa um pouco do
+    # ponto e volta); os olhos acesos apagam
+    def revela(t):
+        tc = degrau(t, 12)
+        s = 0.95 * math.exp(-tc / 0.32) * math.cos(tc * 7.5) + 0.05 * (1 - math.exp(-tc / 0.3))
+        q = dict(REPOUSO)
+        q['bob'] = 0 if tc < 0.5 else int(round(1.2 * math.sin(2 * math.pi * (tc - 0.5) / P_IDLE)))
+        q['olhos'] = 'l' if tc < 0.75 else 'a'
+        return q, tc, dict(onda=7.0 + 8.0 * math.exp(-tc / 0.4), per=P_IDLE, sobe=s)
+    CL['revela'] = (revela, 1.4, False)
+
+    # CARGA: ergue a espada devagar (antecipacao) e segura tremendo
+    ch = [(0.0, dict(REPOUSO), 'in'), (0.2, dict(b=-6.0, a=-4.0, e=-6.0), 'suave'),
+          (0.73, CARGA, 'out'), (0.9, dict(CARGA, b=CARGA['b'] + 4))]
+
+    def carga(t):
+        tc = degrau(t, 15)
+        q = trilha(ch, tc)
+        q['bob'] = int(round(q.get('bob', 0)))
+        return q, tc, dict(onda=8.0, per=P_IDLE, sobe=0.08, x=-6.0 * min(1.0, tc / 0.7))
+    CL['carga'] = (carga, 28 / 30.0, False)
+
+    def carga_segura(t):
+        tc = degrau(t, 15)
         q = dict(CARGA, b=CARGA['b'] + 4)
-        q['bob'] = CARGA['bob'] + (1.0 if f % 4 < 2 else -1.0) * 0.8
-        q['e'] += 1.5 * math.sin(f * 2.1)
-        q['amp'] = 1.3
-        trem.append(q)
-    C['carga_segura'] = (trem, True)
-    # corte: acelera (rastro) -> impacto -> continua -> acomoda
-    chaves = [(0, dict(CARGA, b=CARGA['b'] + 4), 'in'), (4, MEIO, 'out'),
-              (7, CORTOU, 'out'), (11, SEGUE, 'mola'), (17, dict(SEGUE, b=-92.0), 'suave'),
-              (18, dict(SEGUE, b=-92.0))]
-    lst = trilha(chaves, 19)
-    for f, q in enumerate(lst):
-        q['amp'] = 1.2
-        if 1 <= f <= 8:
-            q['rastro'] = lst[f - 1]['b'] + lst[f - 1]['a'] + lst[f - 1]['e'] - q['b'] - q['a']
-    C['corte'] = (lst, False)
-    # fim: volta devagar ao repouso (o cabelo e o casaco ainda flutuando)
-    lst = trilha([(0, dict(SEGUE, b=-92.0), 'suave'), (26, dict(REPOUSO))], 27)
-    C['fim'] = ([respira(q, f / FPS, f / 24.0) for f, q in enumerate(lst)], False)
-    return C
+        q['bob'] = CARGA['bob'] + (1 if int(tc * 15) % 2 else 0)
+        q['e'] += 1.5 * math.sin(tc * 30)
+        return q, tc, dict(onda=11.0, per=0.8, sobe=0.12, x=-6.0)
+    CL['carga_segura'] = (carga_segura, 0.4, True)
+
+    # CORTE: acelera (rastro) -> passa pela frente -> segue -> acomoda
+    ch2 = [(0.0, dict(CARGA, b=CARGA['b'] + 4), 'in'), (4 / 30., MEIO, 'out'),
+           (7 / 30., CORTOU, 'out'), (11 / 30., SEGUE, 'mola'), (17 / 30., dict(SEGUE, b=-92.0), 'suave'),
+           (18 / 30., dict(SEGUE, b=-92.0))]
+
+    def corte(t):
+        tc = degrau(t, 15)
+        q = trilha(ch2, tc)
+        q['bob'] = int(round(q.get('bob', 0)))
+        f = int(round(tc * 30))
+        if 1 <= f <= 9:
+            ant = trilha(ch2, max(0.0, tc - 2 / 30.))
+            q['rastro'] = ant['b'] + ant['a'] + ant['e'] - q['b'] - q['a']
+        return q, tc, dict(onda=9.0, per=1.2, sobe=0.1, x=14.0 * math.exp(-max(0.0, tc - 0.15) / 0.25))
+    CL['corte'] = (corte, 19 / 30.0, False)
+
+    # FIM: volta devagar ao repouso (o cabelo e o casaco ainda balancando)
+    ch3 = [(0.0, dict(SEGUE, b=-92.0), 'suave'), (26 / 30., dict(REPOUSO))]
+
+    def fim(t):
+        tc = degrau(t, 15)
+        q = trilha(ch3, tc)
+        q['bob'] = int(round(q.get('bob', 0)))
+        return q, tc, dict(onda=7.0 + 4.0 * math.exp(-tc / 0.3), per=P_IDLE, sobe=0.05)
+    CL['fim'] = (fim, 27 / 30.0, False)
+    return CL
 
 
-def gerar_quadros():
+def gerar_quadros(nomes=None):
     bon = Boneco()
     saida = {}
-    for nome, (lst, loop) in clipes().items():
+    cache = {}
+    for nome, (fn, dur, loop) in clipes().items():
+        if nomes and nome not in nomes:
+            continue
         quadros = []
-        t0 = 0.0
-        for f, q in enumerate(lst):
-            t = (t0 + f) / FPS
-            kw = {k: v for k, v in q.items() if k in ('b', 'a', 'e', 'cab', 'incl', 'bob', 'amp', 'cresc_cab',
-                                                       'cresc_cas', 'cresc_esp')}
-            img, mao, ponta = bon.quadro(t, rastro=q.get('rastro'), **kw)
-            quadros.append((img, mao, ponta))
+        n = int(round(dur * FPS))
+        for f in range(n):
+            q, tc, vento = fn(f / float(FPS))
+            kw = {k: v for k, v in q.items() if k in ('b', 'a', 'e', 'bob', 'olhos', 'cresce_esp', 'rastro')}
+            chave = json.dumps([sorted((k, round(v, 3) if isinstance(v, float) else v) for k, v in kw.items()),
+                                round(tc, 4), sorted((k, round(v, 4)) for k, v in vento.items())])
+            if chave not in cache:
+                cache[chave] = bon.quadro(tc, vento, **kw)
+            quadros.append(cache[chave])
         saida[nome] = (quadros, loop)
-        print(nome, len(quadros), 'quadros')
+        print(nome, n, 'quadros,', len({id(x) for x in quadros}), 'desenhos')
+    # o REIATSU do BAN-KAI (desenhado por cima do boneco, mesma tela e quadril)
+    rei_nomes = ('rei_estouro', 'rei_ferve', 'rei_dissipa')
+    if not nomes or any(n in rei_nomes for n in nomes):
+        from reiatsu import Reiatsu, CORES
+        rei = Reiatsu(CW, CH, _c(QUADRIL), len(bon.pal))
+        bon.pal.extend(CORES)
+        assert len(bon.pal) <= 256
+        nada = ((0.0, 0.0), (0.0, 0.0))
+
+        def _em_quadros(imgs, por_s):
+            """desenhos a `por_s`/s -> quadros de 30/s (cada desenho repetido)"""
+            itens = [(img,) + nada for img in imgs]
+            out = []
+            for f in range(int(round(len(imgs) * FPS / por_s))):
+                out.append(itens[min(len(itens) - 1, int(f * por_s / FPS))])
+            return out
+        saida['rei_estouro'] = (_em_quadros(rei.estouro(), 15.0), False)
+        saida['rei_ferve'] = (_em_quadros(rei.ferve(), 12.0), True)
+        saida['rei_dissipa'] = (_em_quadros(rei.dissipa(), 15.0), False)
+        for n in rei_nomes:
+            print(n, len(saida[n][0]), 'quadros')
     return bon, saida
 
 
 def escrever(bon, saida):
     """app/bankai/clipes.bin: b'BK01' + tamanho do cabecalho + cabecalho json
-    (zlib) + cada quadro em zlib (1 byte por pixel = cor da paleta), recortado
-    na caixa do que aparece. E o app/bankai_desenhos.py com os pontos."""
+    (zlib) + cada desenho em zlib (1 byte por pixel = cor da paleta),
+    recortado na caixa do que aparece. Quadro repetido aponta para o mesmo
+    desenho."""
     blocos = []
-    cab = {'paleta': bon.pal, 'tela': [CW, CH], 'quadril': list(_c(QUADRIL)), 'fps': FPS, 'clipes': {}}
+    cx, cy, r = CABECA
+    corpo = [_c((72, 0))[0], _c((101, 0))[0], _c((0, cy - r - 2))[1], _c((0, 166))[1]]
+    oy, ox = np.nonzero(bon.olhos)
+    olhos = [round(float(ox.mean()) + 0.5, 1), round(float(oy.mean()) + 0.5, 1)] if len(ox) else None
+    cab = {'paleta': bon.pal, 'tela': [CW, CH], 'quadril': list(_c(QUADRIL)), 'fps': FPS,
+           'corpo': corpo, 'olhos': olhos, 'clipes': {}}
     pos = 0
+    ja = {}
     for nome, (quadros, loop) in saida.items():
         lst = []
-        for img, mao, ponta in quadros:
-            ys, xs = np.nonzero(img)
-            x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
-            dados = zlib.compress(img[y0:y1, x0:x1].tobytes(), 9)
-            blocos.append(dados)
-            lst.append([pos, len(dados), [x0, y0, x1 - x0, y1 - y0],
-                        [round(mao[0], 1), round(mao[1], 1)], [round(ponta[0], 1), round(ponta[1], 1)]])
-            pos += len(dados)
+        for item in quadros:
+            img, mao, ponta = item
+            if id(item) not in ja:
+                ys, xs = np.nonzero(img)
+                if len(xs):
+                    x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
+                else:                                   # quadro vazio (fim da dissipacao)
+                    x0, y0 = CW // 2, CH // 2
+                    x1, y1 = x0 + 1, y0 + 1
+                dados = zlib.compress(img[y0:y1, x0:x1].tobytes(), 9)
+                blocos.append(dados)
+                ja[id(item)] = [pos, len(dados), [x0, y0, x1 - x0, y1 - y0]]
+                pos += len(dados)
+            p, tam, caixa = ja[id(item)]
+            lst.append([p, tam, caixa, [round(mao[0], 1), round(mao[1], 1)],
+                        [round(ponta[0], 1), round(ponta[1], 1)]])
         cab['clipes'][nome] = {'loop': loop, 'quadros': lst}
     cz = zlib.compress(json.dumps(cab).encode('utf-8'), 9)
     os.makedirs(os.path.join(APP, 'bankai'), exist_ok=True)
@@ -521,32 +677,54 @@ def escrever(bon, saida):
     print(caminho, os.path.getsize(caminho) // 1024, 'KB')
 
 
-def gif(bon, saida):
-    os.makedirs(SAIDA_TESTE, exist_ok=True)
-    pal = np.array(bon.pal, np.uint8)
-    frames = []
-    ordem = ['nasce', 'idle', 'carga', 'carga_segura', 'carga_segura', 'corte', 'fim', 'idle']
+def rgba(pal, idx, fundo=(8, 6, 16)):
+    p = np.array(pal, np.uint8)
+    r = p[idx]
+    f = np.zeros_like(r)
+    f[...] = (fundo[0], fundo[1], fundo[2], 255)
+    return np.where(r[..., 3:4] > 0, r, f)
+
+
+def gif(bon, saida, ordem, caminho, z=2):
+    os.makedirs(os.path.dirname(caminho), exist_ok=True)
+    x0 = y0 = 10 ** 9
+    x1 = y1 = -1
     for nome in ordem:
-        for img, mao, ponta in saida[nome][0]:
-            rgba = pal[img]
-            fundo = np.zeros((CH, CW, 3), np.uint8) + np.array([8, 6, 16], np.uint8)
-            a = rgba[..., 3:4] / 255.0
-            rgb = (rgba[..., :3] * a + fundo * (1 - a)).astype(np.uint8)
-            im = Image.fromarray(rgb).resize((CW * 2, CH * 2), Image.NEAREST)
-            frames.append(im.quantize(colors=200))
-    caminho = os.path.join(SAIDA_TESTE, 'rig.gif')
+        for idx, _, _ in saida[nome][0]:
+            ys, xs = np.nonzero(idx)
+            x0, x1 = min(x0, xs.min()), max(x1, xs.max())
+            y0, y1 = min(y0, ys.min()), max(y1, ys.max())
+    x0, y0, x1, y1 = x0 - 6, y0 - 6, x1 + 7, y1 + 7
+    frames = []
+    for nome in ordem:
+        for idx, _, _ in saida[nome][0]:
+            im = Image.fromarray(rgba(bon.pal, idx)[y0:y1, x0:x1][..., :3]).resize(
+                ((x1 - x0) * z, (y1 - y0) * z), Image.NEAREST)
+            frames.append(im.quantize(colors=255, method=Image.MEDIANCUT))
     frames[0].save(caminho, save_all=True, append_images=frames[1:], duration=33, loop=0)
     print(caminho, len(frames), 'quadros')
 
 
 if __name__ == '__main__':
-    if sys.argv[1] == 'previa':
-        from PIL import Image as _I
-        b = Boneco()
-        pal = np.array(b.pal, np.uint8)
-        _I.fromarray(pal[b.fundo]).resize((CW * 3, CH * 3), _I.NEAREST).save(os.path.join(SAIDA_TESTE, 'fundo.png'))
+    cmd = sys.argv[1]
+    if cmd == 'mechas':
+        bon = Boneco()
+        cores = np.random.default_rng(1).integers(60, 255, (len(bon.mechas), 3))
+        out = np.zeros((CH, CW, 3), np.uint8)
+        for i, mc in enumerate(bon.mechas):
+            out[mc.ys, mc.xs] = cores[i]
+        firme = bon.m['pernas'] | bon.m['tronco'] | bon.m['cabeca']
+        out[firme] = (90, 90, 90)
+        out[bon.m['braco'] | bon.m['antebraco']] = (200, 200, 200)
+        out[bon.m['espada']] = (255, 255, 255)
+        ys, xs = np.nonzero(out.sum(axis=2))
+        c = out[ys.min() - 3:ys.max() + 4, xs.min() - 3:xs.max() + 4]
+        Image.fromarray(c).resize((c.shape[1] * 4, c.shape[0] * 4), Image.NEAREST).save(sys.argv[2])
         print('ok')
-    elif sys.argv[1] in ('gerar', 'gif'):
-        bon, saida = gerar_quadros()
-        escrever(bon, saida)
-        gif(bon, saida)
+    elif cmd in ('gerar', 'gif'):
+        nomes = sys.argv[2].split(',') if len(sys.argv) > 2 else None
+        bon, saida = gerar_quadros(nomes)
+        if cmd == 'gerar':
+            escrever(bon, saida)
+        ordem = nomes or ['revela', 'idle', 'carga', 'carga_segura', 'carga_segura', 'corte', 'fim', 'idle']
+        gif(bon, saida, ordem, os.path.join(SAIDA_TESTE, 'rig.gif'))

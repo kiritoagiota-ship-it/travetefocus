@@ -31,6 +31,8 @@ Vozes do Yoru (gritos de espadachim gravados)
     "Nota no Mori" (notanomori.net) - licenca Creative Commons Atribuicao 3.0
     (CC BY 3.0, https://creativecommons.org/licenses/by/3.0/). Credito:
     "ノタの森 / Nota no Mori". Cortados e com o volume igualado aqui.
+- kiai_kai ("Haaaa!" do KAI!! no BAN-KAI): o kiai_ha1 com a vogal esticada
+    aqui (ferramentas/vozes_kiai/kiai_kai.py) - mesma licenca e credito acima.
 - fala_tou ("Tou!"), fala_kurae ("Kurae!"), fala_ougi ("Ukete miro! Ougi!"),
   fala_ikuzo ("Saa, iku zo!"), fala_yatta ("Yatta!")
     "Efeito Lab" / 効果音ラボ (soundeffect-lab.info) - uso livre, inclusive
