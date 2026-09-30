@@ -25,6 +25,7 @@ historia do app nunca trava por causa de uma animacao).
 import math
 import random
 import time
+from collections import OrderedDict
 
 from kivy.uix.widget import Widget
 from kivy.uix.stencilview import StencilView
@@ -400,7 +401,7 @@ class _EfeitoPixel(Widget):
     desenha(t, pontos, u) enche {cor: [(x, y, w, h)]} a cada quadro; some
     sozinho depois de `dur`."""
 
-    def __init__(self, cores, dur, desenha, on_fim=None, **kwargs):
+    def __init__(self, cores, dur, desenha, on_fim=None, por_s=30, **kwargs):
         kwargs.setdefault('size_hint', (None, None))
         kwargs.setdefault('size', (0, 0))
         super().__init__(**kwargs)
@@ -411,6 +412,7 @@ class _EfeitoPixel(Widget):
         self._on_fim = _Uma(on_fim)
         self._lote = K.LotePixels(self.canvas, cores)
         self._passo = -1
+        self._por_s = por_s
         self._ev = Clock.schedule_interval(self._tick, 1 / 60.)
 
     def _tick(self, dt):
@@ -420,7 +422,7 @@ class _EfeitoPixel(Widget):
                 return self.parar()
             # desenho novo 30 vezes por segundo (cada um fica 2 quadros, como
             # animacao desenhada): metade da conta e o mesmo movimento
-            passo = int(self.t * 30)
+            passo = int(self.t * self._por_s)
             if passo == self._passo:
                 return
             self._passo = passo
@@ -461,30 +463,8 @@ class CorteMeiaLua(_EfeitoPixel):
         super().__init__(_cores_efeito(cor, 0.45), dur_cheio + dur_decai, self._forma, on_fim, **kwargs)
 
     def _prepara(self, u):
-        """A forma da meia-lua e sempre a mesma: calcula UMA vez onde cai cada
-        pixel (ao longo do arco e de fora para dentro); cada desenho so
-        escolhe quais aparecem (antes eram ~12 mil contas por desenho e a meia-
-        lua gigante do final dava tranco no celular)."""
-        cx, cy = self.c
-        arco = abs(self.a1 - self.a0) * self.r
-        n = max(6, int(arco / u) + 1)
-        pre = []
-        for i in range(n + 1):
-            s = i / float(n)
-            gmax = self.e * (math.sin(math.pi * s) ** 0.75) * (0.45 + 0.55 * s)
-            cel = []
-            if gmax >= u * 0.6:
-                a = self.a0 + (self.a1 - self.a0) * s
-                ca, sa = math.cos(a), math.sin(a) * self.achat
-                ext = self.r + gmax * 0.1 + u
-                for j in range(int(gmax / u) + 2):
-                    rad = ext - j * u
-                    xe, ye = ca * rad, sa * rad
-                    gx = math.floor((cx + xe * self.cr - ye * self.sr) / u)
-                    gy = math.floor((cy + xe * self.sr + ye * self.cr) / u)
-                    cel.append((gx * 100003 + gy, gx * u, gy * u, ((gx * 7 + gy * 13) % 10) / 10.0))
-            pre.append((s, gmax, cel))
-        self._pre = (u, pre)
+        self._pre = (u, _geometria_meialua(self.c, self.r, self.a0, self.a1, self.e, self.achat,
+                                           self.cr, self.sr, u))
 
     def _forma(self, t, p, u):
         if t < self.dc:
@@ -494,23 +474,19 @@ class CorteMeiaLua(_EfeitoPixel):
             s0, s1, gros, rala = 0.15 + 0.55 * k, 1.0, (1 - k) ** 1.4, 0.75 * k
         if self._pre is None or self._pre[0] != u:
             self._prepara(u)
-        vistos = set()
-        ja = vistos.__contains__
-        marca = vistos.add
         listas = {}
+        lim = u * 0.6
         for s, gmax, cel in self._pre[1]:
             if s < s0 or s > s1 or not cel:
                 continue
             g = gmax * gros
-            if g < u * 0.6:
+            if g < lim:
                 continue
-            nr = min(len(cel), int(g / u) + 2)
+            nr = int(g / u) + 2
             n5, n3 = max(1, nr // 5), max(2, nr // 3)
-            for j in range(nr):
-                chave, x, y, h = cel[j]
-                if ja(chave):
-                    continue
-                marca(chave)
+            for j, x, y, h in cel:
+                if j >= nr:
+                    break
                 if rala and h < rala:
                     continue
                 if j == 0 or j == nr - 1:
@@ -525,6 +501,56 @@ class CorteMeiaLua(_EfeitoPixel):
                 if lst is None:
                     lst = listas[nome] = p.setdefault(nome, [])
                 lst.append((x, y, u, u))
+
+
+_GEO_MEIALUA = OrderedDict()
+
+
+def _geometria_meialua(c, r, a0, a1, e, achat, cr, sr, u):
+    """A forma de uma meia-lua e sempre a mesma: calcula UMA vez onde cai
+    cada pixel (ao longo do arco e de fora para dentro), ja sem os repetidos;
+    cada desenho so escolhe quais aparecem (antes eram ~12 mil contas por
+    desenho e a meia-lua gigante do final dava tranco no celular)."""
+    chave = (round(c[0], 1), round(c[1], 1), round(r, 1), round(a0, 4), round(a1, 4), round(e, 1),
+             round(achat, 3), round(cr, 4), round(sr, 4), round(u, 2))
+    pre = _GEO_MEIALUA.get(chave)
+    if pre is not None:
+        return pre
+    cx, cy = c
+    arco = abs(a1 - a0) * r
+    n = max(6, int(arco / u) + 1)
+    vistos = set()
+    pre = []
+    for i in range(n + 1):
+        s = i / float(n)
+        gmax = e * (math.sin(math.pi * s) ** 0.75) * (0.45 + 0.55 * s)
+        cel = []
+        if gmax >= u * 0.6:
+            a = a0 + (a1 - a0) * s
+            ca, sa = math.cos(a), math.sin(a) * achat
+            ext = r + gmax * 0.1 + u
+            for j in range(int(gmax / u) + 2):
+                rad = ext - j * u
+                xe, ye = ca * rad, sa * rad
+                gx = math.floor((cx + xe * cr - ye * sr) / u)
+                gy = math.floor((cy + xe * sr + ye * cr) / u)
+                k = gx * 100003 + gy
+                if k in vistos:
+                    continue
+                vistos.add(k)
+                cel.append((j, gx * u, gy * u, ((gx * 7 + gy * 13) % 10) / 10.0))
+        pre.append((s, gmax, cel))
+    _GEO_MEIALUA[chave] = pre
+    while len(_GEO_MEIALUA) > 24:
+        _GEO_MEIALUA.popitem(last=False)
+    return pre
+
+
+def preparar_meialua(centro, raio, ang_ini, ang_fim, espessura, achat=1.0, rotacao=0.0):
+    """Calcula antes (fora da hora do golpe) a forma de uma meia-lua grande."""
+    rot = math.radians(rotacao)
+    _geometria_meialua(centro, float(raio), math.radians(ang_ini), math.radians(ang_fim), float(espessura),
+                       float(achat), math.cos(rot), math.sin(rot), max(1.0, _PX[0]))
 
 
 def _anel(camada, centro, r0, r1, dur, cor=CIANO, esp=None, achat=1.0):
@@ -3021,6 +3047,11 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         kk.precarregar([pronto, agacha, corta_tra, arma_ve, corta_ve, fim_ve, pega_az, saca_az,
                         arma_te, corta_te, arma_fo, corta_fo, prep_fo])
 
+        # golpes da danca: prepara, segura, a lamina gira em 4 quadros de
+        # rastro, acompanha e volta com molinha (antes eram 2-3 quadros)
+        G = dict(n_arma=3, prende=3, segue=3, volta=5, meios=(0.25, 0.5, 0.75))
+        GIRO = len(G['meios'])                   # o corpo e a luz saem no 1o quadro de rastro
+
         def _voo_seq(p_ini, p_ar, p_fim, dur):
             """Poses de um salto com a duracao do voo: sai esticado, fecha
             na bola (segura enquanto gira) e abre de novo para pousar."""
@@ -3036,10 +3067,10 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             ini = (A0[0] + th * 2.0, H + alt * 0.6)
             kk.ancorar(*ini)
             kk.opacity = 1
-            kk.tocar(_voo_seq(K.esticado(p_pulo), K.bola(p_pulo), K.esticado(p_pulo), 0.5))
+            kk.tocar(_voo_seq(K.esticado(p_pulo), K.bola(p_pulo), K.esticado(p_pulo), 0.8))
             _som('pulo')
             kk.empurrar(capa=-8, cabelo=-6, lift=10)
-            _mover(kk, ini, A0, 0.5, rot=(0, 360), fantasmas=4, ease='in', on_fim=_pousa,
+            _mover(kk, ini, A0, 0.8, rot=(0, 360), fantasmas=4, ease='suave', on_fim=_pousa,
                    rot_janela=(0.2, 0.75))
         ag.depois(0.15, _entra)
 
@@ -3062,45 +3093,44 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         def _tra():
             # TRA: iai relampago - avanca sacando e a luz da katana atravessa
             # a silaba na horizontal
-            chaves, i_r = K.golpe(pronto, corta_tra, n_arma=1, prende=2, segue=3, volta=4,
-                                  lamina_recua=False, seg=P['segue1'])
+            chaves, i_r = K.golpe(pronto, corta_tra, lamina_recua=False, seg=P['segue1'], **G)
 
             def _q(i):
-                if i == i_r - 2:
+                if i == i_r - GIRO:
                     _som('sacar_iai')
                     _gemido()
-                    _mover(kk, kk.ancora(), A1, 0.14, ease='out', fantasmas=3, limite=(area, m))
-                    cortar('tra', 0, dur=0.13, on_meio=lambda: impacto_silaba(0, CIANO))
+                    _mover(kk, kk.ancora(), A1, 0.26, ease='out', fantasmas=3, limite=(area, m))
+                    cortar('tra', 0, dur=0.18, on_meio=lambda: impacto_silaba(0, CIANO))
             kk.tocar(K.sequencia(sem_rastro(chaves)), on_quadro=_q, on_fim=_ve)
 
         def _ve():
             # VE: recua deslizando e abaixa, com a lamina baixa para tras...
-            seq = K.sequencia(_de_agora(kk, 2, proxima=arma_ve) + [(3, arma_ve, 'out'), (1, arma_ve)])
+            seq = K.sequencia(_de_agora(kk, 3, proxima=arma_ve) + [(5, arma_ve, 'out'), (1, arma_ve)])
             kk.tocar(seq)
             _som('desliza')
             kk.empurrar(capa=-10, cabelo=-6)
-            _mover(kk, kk.ancora(), B0, 0.17, ease='out', fantasmas=2, limite=(area, m),
+            _mover(kk, kk.ancora(), B0, 0.3, ease='out', fantasmas=2, limite=(area, m),
                    on_fim=_ve_sobe)
 
         def _ve_sobe():
             # ... e salta cortando para cima: a luz sobe na diagonal pelas letras
-            chaves, i_r = K.golpe(arma_ve, corta_ve, n_arma=1, prende=1, segue=2, volta=3, seg=fim_ve)
+            chaves, i_r = K.golpe(arma_ve, corta_ve, seg=fim_ve, **dict(G, n_arma=2, prende=2, volta=4))
 
             def _q(i):
-                if i == i_r - 2:
+                if i == i_r - GIRO:
                     _som('pulo')
                     _gemido()
                     kk.empurrar(capa=-10, lift=10)
-                    _mover(kk, kk.ancora(), B1, 0.17, ease='out', fantasmas=3, limite=(area, m))
-                    cortar('ve', 1, dur=0.14, on_meio=lambda: impacto_silaba(1, CIANO))
+                    _mover(kk, kk.ancora(), B1, 0.28, ease='out', fantasmas=3, limite=(area, m))
+                    cortar('ve', 1, dur=0.18, on_meio=lambda: impacto_silaba(1, CIANO))
             kk.tocar(K.sequencia(sem_rastro(chaves)), on_quadro=_q, on_fim=_saca_azul)
 
         def _saca_azul():
             # no alto do salto, pairando um instante: leva a mao as costas e
             # saca a espada azul num arco para cima (e ja se poe para o TE)
             seq = K.sequencia(_de_agora(kk, 2, proxima=pega_az) +
-                              [(3, pega_az, 'out'), (2, saca_az, 'out'), (4, saca_az, 'segura'),
-                               (3, arma_te, 'out'), (1, arma_te)])
+                              [(3, pega_az, 'out'), (3, saca_az, 'out'), (9, saca_az, 'segura'),
+                               (4, arma_te, 'out'), (1, arma_te)])
 
             def _q(i):
                 if i == 5:
@@ -3109,28 +3139,28 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                     _anel(camada, kk.ponto_mao(2), ps, ps * 8, 0.3, AZUL, esp=dp(3))
                     _som('sacar')
                     kk.empurrar(cabelo=8, lift=4)
-            _mover(kk, kk.ancora(), C0, 0.45, ease='out', fantasmas=0, limite=(area, m))
+            _mover(kk, kk.ancora(), C0, 0.7, ease='suave', fantasmas=0, limite=(area, m))
             kk.tocar(seq, on_quadro=_q, on_fim=_te)
 
         def _te():
             # TE: mergulha na diagonal com as duas laminas - duas luzes (a da
             # katana e a azul, um tiquinho atras) descem pelas letras
-            chaves, i_r = K.golpe(arma_te, corta_te, n_arma=1, prende=1, segue=2, volta=2, seg=corta_te)
+            chaves, i_r = K.golpe(arma_te, corta_te, seg=corta_te, **dict(G, n_arma=2, prende=2, volta=3))
 
             def _q(i):
-                if i == i_r - 2:
+                if i == i_r - GIRO:
                     _gemido(forte=True)
                     kk.empurrar(capa=12, lift=6)
-                    _mover(kk, kk.ancora(), C1, 0.15, ease='in', fantasmas=3, limite=(area, m))
-                    cortar('te', 2, dur=0.13, on_meio=lambda: impacto_silaba(2, CIANO, forte=True))
-                    ag.depois(0.04, lambda: cortar('te2', 2, dur=0.13, som='corte2'))
+                    _mover(kk, kk.ancora(), C1, 0.26, ease='in', fantasmas=3, limite=(area, m))
+                    cortar('te', 2, dur=0.18, on_meio=lambda: impacto_silaba(2, CIANO, forte=True))
+                    ag.depois(0.05, lambda: cortar('te2', 2, dur=0.18, som='corte2'))
             kk.tocar(K.sequencia(sem_rastro(chaves)), on_quadro=_q, on_fim=_te_volta)
 
         def _te_volta():
             # da um mortal para tras e cai agachado do lado de la do FO
             ax, ay = kk.ancora()
             p_pulo = _com(P['pulo'], olhos='s')
-            kk.tocar(_voo_seq(K.esticado(p_pulo), K.bola(p_pulo), K.esticado(prep_fo), 0.32))
+            kk.tocar(_voo_seq(K.esticado(p_pulo), K.bola(p_pulo), K.esticado(prep_fo), 0.48))
             _som('pulo')
             kk.empurrar(capa=8, lift=8)
             h = _arco(ay, D0[1], th * 0.9, area[3] - m - _ext(kk, [K.encolhido(p_pulo)])[3])
@@ -3143,28 +3173,28 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                 kk.empurrar(lift=-8, capa=-6)
                 baixo = _com(prep_fo, dy=prep_fo['dy'] - 1, estica=-1)   # amortece a queda
                 kk.tocar(K.sequencia([(2, baixo, 'out'), (2, prep_fo, 'out'), (1, prep_fo)]), on_fim=_fo)
-            _mover(kk, (ax, ay), D0, 0.32, altura=h, rot=(0, -360), fantasmas=2, limite=(area, m),
+            _mover(kk, (ax, ay), D0, 0.48, altura=h, rot=(0, -360), fantasmas=2, limite=(area, m),
                    on_fim=_chegou, rot_janela=(0.2, 0.75))
 
         def _fo():
             # FO: salta cruzando as duas laminas no alto...
-            kk.tocar(_voo_seq(K.esticado(prep_fo), arma_fo, arma_fo, 0.2))
+            kk.tocar(_voo_seq(K.esticado(prep_fo), arma_fo, arma_fo, 0.3))
             _som('pulo')
             kk.empurrar(capa=-10, lift=10)
-            _mover(kk, kk.ancora(), Dm, 0.2, ease='out', fantasmas=2, limite=(area, m), on_fim=_fo_x)
+            _mover(kk, kk.ancora(), Dm, 0.3, ease='out', fantasmas=2, limite=(area, m), on_fim=_fo_x)
 
         def _fo_x():
             # ... e desce abrindo as duas em X: as duas luzes se cruzam na silaba
-            chaves, i_r = K.golpe(arma_fo, corta_fo, n_arma=1, prende=1, segue=2, volta=3)
+            chaves, i_r = K.golpe(arma_fo, corta_fo, **dict(G, n_arma=2, prende=2, volta=4))
 
             def _q(i):
-                if i == i_r - 2:
+                if i == i_r - GIRO:
                     _som('fala_kurae')
                     kk.empurrar(capa=10, cabelo=8, lift=6)
-                    _mover(kk, kk.ancora(), D1, 0.16, ease='in', fantasmas=3, limite=(area, m),
+                    _mover(kk, kk.ancora(), D1, 0.26, ease='in', fantasmas=3, limite=(area, m),
                            on_fim=lambda: poeira(D1[0], D1[1] - kk.extensao()[1], n=8))
-                    cortar('fo', 3, dur=0.13, on_meio=lambda: impacto_silaba(3, CIANO, forte=True))
-                    ag.depois(0.03, lambda: cortar('fo2', 3, dur=0.13, som='corte2'))
+                    cortar('fo', 3, dur=0.18, on_meio=lambda: impacto_silaba(3, CIANO, forte=True))
+                    ag.depois(0.04, lambda: cortar('fo2', 3, dur=0.18, som='corte2'))
             kk.tocar(K.sequencia(sem_rastro(chaves)), on_quadro=_q, on_fim=_final)
 
         # ── 6. golpe final (estilo Bleach) ───────────────────────────
@@ -3181,7 +3211,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             h = _arco(ay, alvo[1], th * 1.2, area[3] - m - _ext(kk, [K.esticado(p_pulo)])[3])
             # (0,6 s: o salto ate o meio da frase anda no maximo ~15 px por
             # quadro - antes era 0,38 s e parecia teletransporte)
-            _mover(kk, (ax, ay), alvo, 0.6, altura=h, on_fim=_ban, limite=(area, m),
+            _mover(kk, (ax, ay), alvo, 0.6, altura=h, on_fim=_ban, limite=(area, m), ease='suave',
                    on_passo=_voo(kk, K.esticado(p_pulo), p_pulo, K.esticado(p_pulo)))
 
         def _fitas(alvo=None, aperto=None, vel=None):
@@ -3684,6 +3714,9 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                     kk.empurrar(capa=-6, cabelo=-4)
                 elif q == 15:
                     _som('desliza')
+                    _prepara_explosao(1)
+                elif q == 20:
+                    _prepara_explosao(-1)
                 elif q == 29:
                     _som('embainhar')
                     bx, by = kk.ponto_mao(1)
@@ -3693,14 +3726,23 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             kk.tocar(seq, on_quadro=_q, on_fim=lambda: kk.idle(base=P['guardado']))
 
         # ── 7. so depois de embainhar: a frase explode ──────────────
+        def _meialua_explosao(sent):
+            cx, cy = titulo.x_do_trecho(0, len(texto))
+            return dict(centro=(cx, cy), raio=titulo.tw * 0.62, ang_ini=160 if sent > 0 else 20,
+                        ang_fim=-45 if sent > 0 else 225, espessura=th * 1.2,
+                        achat=0.34, rotacao=12 * sent)
+
+        def _prepara_explosao(sent):
+            try:
+                preparar_meialua(**_meialua_explosao(sent))
+            except Exception as e:
+                print(f"[cena] preparar explosao: {e}")
+
         def _explode():
             cx, cy = titulo.x_do_trecho(0, len(texto))
             for sent, cor in ((1, CIANO), (-1, AZUL)):
-                camada.add_widget(CorteMeiaLua(
-                    centro=(cx, cy), raio=titulo.tw * 0.62, ang_ini=160 if sent > 0 else 20,
-                    ang_fim=-45 if sent > 0 else 225, espessura=th * 1.2,
-                    achat=0.34, rotacao=12 * sent, cor=cor,
-                    dur_cheio=5 / 30.0, dur_decai=9 / 30.0))
+                camada.add_widget(CorteMeiaLua(cor=cor, dur_cheio=5 / 30.0, dur_decai=9 / 30.0, por_s=15,
+                                               **_meialua_explosao(sent)))
             faiscas.estourar(cx, cy, CIANO, n=45, forca=dp(340), tam=ps)
             faiscas.estourar(cx, cy, AZUL, n=25, forca=dp(260), tam=ps)
             _som('titulo')

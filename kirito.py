@@ -201,7 +201,8 @@ _TRONCO = [
 # pes ficam no chao e, se o corpo abaixa (dy), os joelhos dobram sozinhos;
 # no ar (ar=True) os pes vao presos ao quadril. f/b = pe da frente/de tras
 # (x relativo ao quadril; y relativo ao quadril quando no ar).
-_COXA, _CANELA = 7.5, 7.5
+ESC_PERNAS = 0.85         # pernas 15% mais curtas (pedido do usuario, 29/09/2026)
+_COXA, _CANELA = 7.5 * ESC_PERNAS, 7.5 * ESC_PERNAS
 _PERNAS_P = {
     'repouso':      dict(H=16.1, ar=False, f=(2.6, 0.0), b=(-2.3, 0.0)),
     'passo':        dict(H=15.8, ar=False, f=(4.4, 0.0), b=(-3.9, 0.0)),
@@ -221,6 +222,23 @@ _PERNAS_P = {
     'pendente':     dict(H=15.7, ar=True, f=(2.1, -15.6), b=(-0.5, -15.5)),
     'grudado':      dict(H=11.6, ar=True, f=(4.6, -8.3), b=(0.5, -8.0)),
 }
+
+
+def _encurta_pernas(tab, s):
+    """Pernas mais curtas: o quadril desce (H) e os pes no ar sobem junto; a
+    abertura dos pes no chao encolhe so pela metade (a base continua firme)."""
+    out = {}
+    for nome, v in tab.items():
+        q = dict(v)
+        q['H'] = v['H'] * s
+        for k in ('f', 'b'):
+            x, y = v[k]
+            q[k] = (x * (0.5 + 0.5 * s), y * s)
+        out[nome] = q
+    return out
+
+
+_PERNAS_P = _encurta_pernas(_PERNAS_P, ESC_PERNAS)
 _PERNAS = _PERNAS_P                      # (nomes das pernas usados nas poses)
 
 
@@ -2891,7 +2909,7 @@ def misturar(p0, p1, t, tl=None):
     return q
 
 
-EM_DOIS = 2        # desenhos do meio "em 2s": cada um fica 2 quadros (15 por segundo)
+EM_DOIS = 1        # desenhos do meio a cada quadro (30 por segundo): movimento continuo
 
 
 def sequencia(chaves, passo=None):
@@ -4458,7 +4476,7 @@ def _passo_mao(m_de, m_para, d, recuar):
 
 
 def golpe(arma, corta, olhos=('s', 'g', 's'), n_arma=3, prende=2, segue=3, volta=6,
-          graus=16.0, lamina_recua=True, seg=None, duplo=True):
+          graus=16.0, lamina_recua=True, seg=None, duplo=True, meios=(0.34, 0.68)):
     """Chaves de um corte com cara de animacao desenhada a mao:
       arma -> preparacao (a lamina recua mais, o corpo abaixa e pende para
       tras; segura um instante) -> meio do golpe (rastro) -> rastro do golpe
@@ -4502,8 +4520,8 @@ def golpe(arma, corta, olhos=('s', 'g', 's'), n_arma=3, prende=2, segue=3, volta
         seg = dict(seg, olhos=olhos[1], incl=1, vista='lado', estica=0)
     fim = dict(corta, olhos=olhos[2])
     chaves = [(n_arma, arma, 'suave'), (prende, ant, 'segura')]
-    if duplo:                                         # meio do golpe: 3 quadros de rastro
-        for fr in (0.34, 0.68):
+    if duplo:                                         # meio do golpe: quadros de rastro
+        for fr in meios:
             meio = misturar(ant, imp, fr, fr)
             meio = smear(meio, ant['a1'] if s1 else None, ant['a2'] if s2 else None)
             chaves.append((1, meio, 'segura'))
