@@ -338,20 +338,26 @@ class _Camera:
             self._sc = None
 
 
-def _brilho_tela(camada, alfa=0.35, dur=0.18, cor=BRANCO):
-    """Clarao na tela inteira (impacto)."""
+def _brilho_tela(camada, alfa=0.35, dur=0.18, cor=BRANCO, atras=None):
+    """Clarao na tela inteira (impacto). Apaga em 3 DEGRAUS (forte, meio,
+    fraco), como nos jogos de pixel - sem veu cinza sumindo devagar.
+    atras = widget: o clarao fica atras dele (so o fundo acende)."""
     try:
         W, H = camada.size
         w = Widget(size_hint=(None, None), size=(0, 0))
         with w.canvas:
             c = Color(cor[0], cor[1], cor[2], alfa)
             Rectangle(pos=(-W, -H), size=(W * 3, H * 3))
-        camada.add_widget(w)
+        if atras is not None and atras in camada.children:
+            camada.add_widget(w, index=camada.children.index(atras) + 1)
+        else:
+            camada.add_widget(w)
         t = [0.0]
 
         def _p(dt):
             t[0] += dt
-            c.a = alfa * max(0.0, 1 - t[0] / dur)
+            u = t[0] / dur
+            c.a = alfa * (1.0 if u < 0.34 else (0.5 if u < 0.67 else 0.2))
             if t[0] >= dur:
                 if w.parent:
                     w.parent.remove_widget(w)
@@ -404,6 +410,7 @@ class _EfeitoPixel(Widget):
         self._desenha = desenha
         self._on_fim = _Uma(on_fim)
         self._lote = K.LotePixels(self.canvas, cores)
+        self._passo = -1
         self._ev = Clock.schedule_interval(self._tick, 1 / 60.)
 
     def _tick(self, dt):
@@ -411,6 +418,12 @@ class _EfeitoPixel(Widget):
             self.t += dt
             if self.t >= self.dur or self.parent is None:
                 return self.parar()
+            # desenho novo 30 vezes por segundo (cada um fica 2 quadros, como
+            # animacao desenhada): metade da conta e o mesmo movimento
+            passo = int(self.t * 30)
+            if passo == self._passo:
+                return
+            self._passo = passo
             p = {}
             self._desenha(self.t, p, self.u)
             self._lote.desenhar(p)
@@ -444,7 +457,34 @@ class CorteMeiaLua(_EfeitoPixel):
         rot = math.radians(rotacao)
         self.cr, self.sr = math.cos(rot), math.sin(rot)
         self.dc, self.dd = dur_cheio, dur_decai
+        self._pre = None
         super().__init__(_cores_efeito(cor, 0.45), dur_cheio + dur_decai, self._forma, on_fim, **kwargs)
+
+    def _prepara(self, u):
+        """A forma da meia-lua e sempre a mesma: calcula UMA vez onde cai cada
+        pixel (ao longo do arco e de fora para dentro); cada desenho so
+        escolhe quais aparecem (antes eram ~12 mil contas por desenho e a meia-
+        lua gigante do final dava tranco no celular)."""
+        cx, cy = self.c
+        arco = abs(self.a1 - self.a0) * self.r
+        n = max(6, int(arco / u) + 1)
+        pre = []
+        for i in range(n + 1):
+            s = i / float(n)
+            gmax = self.e * (math.sin(math.pi * s) ** 0.75) * (0.45 + 0.55 * s)
+            cel = []
+            if gmax >= u * 0.6:
+                a = self.a0 + (self.a1 - self.a0) * s
+                ca, sa = math.cos(a), math.sin(a) * self.achat
+                ext = self.r + gmax * 0.1 + u
+                for j in range(int(gmax / u) + 2):
+                    rad = ext - j * u
+                    xe, ye = ca * rad, sa * rad
+                    gx = math.floor((cx + xe * self.cr - ye * self.sr) / u)
+                    gy = math.floor((cy + xe * self.sr + ye * self.cr) / u)
+                    cel.append((gx * 100003 + gy, gx * u, gy * u, ((gx * 7 + gy * 13) % 10) / 10.0))
+            pre.append((s, gmax, cel))
+        self._pre = (u, pre)
 
     def _forma(self, t, p, u):
         if t < self.dc:
@@ -452,38 +492,39 @@ class CorteMeiaLua(_EfeitoPixel):
         else:
             k = min(1.0, (t - self.dc) / self.dd)
             s0, s1, gros, rala = 0.15 + 0.55 * k, 1.0, (1 - k) ** 1.4, 0.75 * k
-        cx, cy = self.c
-        arco = abs(self.a1 - self.a0) * self.r * (s1 - s0)
-        n = max(6, int(arco / u) + 1)
+        if self._pre is None or self._pre[0] != u:
+            self._prepara(u)
         vistos = set()
-        for i in range(n + 1):
-            s = s0 + (s1 - s0) * i / float(n)
-            g = self.e * (math.sin(math.pi * s) ** 0.75) * (0.45 + 0.55 * s) * gros
+        ja = vistos.__contains__
+        marca = vistos.add
+        listas = {}
+        for s, gmax, cel in self._pre[1]:
+            if s < s0 or s > s1 or not cel:
+                continue
+            g = gmax * gros
             if g < u * 0.6:
                 continue
-            a = self.a0 + (self.a1 - self.a0) * s
-            ca, sa = math.cos(a), math.sin(a) * self.achat
-            ext = self.r + g * 0.1 + u
-            nr = int(g / u) + 2
+            nr = min(len(cel), int(g / u) + 2)
+            n5, n3 = max(1, nr // 5), max(2, nr // 3)
             for j in range(nr):
-                rad = ext - j * u
-                xe, ye = ca * rad, sa * rad
-                gx = math.floor((cx + xe * self.cr - ye * self.sr) / u)
-                gy = math.floor((cy + xe * self.sr + ye * self.cr) / u)
-                if (gx, gy) in vistos:
+                chave, x, y, h = cel[j]
+                if ja(chave):
                     continue
-                vistos.add((gx, gy))
-                if rala and ((gx * 7 + gy * 13) % 10) / 10.0 < rala:
+                marca(chave)
+                if rala and h < rala:
                     continue
                 if j == 0 or j == nr - 1:
                     nome = 'brilho'
-                elif j <= max(1, nr // 5):
+                elif j <= n5:
                     nome = 'luz'
-                elif j <= max(2, nr // 3):
+                elif j <= n3:
                     nome = 'clara'
                 else:
                     nome = 'cor' if s > 0.25 else 'brilho'
-                p.setdefault(nome, []).append((gx * u, gy * u, u, u))
+                lst = listas.get(nome)
+                if lst is None:
+                    lst = listas[nome] = p.setdefault(nome, [])
+                lst.append((x, y, u, u))
 
 
 def _anel(camada, centro, r0, r1, dur, cor=CIANO, esp=None, achat=1.0):
@@ -849,6 +890,22 @@ class _AuraEspada(Widget):
                     self._lote.desenhar({})
                 return
             k.luz = self.forca                          # a energia ilumina o corpo
+            if getattr(k, '_desenho', None) is not None:
+                # Bankai (desenho da referencia): a lamina ja tem o fio roxo
+                # aceso - nada do brilho esticado/girado (virava xadrez); so os
+                # fiapos de energia na grade de pixels e as faiscas subindo
+                self._c1.a = self._c2.a = 0
+                hx, hy = k.ponto_mao(1)
+                tx, ty = k.ponta_espada(1)
+                f = self.forca
+                self._nevoa(dt, k, hx, hy, tx, ty, math.hypot(tx - hx, ty - hy) or 1.0, f)
+                if random.random() < f * 0.6:
+                    s = random.random()
+                    k_ps = k.ps
+                    self.faiscas.estourar(hx + (tx - hx) * s, hy + (ty - hy) * s,
+                                          random.choice((ROXO, (0.85, 0.75, 1.0))), n=1,
+                                          forca=dp(28), tam=max(2, k_ps * 0.6), gravidade=-dp(240))
+                return
             mug = p.get('mugetsu')
             if mug != getattr(self, '_mug', None):      # Mugetsu: aura roxa por fora, azul por dentro
                 self._mug = mug
@@ -2388,83 +2445,91 @@ class _ChamasBankai(Widget):
         return False
 
 
-_CORES_PILAR = (('c0', (0.118, 0.039, 0.275, 1.0)), ('c1', (0.275, 0.102, 0.627, 1.0)),
-                ('c2', (0.439, 0.196, 0.902, 1.0)), ('c3', (0.627, 0.408, 1.0, 1.0)),
-                ('c4', (0.816, 0.667, 1.0, 1.0)), ('c5', (0.973, 0.941, 1.0, 1.0)))
-
-
 class _PilarReiatsu(Widget):
-    """A coluna de luz do BAN-KAI: sai do topo do reiatsu e sobe ate o fim da
-    tela. Faixas roxas com o miolo branco (as mesmas cores do casulo), borda
-    que ferve (troca 12 vezes por segundo) e riscos claros subindo. Abre de
-    largura rapido e some afinando."""
+    """A coluna de luz do BAN-KAI: continua o topo do casulo (widget `kr`,
+    que toca os clipes do reiatsu) ate o fim da tela. E o bloco 'rei_pilar'
+    do clipes.bin (mesmas cores e mesmo fogo subindo do casulo) empilhado -
+    so troca a textura 12 vezes por segundo, no MESMO passo do casulo (sem
+    emenda). Nasce subindo como um raio ate o ceu e, no fim, descola de
+    baixo para cima."""
 
-    def __init__(self, cx, y0, meia, u, **kwargs):
+    N_MAX = 16
+
+    def __init__(self, kr, **kwargs):
         kwargs.setdefault('size_hint', (None, None))
         kwargs.setdefault('size', (0, 0))
         super().__init__(**kwargs)
-        self.cx, self.y0, self.meia = float(cx), float(y0), float(meia)
-        self.u = max(1.0, float(u))
-        self.forca = 0.0
-        self.alvo = 1.0
-        self.vel = 1.0 / 0.18
+        self.kr = kr
         self.t = 0.0
-        self._ult = -1
-        self._lote = K.LotePixels(self.canvas, _CORES_PILAR)
+        self.sobe = 1.0 / 0.22            # o raio chega ao topo em 0,22 s
+        self.alto = 0.0                   # 0..1 da base ate o fim da tela
+        self.baixo = 0.0                  # 0..1: a base descolando
+        self.vel_baixo = 0.0
+        with self.canvas:
+            Color(1, 1, 1, 1)
+            self._rects = [Rectangle(pos=(0, 0), size=(0, 0)) for _ in range(self.N_MAX)]
         self._ev = Clock.schedule_interval(self._tick, 1 / 60.)
 
-    def sumir(self, dur=0.4):
-        self.alvo = 0.0
-        self.vel = 1.0 / max(0.05, dur)
+    def sumir(self, dur=0.45):
+        self.vel_baixo = 1.0 / max(0.05, dur)
+
+    def _indice(self):
+        """Desenho do bloco no mesmo passo do casulo."""
+        kr = self.kr
+        cab = K.clipes_dados()
+        n = len(cab['clipes']['rei_pilar']['quadros'])
+        nome = getattr(kr, '_desenho', None)
+        t = getattr(kr, '_clipe_t', self.t)
+        if nome == 'rei_estouro':          # o estouro termina 1 passo antes da fervura
+            d = int(t * 15)
+            passo = int(round(((d - 5) / 15.0 - 1 / 12.0) * 12))
+            return (passo % 8) * n // 8
+        if nome == 'rei_ferve':
+            return int(t * 30) % n
+        return int(self.t * 30) % n
 
     def _tick(self, dt):
         try:
             if self.parent is None:
                 return self.parar()
             self.t += dt
-            if self.forca < self.alvo:
-                self.forca = min(self.alvo, self.forca + self.vel * dt)
-            elif self.forca > self.alvo:
-                self.forca = max(self.alvo, self.forca - self.vel * dt)
-                if self.forca <= 0.0:
+            self.alto = min(1.0, self.alto + self.sobe * dt)
+            if self.vel_baixo:
+                self.baixo = min(1.0, self.baixo + self.vel_baixo * dt)
+                if self.baixo >= 1.0:
                     self.parent.remove_widget(self)
                     return self.parar()
-            f = int(self.t * 12)
-            if f != self._ult:
-                self._ult = f
-                self._desenha(f)
+            kr = self.kr
+            te = kr.ps / float(K.R)
+            tex, (x0, y0, w, h), _, _ = K.quadro_clipe('rei_pilar', self._indice())
+            xa, yb = kr._local_desenho(x0, 0)                 # topo da tela do clipe = base da coluna
+            x = kr.x + (xa - w * te if kr.espelhar else xa)
+            base = kr.y + yb
+            H = Window.size[1] / max(0.2, getattr(self.parent, 'scale', 1.0) or 1.0) + h * te
+            topo_vis = base + (H - base) * self.alto
+            topo_vis = math.floor(topo_vis / te) * te
+            base_vis = base + (H - base) * self.baixo
+            base_vis = math.floor(base_vis / te) * te
+            bh = h * te
+            tc = K._tc_espelhado(tex.tex_coords) if kr.espelhar else tex.tex_coords
+            u0, v0, u1, _, _, v1, _, _ = tc[0], tc[1], tc[2], tc[3], tc[4], tc[5], tc[6], tc[7]
+            for j, r in enumerate(self._rects):
+                y_a = base + j * bh
+                y_b = y_a + bh
+                lo, hi = max(y_a, base_vis), min(y_b, topo_vis)
+                if hi <= lo:
+                    r.size = (0, 0)
+                    continue
+                fa, fb = (lo - y_a) / bh, (hi - y_a) / bh
+                va, vb = v0 + (v1 - v0) * fa, v0 + (v1 - v0) * fb
+                r.texture = tex
+                r.pos = (x, lo)
+                r.size = (w * te, hi - lo)
+                r.tex_coords = (u0, va, u1, va, u1, vb, u0, vb)
             return True
         except Exception as e:
             print(f"[pilar] {e}")
             return self.parar()
-
-    def _desenha(self, f):
-        u = self.u
-        H = Window.size[1]
-        passo = 2 * u
-        meia = self.meia * self.forca
-        cx = math.floor(self.cx / u) * u
-        y = math.floor(self.y0 / u) * u
-        rnd = random.Random(f * 7919 + 13)
-        faixas = ((0.0, 'c0'), (0.14, 'c1'), (0.3, 'c2'), (0.48, 'c3'), (0.64, 'c4'), (0.8, 'c5'))
-        pts = {}
-        j = 0
-        while y < H + passo:
-            m = meia * (1.0 + 0.1 * math.sin(j * 0.55 - f * 1.3) + rnd.uniform(-0.07, 0.07))
-            for fr, nome in faixas:
-                n = int(round(m * (1.0 - fr) / u))
-                if n < 1:
-                    break
-                pts.setdefault(nome, []).append((cx - n * u, y, 2 * n * u, passo))
-            j += 1
-            y += passo
-        # riscos claros subindo pela coluna
-        alto = max(1.0, H - self.y0)
-        for k in range(9):
-            yy = self.y0 + ((self.t * 900.0 + k * 211.0) % alto)
-            xx = cx + ((k * 5) % 9 - 4) * u * max(0.2, self.forca) * (self.meia / (6 * u))
-            pts.setdefault('c5', []).append((math.floor(xx / u) * u, math.floor(yy / u) * u, u, 6 * u))
-        self._lote.desenhar(pts)
 
     def parar(self):
         if self._ev is not None:
@@ -3114,7 +3179,9 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             kk.mostrar(K.esticado(p_pulo))
             _som('pulo')
             h = _arco(ay, alvo[1], th * 1.2, area[3] - m - _ext(kk, [K.esticado(p_pulo)])[3])
-            _mover(kk, (ax, ay), alvo, 0.38, altura=h, on_fim=_ban, limite=(area, m),
+            # (0,6 s: o salto ate o meio da frase anda no maximo ~15 px por
+            # quadro - antes era 0,38 s e parecia teletransporte)
+            _mover(kk, (ax, ay), alvo, 0.6, altura=h, on_fim=_ban, limite=(area, m),
                    on_passo=_voo(kk, K.esticado(p_pulo), p_pulo, K.esticado(p_pulo)))
 
         def _fitas(alvo=None, aperto=None, vel=None):
@@ -3144,6 +3211,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         kk.precarregar([b_agacha, b_ergue, b_aponta, b_livre, b_segura, b_grita])
         try:
             K.clipes_dados()                                      # clipes do Bankai: le antes
+            K.aquecer_clipes()                                    # e monta os desenhos aos poucos
         except Exception as _e:
             print(f"[cena] clipes do Bankai: {_e}")
         mug_b = _com(mug, cresce=1.0)          # a pose que os efeitos leem no Bankai (espada fundida)
@@ -3164,17 +3232,17 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             poeira(ax, ay - kk.extensao()[1], n=8)
             cam[0].ir(1.05, foco=(ax, ay + alt * 0.35), dur=2.4)
             _fundo(tela, reator=0.22, barra=0.1, dur=0.8)       # o mundo escurece um pouco
-            seq = K.sequencia([(3, _com(P['agacha'], olhos='s'), 'out'), (5, b_agacha, 'out'),
-                               (6, b_ergue, 'segura'), (6, b_ergue, 'mola'), (1, b_aponta)])
+            seq = K.sequencia([(3, _com(P['agacha'], olhos='s'), 'out'), (8, b_agacha, 'out'),
+                               (6, b_ergue, 'segura'), (7, b_ergue, 'mola'), (1, b_aponta)])
 
             def _q(i):
                 if i == 4:
                     _som('sacar')
                     kk.empurrar(cabelo=-6, lift=5)
-                elif i == 15:
+                elif i == 18:
                     _som('corte2')
                     kk.empurrar(capa=-8, cabelo=-6)
-                elif i == 18:
+                elif i == 22:
                     hx, hy = kk.ponta_espada(1)
                     faiscas.estourar(hx, hy, CIANO, n=8, forca=dp(90), tam=ps)
             kk.tocar(seq, on_quadro=_q, on_fim=_azul_vira_luz)
@@ -3206,9 +3274,10 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             camada.add_widget(_EfeitoPixel(_cores_efeito(AZUL), 0.36, forma))
 
             def _chega():
+                # a luz entra na katana: estrela e faiscas na mao (sem piscar o
+                # corpo inteiro - isso fica para os golpes)
                 _estrela(camada, hx1, hy1, ps, BRANCO)
                 faiscas.estourar(hx1, hy1, AZUL, n=12, forca=dp(120), tam=ps)
-                kk.impacto()
                 _som('cristal')
             ag.depois(0.3, _chega)
             ag.depois(0.5, _segura)
@@ -3273,7 +3342,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             _som('absorve')
             _som('reiatsu')
             _fundo(tela, reator=0.5, barra=0.1, dur=0.2)
-            _brilho_tela(camada, 0.55, 0.3, (0.92, 0.85, 1.0))
+            _brilho_tela(camada, 0.38, 0.27, (0.62, 0.42, 1.0), atras=kk)   # o ceu acende roxo atras dele
 
             def _q(i):
                 if i == 4 and 'pilar' not in estado:
@@ -3285,24 +3354,33 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
 
         def _pilar(kr):
             # a coluna de luz sobe do topo do casulo ate o fim da tela
-            cab = K.clipes_dados()
-            qx, qy = cab['quadril']
-            lx, ly = kr._local_desenho(qx + 2, 2)
-            u = kr.ps / float(K.R)
-            p = _PilarReiatsu(kr.x + lx, kr.y + ly - 2 * u, 20 * u, u)
+            p = _PilarReiatsu(kr)
             i = camada.children.index(kr) if kr in camada.children else 0
             camada.add_widget(p, index=i + 1)                    # atras do casulo
             estado['pilar'] = p
 
         def _ferve():
-            # FERVENDO: ele sumiu dentro do reiatsu; no fim os olhos acendem
+            # FERVENDO: ele sumiu dentro do reiatsu; no fim os olhos acendem.
+            # A dissipacao entra no fim de uma volta da fervura (o fogo continua
+            # do mesmo ponto, sem pulo)
             kr = estado.get('kr')
             if kr is None:
                 return _revela()
             kr.mostrar_clipe('rei_ferve', loop=True)
             _tremer(10)
-            ag.depois(1.0, _olhos)
-            ag.depois(1.5, _revela)
+            ag.depois(0.8, _olhos)
+
+            def _no_fim_da_volta():
+                k2 = estado.get('kr')
+                if k2 is None:
+                    return _revela()
+                volta = len(K.clipes_dados()['clipes']['rei_ferve']['quadros']) / 30.0
+                resto = volta - (k2._clipe_t % volta)
+                if resto > 1 / 30.0 and resto < volta - 1 / 60.0:
+                    ag.depois(resto, _revela)
+                else:
+                    _revela()
+            ag.depois(1.25, _no_fim_da_volta)
 
         def _olhos():
             # a silhueta escura dele aparece dentro da energia (em degraus) e o
@@ -3320,7 +3398,8 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                               size=kk._rect.size, tex_coords=tuple(kk._rect.tex_coords))
                 camada.add_widget(sil)
                 estado['sombra'] = sil
-                for j, a in enumerate((0.45, 0.7, 0.88)):
+                estado['cor_sombra'] = c_sil
+                for j, a in enumerate((0.7, 0.92)):
                     ag.depois(0.08 * j, lambda a=a: setattr(c_sil, 'a', a))
             except Exception as e:
                 print(f"[cena] sombra do Bankai: {e}")
@@ -3336,6 +3415,9 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             p = estado.pop('pilar', None)
             if p is not None:
                 p.sumir(0.45)
+            # a energia sai primeiro de cima do corpo: no mesmo quadro a silhueta
+            # escura da lugar ao Bankai de verdade (com os olhos ainda acesos)
+            estado.pop('cor_sombra', None)
             for chave in ('olhos', 'sombra'):
                 w = estado.pop(chave, None)
                 if w is not None and w.parent is not None:
@@ -3362,7 +3444,6 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             hx, hy = kk.ponto_mao(1)
             tx, ty = kk.ponta_espada(1)
             aura.alvo = 0.7
-            kk.impacto()
             _estrela(camada, hx, hy, ps, BRANCO)
             faiscas.estourar(hx, hy, BRANCO, n=10, forca=dp(150), tam=te * 2)
             _som('fusao')

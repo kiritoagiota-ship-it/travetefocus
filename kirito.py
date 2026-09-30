@@ -3373,7 +3373,41 @@ def _criar_textura(dados, rec, silhueta=False, xadrez=False):
 # ═══════════════════════════════════════════════════════════════════
 _CLIPES = {}               # 'cab' -> cabecalho; 'dados' -> bytes; 'tab'/'sil' -> tabelas
 _CLIPE_TEX = OrderedDict()
-_CLIPE_TEX_MAX = 150
+_CLIPE_TEX_MAX = 320       # todos os desenhos do Bankai e do reiatsu cabem (nada e refeito)
+
+
+def aquecer_clipes(nomes=None, por_quadro=2):
+    """Cria antes as texturas dos clipes (`por_quadro` por quadro da tela):
+    na hora do BAN-KAI nenhum desenho precisa ser montado - no celular,
+    montar varios de uma vez no estouro dava tranco."""
+    try:
+        cab = clipes_dados()
+    except Exception as e:
+        print(f"[kirito] aquecer clipes: {e}")
+        return
+    fila = []
+    vistos = set()
+    for nome in (nomes or list(cab['clipes'])):
+        c = cab['clipes'].get(nome)
+        if not c:
+            continue
+        for i, q in enumerate(c['quadros']):
+            if q[0] in vistos:                 # quadro repetido: mesma imagem
+                continue
+            vistos.add(q[0])
+            fila.append((nome, i))
+
+    def _passo(dt):
+        try:
+            for _ in range(por_quadro):
+                if not fila:
+                    return False
+                nome, i = fila.pop(0)
+                quadro_clipe(nome, i)
+        except Exception as e:
+            print(f"[kirito] aquecer clipes: {e}")
+            return False
+    Clock.schedule_interval(_passo, 0)
 
 
 def clipes_dados():
@@ -3408,7 +3442,7 @@ def quadro_clipe(nome, i, silhueta=False):
     quadro i do clipe `nome`."""
     cab = clipes_dados()
     pos, tam, caixa_q, mao, ponta = cab['clipes'][nome]['quadros'][i]
-    ch = (nome, i, silhueta)
+    ch = (pos, silhueta)                   # quadro repetido (desenho segurado) usa a mesma textura
     tex = _CLIPE_TEX.get(ch)
     if tex is None:
         ini = _CLIPES['base'] + pos
@@ -3870,18 +3904,20 @@ class KiritoPixel(Widget):
             self._cor_aura.a = 0
             return
         te = self.ps / float(R)
-        rnd = random.Random(self._aura_n)
         dirs = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1))
         i = 0
+        n = self._aura_n
         for (tex, pos, size, tc) in self._aura_camadas:
-            for (dx, dy) in dirs:
+            for j, (dx, dy) in enumerate(dirs):
                 if i >= len(rects):
                     break
-                k = 1 + (1 if rnd.random() < 0.5 * self.aura else 0)
-                if dy > 0 and rnd.random() < 0.6 * self.aura:          # sobe mais (chama)
+                # ferve em ritmo: cada lado pulsa 1-2 pixels em alternancia (sem
+                # sortear saltos grandes); em cima a chama sobe mais
+                k = 1 + ((n + j) % 2 if self.aura >= 0.5 else 0)
+                if dy > 0 and self.aura >= 0.7 and (n + j) % 3 == 0:
                     k += 1
                 if dx and dy:
-                    k = max(1, k - 1)
+                    k = 1
                 r = rects[i]
                 i += 1
                 r.texture = tex
@@ -4735,17 +4771,33 @@ class LotePixels:
 
     def desenhar(self, pontos, alfa=1.0):
         for nome, (c, a0, mesh) in self.m.items():
-            vs, ids = [], []
             # um Mesh aceita no maximo 65535 vertices (16383 quadradinhos)
-            for i, r in enumerate(pontos.get(nome, ())[:16000]):
+            rs = pontos.get(nome, ())[:16000]
+            vs = []
+            ext = vs.extend
+            for r in rs:
                 x, y, w = r[0], r[1], r[2]
                 h = r[3] if len(r) > 3 else w
-                vs.extend((x, y, 0, 0, x + w, y, 0, 0, x + w, y + h, 0, 0, x, y + h, 0, 0))
-                b = 4 * i
-                ids.extend((b, b + 1, b + 2, b, b + 2, b + 3))
+                xw = x + w
+                yh = y + h
+                ext((x, y, 0, 0, xw, y, 0, 0, xw, yh, 0, 0, x, yh, 0, 0))
             mesh.vertices = vs
-            mesh.indices = ids
+            mesh.indices = _indices_quads(len(rs))       # sempre os mesmos: lista pronta
             c.a = a0 * alfa
+
+
+_IDS_QUADS = []
+
+
+def _indices_quads(n):
+    """Indices de n quadradinhos (0,1,2, 0,2,3, 4,5,6, ...): feitos uma vez so."""
+    falta = n - len(_IDS_QUADS) // 6
+    if falta > 0:
+        b0 = len(_IDS_QUADS) // 6
+        for i in range(b0, n):
+            b = 4 * i
+            _IDS_QUADS.extend((b, b + 1, b + 2, b, b + 2, b + 3))
+    return _IDS_QUADS[:6 * n]
 
 
 # ═══════════════════════════════════════════════════════════════════

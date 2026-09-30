@@ -50,8 +50,11 @@ PESCOCO = (84.0, 41.5)
 QUADRIL = (84.0, 109.5)           # vai na ancora do Yoru
 CINTURA_Y = 95.4
 CABECA = (87.4, 30.9, 11.5)       # centro e raio
-# cores extras (rastro do golpe e brilho)
+# cores extras (rastro do golpe e brilho) + luz de fundo roxa na borda de
+# fora (costas/topo) e o escuro que fecha os buraquinhos de dentro do desenho
 EXTRAS = [(238, 222, 255, 255), (214, 150, 255, 255), (160, 76, 255, 255), (96, 40, 190, 255)]
+ARO = (104, 54, 196, 255)
+FECHO = (12, 7, 20, 255)
 
 # ── espinhas das MECHAS do cabelo (seguem os fios do desenho, raiz -> ponta)
 MECHAS = [
@@ -139,7 +142,7 @@ def indexar(rgba):
     cores = {}
     pal = [(0, 0, 0, 0)]
     idx = np.zeros(rgba.shape[:2], np.uint8)
-    for c in EXTRAS:
+    for c in EXTRAS + [ARO, FECHO]:
         cores[c] = len(pal)
         pal.append(c)
     ys, xs = np.nonzero(tem)
@@ -242,6 +245,24 @@ def _erode(m, n):
     return ~_dilata(~m, n)
 
 
+def contorno(img, i_aro, i_fecho):
+    """Fecha os buraquinhos de dentro do desenho (ficam escuros: a silhueta
+    fica solida) e poe a luz de fundo roxa so na borda de FORA, do lado das
+    costas e em cima - o Bankai destaca do fundo escuro do app."""
+    cheio = img > 0
+    solido = _erode(_dilata(cheio, 2), 2)
+    out = img.copy()
+    out[solido & ~cheio] = i_fecho
+    s = solido
+    viz_d = np.zeros_like(s)
+    viz_b = np.zeros_like(s)
+    viz_d[:, :-1] = s[:, 1:]                       # tem desenho a direita
+    viz_b[:-1, :] = s[1:, :]                       # tem desenho embaixo
+    luz = ~s & (viz_d | viz_b)
+    out[luz] = i_aro
+    return out
+
+
 # ═════════════════════════════════════════════════════════════════════
 #  GIRAR PECAS FIRMES (so braco/antebraco/espada nos golpes)
 # ═════════════════════════════════════════════════════════════════════
@@ -336,6 +357,8 @@ class Boneco:
         self.lilas = self.pal.index(EXTRAS[1])
         self.roxo = self.pal.index(EXTRAS[2])
         self.roxo_esc = self.pal.index(EXTRAS[3])
+        self.i_aro = self.pal.index(ARO)
+        self.i_fecho = self.pal.index(FECHO)
         # a parte mole (cabelo + casaco, ja sem o braco por cima) vira mechas
         mole = (self.fundo > 0) & ~(m['tronco'] | m['pernas'] | m['cabeca'])
         self.mole = mole
@@ -416,6 +439,7 @@ class Boneco:
         desenha_peca(img, self.idx, m['antebraco'], Ma)
         mao = aplica(Ma, _c(MAO))
         ponta = aplica(Me, _c(PONTA))
+        img = contorno(img, self.i_aro, self.i_fecho)
         if bob:
             img = np.roll(img, int(bob), axis=0)
             mao = (mao[0], mao[1] + bob)
@@ -533,14 +557,18 @@ def clipes():
     # REVELA: o reiatsu se desfaz e ele aparece com o cabelo e o casaco
     # levantados pelo vento de energia, que cai e assenta (passa um pouco do
     # ponto e volta); os olhos acesos apagam
+    # (o tempo do cabelo termina em 0: o 'idle' continua dali sem pulo)
+    D_REV = 1.4
+
     def revela(t):
         tc = degrau(t, 12)
+        th = tc - D_REV
         s = 0.95 * math.exp(-tc / 0.32) * math.cos(tc * 7.5) + 0.05 * (1 - math.exp(-tc / 0.3))
         q = dict(REPOUSO)
-        q['bob'] = 0 if tc < 0.5 else int(round(1.2 * math.sin(2 * math.pi * (tc - 0.5) / P_IDLE)))
+        q['bob'] = int(round(1.2 * math.sin(2 * math.pi * th / P_IDLE)))
         q['olhos'] = 'l' if tc < 0.75 else 'a'
-        return q, tc, dict(onda=7.0 + 8.0 * math.exp(-tc / 0.4), per=P_IDLE, sobe=s)
-    CL['revela'] = (revela, 1.4, False)
+        return q, th, dict(onda=7.0 + 8.0 * math.exp(-tc / 0.4), per=P_IDLE, sobe=s)
+    CL['revela'] = (revela, D_REV, False)
 
     # CARGA: ergue a espada devagar (antecipacao) e segura tremendo
     ch = [(0.0, dict(REPOUSO), 'in'), (0.2, dict(b=-6.0, a=-4.0, e=-6.0), 'suave'),
@@ -558,13 +586,20 @@ def clipes():
         q = dict(CARGA, b=CARGA['b'] + 4)
         q['bob'] = CARGA['bob'] + (1 if int(tc * 15) % 2 else 0)
         q['e'] += 1.5 * math.sin(tc * 30)
+        # loop de 0,8 s = um ciclo inteiro do cabelo (volta sem pulo)
         return q, tc, dict(onda=11.0, per=0.8, sobe=0.12, x=-6.0)
-    CL['carga_segura'] = (carga_segura, 0.4, True)
+    CL['carga_segura'] = (carga_segura, 0.8, True)
 
-    # CORTE: acelera (rastro) -> passa pela frente -> segue -> acomoda
+    # CORTE: acelera (rastro) -> passa pela frente -> segue -> acomoda. O
+    # cabelo do corte e do 'fim' corre num tempo so, que termina em 0 no fim
+    # do 'fim' (o 'idle' continua dali)
     ch2 = [(0.0, dict(CARGA, b=CARGA['b'] + 4), 'in'), (4 / 30., MEIO, 'out'),
            (7 / 30., CORTOU, 'out'), (11 / 30., SEGUE, 'mola'), (17 / 30., dict(SEGUE, b=-92.0), 'suave'),
            (18 / 30., dict(SEGUE, b=-92.0))]
+    D_CORTE, D_FIM = 19 / 30.0, 27 / 30.0
+
+    def vento_corte(tc):
+        return 14.0 * math.exp(-max(0.0, tc - 0.15) / 0.25)
 
     def corte(t):
         tc = degrau(t, 15)
@@ -574,8 +609,8 @@ def clipes():
         if 1 <= f <= 9:
             ant = trilha(ch2, max(0.0, tc - 2 / 30.))
             q['rastro'] = ant['b'] + ant['a'] + ant['e'] - q['b'] - q['a']
-        return q, tc, dict(onda=9.0, per=1.2, sobe=0.1, x=14.0 * math.exp(-max(0.0, tc - 0.15) / 0.25))
-    CL['corte'] = (corte, 19 / 30.0, False)
+        return q, tc - D_CORTE - D_FIM, dict(onda=9.0, per=P_IDLE, sobe=0.1, x=vento_corte(tc))
+    CL['corte'] = (corte, D_CORTE, False)
 
     # FIM: volta devagar ao repouso (o cabelo e o casaco ainda balancando)
     ch3 = [(0.0, dict(SEGUE, b=-92.0), 'suave'), (26 / 30., dict(REPOUSO))]
@@ -584,8 +619,9 @@ def clipes():
         tc = degrau(t, 15)
         q = trilha(ch3, tc)
         q['bob'] = int(round(q.get('bob', 0)))
-        return q, tc, dict(onda=7.0 + 4.0 * math.exp(-tc / 0.3), per=P_IDLE, sobe=0.05)
-    CL['fim'] = (fim, 27 / 30.0, False)
+        return q, tc - D_FIM, dict(onda=7.0 + 2.0 * math.exp(-tc / 0.3), per=P_IDLE,
+                                   sobe=0.05 + 0.05 * math.exp(-tc / 0.3), x=vento_corte(D_CORTE + tc))
+    CL['fim'] = (fim, D_FIM, False)
     return CL
 
 
@@ -626,7 +662,14 @@ def gerar_quadros(nomes=None):
             return out
         saida['rei_estouro'] = (_em_quadros(rei.estouro(), 15.0), False)
         saida['rei_ferve'] = (_em_quadros(rei.ferve(), 12.0), True)
-        saida['rei_dissipa'] = (_em_quadros(rei.dissipa(), 15.0), False)
+        # a energia sai primeiro de cima do corpo (a forma dele no 1o quadro da revelacao)
+        fn_rev = clipes()['revela'][0]
+        q0, tc0, v0 = fn_rev(0.0)
+        kw0 = {k: v for k, v in q0.items() if k in ('b', 'a', 'e', 'bob', 'olhos')}
+        corpo = bon.quadro(tc0, v0, **kw0)[0] > 0
+        saida['rei_dissipa'] = (_em_quadros(rei.dissipa(corpo=corpo), 15.0), False)
+        saida['rei_pilar'] = (_em_quadros(rei.pilar(), 12.0), True)
+        rei_nomes = rei_nomes + ('rei_pilar',)
         for n in rei_nomes:
             print(n, len(saida[n][0]), 'quadros')
     return bon, saida

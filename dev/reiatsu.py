@@ -100,7 +100,7 @@ class Reiatsu:
         self.n1 = Ruido(1, 10, 36, self.P, cw, ch)
         self.n2 = Ruido(2, 5, 18, self.P, cw, ch)
         self.n3 = Ruido(3, 3, 9, self.P, cw, ch)
-        self.pilar = 24.0                          # meia largura da coluna que sobe
+        self.meia_pilar = 24.0                          # meia largura da coluna que sobe
         self.buraco = Ruido(4, 18, 16, self.P, cw, ch)
         rnd = np.random.default_rng(9)
         self.faiscas = [(rnd.uniform(-1, 1), rnd.uniform(0, 1), rnd.integers(1, 3), rnd.uniform(0, 6.28))
@@ -117,7 +117,7 @@ class Reiatsu:
         f = 1 - np.sqrt(X * X + Y * Y)
         # a coluna de luz que sai do topo e sobe ate o fim da tela
         if escala >= 0.99:
-            col = np.clip(1 - np.abs(self.xs - self.cx) / self.pilar, 0, 1) * 0.5
+            col = np.clip(1 - np.abs(self.xs - self.cx) / self.meia_pilar, 0, 1) * 0.5
             topo = self.cy - self.r_cima * 0.55
             col = col * np.clip(1 - (self.ys - topo) / 30.0, 0, 1)
             f = np.where(col > 0, np.maximum(f, col), f)
@@ -172,6 +172,44 @@ class Reiatsu:
                         img[y + dy, x + dx] = cor
 
     # ── clipes ──────────────────────────────────────────────────────────
+    def pilar(self, n=8, por_s=12.0):
+        """A coluna de luz que continua o topo do casulo ate o fim da tela:
+        um BLOCO de P texels de altura que se repete na vertical (o ruido
+        repete com o mesmo periodo) - o app empilha o bloco. Mesmas faixas
+        e mesma subida do casulo. Desenhado no alto da tela do clipe
+        (linhas 0..P-1), centrado na coluna."""
+        L = n / por_s
+        out = []
+        P = int(self.P)
+        m = int(self.meia_pilar) + 8
+        x0, x1 = int(self.cx) - m, int(self.cx) + m
+        for i in range(n):
+            t = i / por_s
+            xs = self.xs[:P, x0:x1]
+            ys = self.ys[:P, x0:x1]
+            y = ys + self.P * t / L
+            nz = 0.55 * self.n1(xs, y) + 0.3 * self.n2(xs + 17, y + 5) + 0.15 * self.n3(xs + 3, y + 11)
+            col = np.clip(1 - np.abs(xs - self.cx) / self.meia_pilar, 0, 1) * 0.5
+            # a mesma conta do topo do casulo (emenda sem degrau)
+            F = col + 0.75 * (nz - 0.5) * (0.3 + 0.7 * (1 - col)) * 1.6
+            F[col <= 0] = -9.0
+            f = np.zeros(F.shape, np.int32)
+            for k, lim in enumerate(LIMIARES):
+                f[F > lim] = k + 1
+            # sem limpar na vertical (o bloco tem que emendar em cima e embaixo)
+            img = np.zeros((self.ch, self.cw), np.uint8)
+            dentro = f > 0
+            viz = np.zeros(f.shape, bool)
+            viz[:, 1:] |= dentro[:, :-1]
+            viz[:, :-1] |= dentro[:, 1:]
+            bloco = np.zeros(f.shape, np.uint8)
+            bloco[viz & ~dentro] = self.pal
+            for k in range(1, 6):
+                bloco[f == k] = self.pal + k
+            img[:P, x0:x1] = bloco
+            out.append(img)
+        return out
+
     def ferve(self, n=8, por_s=12.0):
         L = n / por_s
         out = []
@@ -189,9 +227,12 @@ class Reiatsu:
         claro = [0.55, 0.45, 0.3, 0.16, 0.07, 0.0]
         out = []
         pe = (self.qx, self.qy + 58)
+        L = 8 / 12.0
         for i, (s, c) in enumerate(zip(escalas, claro)):
-            t = i / 15.0
-            F = self.campo(self.P * t / (8 / 12.0), escala=s, fervura=0.6 + 0.4 * i / 5.0)
+            # o fogo ja vem subindo no mesmo passo da fervura: o ultimo desenho
+            # do estouro e o que vem logo antes do primeiro da fervura
+            t = (i - 5) / 15.0 - 1 / 12.0
+            F = self.campo(self.P * t / L, escala=s, fervura=0.6 + 0.4 * i / 5.0)
             f = self.faixas(F, clarear=c)
             extra = np.zeros(f.shape, np.uint8)
             # raios saindo do centro (so nos primeiros)
@@ -225,14 +266,28 @@ class Reiatsu:
             out.append(img)
         return out
 
-    def dissipa(self, n=12, por_s=15.0):
-        """O casulo quebra: buracos abrem de baixo para cima, os pedacos sobem,
-        escurecem e somem em fiapos."""
+    def dissipa(self, n=16, por_s=15.0, corpo=None):
+        """O casulo se abre do meio para fora: a energia sai PRIMEIRO de cima
+        do corpo dele (`corpo` = mascara do Bankai no 1o quadro da revelacao,
+        engordada 2 pixels) - ele aparece inteiro logo no comeco - e depois a
+        energia em volta sai pelas bordas, sobe, escurece e some em fiapos.
+        Comeca onde a fervura para (o app troca no fim de uma volta)."""
         out = []
         L = 8 / 12.0
+        tira_corpo = 0.0
+        if corpo is not None:
+            m = corpo.copy()
+            for _ in range(2):
+                v = m.copy()
+                v[1:, :] |= m[:-1, :]
+                v[:-1, :] |= m[1:, :]
+                v[:, 1:] |= m[:, :-1]
+                v[:, :-1] |= m[:, 1:]
+                m = v
+            tira_corpo = m.astype(float)
         for i in range(n):
             u = (i + 1) / float(n)
-            t = i / por_s
+            t = (i + 1) / por_s
             sobe = self.P * t / L + 80 * u * u              # os pedacos vao subindo
             F = self.campo(sobe, fervura=1.0 + 0.8 * u)
             # abre do MEIO para fora (ele aparece primeiro, a energia sai
@@ -244,7 +299,7 @@ class Reiatsu:
             baixo = np.clip((self.ys - (self.cy - self.r_cima)) / (self.r_cima + self.r_baixo), 0, 1)
             # quanto cada ponto dura: pouco no meio e embaixo (ele aparece de
             # dentro para fora), mais nas bordas e no alto (a energia sai e sobe)
-            vida = 0.5 * W + 0.8 * (1 - meio) ** 1.2 + 0.25 * (1 - baixo)
+            vida = 0.5 * W + 0.8 * (1 - meio) ** 1.2 + 0.25 * (1 - baixo) - 1.2 * tira_corpo
             vivo = vida > u * 1.25
             f = self.faixas(F, clarear=-0.3 * u)            # esfria: o branco some primeiro
             f[~vivo] = 0

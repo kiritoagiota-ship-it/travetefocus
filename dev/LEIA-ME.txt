@@ -45,8 +45,10 @@ BANKAI (desenhos da referencia do usuario, copiados pixel a pixel)
                     revela, carga, carga_segura, corte, fim + o reiatsu -> app/bankai/
                     clipes.bin), gif [clipes] (previa). Mudou pose/tempo: editar clipes().
   reiatsu.py        o REIATSU do BAN-KAI em pixel art (rei_estouro, rei_ferve em loop,
-                    rei_dissipa): campo de chama + ruido subindo, faixas de cor sem degrade.
-                    Vai junto no clipes.bin (o bankai_rig.py chama).
+                    rei_dissipa, rei_pilar = bloco da coluna de luz que o app empilha):
+                    campo de chama + ruido subindo, faixas de cor sem degrade. As emendas
+                    (estouro -> fervura -> dissipacao) continuam o mesmo fogo. Vai junto no
+                    clipes.bin (o bankai_rig.py chama).
   continuidade.py   mede, num filme com CADA=1, quanto o Yoru muda de um quadro para o
                     outro (barras vermelhas = "pisca")
 
