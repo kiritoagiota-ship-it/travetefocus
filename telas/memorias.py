@@ -17,7 +17,8 @@ from efeitos import (BotaoAngular, BotaoAngularAlerta, ListaItem,
                      InputHolografico, tremer_tela, explodir_estilhacos)
 import som
 from helpers import (aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, _bind_teclado,
-                     anexar_teclado, formatar_data_digitada, ler_data, tremer_widget)
+                     anexar_teclado, formatar_data_digitada, ler_data, tremer_widget,
+                     popup_delete_engracado)
 import tatil
 
 PAGINA = 30          # turnos desenhados de cada vez (anos de dados abrem rapido)
@@ -480,7 +481,16 @@ class TelaMemorias(Screen):
         btn_zap.bind(on_release=_whatsapp)
         btn_salvar_data.bind(on_release=_salvar_data)
         btn_f.bind(on_release=lambda *_: pop.dismiss())
-        btn_a.bind(on_release=_deletar)
+
+        def _perguntar_apagar(*_):
+            # apagar o dia inteiro pede confirmacao (antes apagava direto:
+            # um toque sem querer sumia com o turno)
+            dia = memoria['data'].strip().split()[0]
+            popup_delete_engracado(
+                _deletar,
+                pergunta=f"Apagar o turno de {dia}?\n{memoria['total']} peças  -  +{memoria.get('xp', 0)} XP",
+                botao="APAGAR")
+        btn_a.bind(on_release=_perguntar_apagar)
         _abrir_popup(caixa, pop)
 
     def _aviso(self, msg, ok=True):

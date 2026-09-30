@@ -139,6 +139,42 @@ class TraveteApp(App):
         kv = resource_find("interface.kv") or "interface.kv"
         return Builder.load_file(kv)
 
+    def on_start(self):
+        # botao VOLTAR do Android (ESC no PC): antes jogava o app para o fundo
+        # na hora, ate com um popup aberto ou no meio de uma tela
+        Window.bind(on_keyboard=self._tecla_voltar)
+
+    def _tecla_voltar(self, window, key, *args):
+        if key != 27:
+            return False
+        try:
+            return self._voltar()
+        except Exception as e:
+            print(f"[voltar] {e}")
+            return True
+
+    def _voltar(self):
+        """VOLTAR faz o que o Android costuma fazer, em ordem: fecha o
+        teclado do app; fecha o popup de cima; volta para o menu; no menu (ou
+        na abertura) o Android minimiza o app, como sempre."""
+        from kivy.uix.popup import Popup
+        for w in list(Window.children):
+            if w.__class__.__name__ in ('TecladoLetras', 'TecladoNumeros'):
+                fechar = getattr(w, '_fechar', None)
+                if fechar:
+                    fechar()
+                    return True
+        for w in list(Window.children):              # o primeiro e o de cima
+            if isinstance(w, Popup):
+                if w.auto_dismiss:                   # (no meio de um golpe nao fecha)
+                    w.dismiss()
+                return True
+        sm = self.root.ids.sm
+        if sm.current not in ('menu', 'loading'):
+            self.mudar_tela('menu')
+            return True
+        return False                                  # menu/abertura: o Android minimiza
+
     def on_pause(self):
         # No Android o app pode ser morto em segundo plano sem passar pelo
         # on_stop: grava ja, de forma sincrona

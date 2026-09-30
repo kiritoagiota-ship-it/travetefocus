@@ -281,6 +281,20 @@ def animar_ganho_xp(quantidade, origem=None):
 #  POPUPS
 # ═══════════════════════════════════════════════════════════
 
+def uma_vez(fn):
+    """Botao de confirmar protegido contra TOQUE DUPLO: so o primeiro toque
+    vale (o popup leva uma fracao de segundo fechando e um segundo toque
+    rapido duplicava a peca ou o turno)."""
+    feito = [False]
+
+    def _f(*a, **k):
+        if feito[0]:
+            return None
+        feito[0] = True
+        return fn(*a, **k)
+    return _f
+
+
 def _make_popup():
     layout = FloatLayout()
     pop = Popup(
@@ -305,6 +319,15 @@ def _abrir_popup(caixa, pop):
         pass
     caixa.opacity  = 0
     caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.44}
+    # recem-aberto, o toque no fundo escuro nao fecha (o 2o toque de um toque
+    # duplo no botao que abriu o popup caia no fundo e fechava na hora)
+    if pop.auto_dismiss:
+        pop.auto_dismiss = False
+
+        def _libera(dt):
+            if pop.parent is not None:
+                pop.auto_dismiss = True
+        Clock.schedule_once(_libera, 0.35)
 
     def _on_open(*_):
         Animation(opacity=1, duration=0.16,
@@ -532,6 +555,7 @@ def popup_pedir_xp(nome: str, quantidade: int, on_save):
     layout.add_widget(caixa)
     caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
 
+    @uma_vez
     def _confirmar(*_):
         val = max(0, int(inp.text or 0))
         pop.dismiss()
@@ -545,9 +569,10 @@ def popup_pedir_xp(nome: str, quantidade: int, on_save):
     # teclado customizado SAO — sem teclado Android
 
 
-def popup_delete_engracado(on_confirm):
+def popup_delete_engracado(on_confirm, pergunta="Desintegrar este registro?", botao="DESINTEGRAR"):
     pop, layout = _make_popup()
-    h = min(dp(196), int(Window.height * 0.38))
+    linhas = pergunta.count('\n')
+    h = min(dp(196) + dp(20) * linhas, int(Window.height * 0.42))
     caixa = BoxLayout(
         orientation='vertical', padding=[dp(26), dp(20), dp(26), dp(20)],
         spacing=dp(14), size_hint=(0.84, None), height=h)
@@ -555,13 +580,13 @@ def popup_delete_engracado(on_confirm):
 
     caixa.add_widget(Label(
         text=("[color=#ff2244]!!  ATENÇÃO[/color]\n"
-              "[color=#cccccc]Desintegrar este registro?\n"
+              f"[color=#cccccc]{pergunta}\n"
               "Esta ação é irreversível.[/color]"),
         markup=True, font_name="orbitron.ttf", font_size="13sp",
-        halign="center", size_hint_y=None, height=dp(74)))
+        halign="center", size_hint_y=None, height=dp(74) + dp(20) * linhas))
 
     botoes  = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(14))
-    btn_sim = BotaoAngularAlerta(text="DESINTEGRAR")
+    btn_sim = BotaoAngularAlerta(text=botao)
     btn_nao = BotaoAngular(text="CANCELAR")
     botoes.add_widget(btn_sim)
     botoes.add_widget(btn_nao)
@@ -569,6 +594,7 @@ def popup_delete_engracado(on_confirm):
     layout.add_widget(caixa)
     caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
 
+    @uma_vez
     def _confirmar(*_):
         pop.dismiss()
         on_confirm()
@@ -789,7 +815,11 @@ def popup_resumo_dia(tot_pecas, tot_xp, on_confirm):
     layout.add_widget(caixa)
     caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
 
+    salvo = [False]
+
     def _confirmar(*_):
+        if salvo[0]:                      # toque duplo: o turno ja foi salvo
+            return
         d, motivo = ler_data(inp_data.text)
         if d is None:                     # antes virava 'hoje' sem avisar
             lbl_aviso.text = f"[color=#ff4455]{motivo}[/color]"
@@ -800,6 +830,7 @@ def popup_resumo_dia(tot_pecas, tot_xp, on_confirm):
                 pass
             tremer_widget(inp_data)
             return
+        salvo[0] = True
         data_str = f"{d.strftime('%d/%m/%Y')}  {hoje.strftime('%H:%M')}"
         pop.dismiss()
         on_confirm(data_str)

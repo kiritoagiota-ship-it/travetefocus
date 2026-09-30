@@ -767,6 +767,95 @@ def roteiro_teste():
                                          f"periodos mudaram={estado.get('per') != [dict(p) for p in App.get_running_app().periodos_ganhos]}, "
                                          f"tela agora={App.get_running_app().root.ids.sm.current}")))
         passos.append((0.1, lambda: foto('vaza-ganhos-depois')))
+    if _os.environ.get('DUPLO') == '1':               # dois toques rapidos nos botoes de confirmar
+        est = {}
+
+        def _achar(txt):
+            for topo in Window.children:                 # de cima (popup) para baixo
+                for w in topo.walk():
+                    if txt in str(getattr(w, 'text', '')) and w.get_root_window() and w.opacity > 0.05:
+                        return w
+            return None
+
+        def _toque_duplo(txt, intervalo=0.08):
+            w = _achar(txt)
+            if w is None:
+                LOG['erros'].append('duplo: botao nao achado ' + txt)
+                return
+            x, y = w.to_window(w.center_x, w.center_y)
+            tocar_tela(x, y)
+            Clock.schedule_once(lambda dt: tocar_tela(x, y), intervalo)
+
+        def _popups():
+            return sum(1 for w in Window.children if isinstance(w, Popup))
+        app_ = lambda: App.get_running_app()
+        passos.append((0.5, lambda: ir('registro')))
+        # A) Adicionar Lote duas vezes: quantos popups de XP abrem?
+        def _prepara():
+            t = tela()
+            t.ids.nome_input.focus = False
+            t.ids.nome_input.text = 'Teste duplo'
+            t.ids.qtd_input.text = '10'
+            est['reg0'] = len(app_().registros)
+        passos.append((1.5, _prepara))
+        passos.append((0.4, lambda: _toque_duplo('Adicionar Lote')))
+        passos.append((0.8, lambda: fase(f'duplo A (Adicionar Lote 2x): popups de XP abertos = {_popups()}')))
+        # B) CONFIRMAR o XP duas vezes: quantas pecas entram?
+        def _xp():
+            p = next((w for w in reversed(Window.children) if isinstance(w, Popup)), None)
+            for w in (p.walk() if p else []):
+                if isinstance(w, TextInput):
+                    w.text = '3'
+        passos.append((0.2, _xp))
+        passos.append((0.3, lambda: _toque_duplo('CONFIRMAR')))
+        passos.append((1.2, lambda: fase(f"duplo B (CONFIRMAR 2x): pecas novas = {len(app_().registros) - est['reg0']}, "
+                                         f"popups ainda abertos = {_popups()}")))
+        passos.append((0.2, lambda: [p.dismiss() for p in list(Window.children) if isinstance(p, Popup)]))
+        # C) SALVAR TURNO duas vezes: quantos turnos entram?
+        def _fin():
+            est['mem0'] = len(app_().memorias)
+            tela().finalizar_dia()
+        passos.append((1.0, _fin))
+        passos.append((0.9, lambda: _toque_duplo('SALVAR TURNO')))
+        passos.append((1.5, lambda: fase(f"duplo C (SALVAR TURNO 2x): turnos novos = {len(app_().memorias) - est['mem0']}")))
+        passos.append((0.2, lambda: foto('duplo-depois')))
+        # D) APAGAR um dia nas memorias: agora pergunta antes
+        passos.append((1.5, lambda: ir('memorias')))
+        def _abre_dia():
+            est['mem1'] = len(app_().memorias)
+            tela().abrir_detalhes_memoria(app_().memorias[-1])
+        passos.append((1.5, _abre_dia))
+        passos.append((0.8, lambda: _toque_duplo('APAGAR')))
+        passos.append((0.8, lambda: fase(f"D (APAGAR o dia): popups abertos = {_popups()}, "
+                                         f"turnos apagados = {est['mem1'] - len(app_().memorias)}")))
+        passos.append((0.1, lambda: foto('apagar-dia-pergunta')))
+        passos.append((0.3, lambda: _toque_duplo('CANCELAR')))
+        passos.append((0.8, lambda: fase(f"D depois de CANCELAR: turnos apagados = {est['mem1'] - len(app_().memorias)}, "
+                                         f"popups = {_popups()}")))
+        passos.append((0.3, lambda: _toque_duplo('APAGAR')))
+        passos.append((0.8, lambda: _toque_duplo('APAGAR')))          # o APAGAR da pergunta (2 toques)
+        passos.append((3.0, lambda: fase(f"D depois de confirmar: turnos apagados = {est['mem1'] - len(app_().memorias)}, "
+                                         f"popups = {_popups()}")))
+    if _os.environ.get('VOLTA') == '1':               # botao VOLTAR do Android (tecla 27)
+        def _voltar():
+            r = Window.dispatch('on_keyboard', 27, 41, None, [])
+            return r
+
+        def _estado(rot):
+            from kivy.uix.popup import Popup as _P
+            pops = sum(1 for w in Window.children if isinstance(w, _P))
+            fase(f"volta {rot}: tela={App.get_running_app().root.ids.sm.current}, "
+                 f"teclado aberto={teclado_aberto() is not None}, popups={pops}")
+        passos.append((0.5, lambda: ir('registro')))
+        passos.append((1.8, lambda: _estado('registro com teclado')))
+        passos.append((0.1, _voltar))
+        passos.append((0.5, lambda: _estado('1o VOLTAR (fecha o teclado)')))
+        passos.append((0.1, lambda: tela().confirmar_delete(App.get_running_app().registros[0], None)))
+        passos.append((0.6, lambda: _estado('aviso de apagar aberto')))
+        passos.append((0.1, _voltar))
+        passos.append((0.6, lambda: _estado('2o VOLTAR (fecha o popup)')))
+        passos.append((0.1, _voltar))
+        passos.append((1.5, lambda: _estado('3o VOLTAR (volta ao menu)')))
     passos.append((1.5, lambda: fim(0)))
     Roteiro(passos).rodar()
 

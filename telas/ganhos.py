@@ -21,7 +21,7 @@ from datetime import datetime
 from efeitos import BotaoAngular, BotaoAngularAlerta, ListaItem, tremer_tela
 import som
 from animacoes_ui import entrada_cascata, contar, fmt_br
-from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, em, anexar_teclado
+from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, em, anexar_teclado, uma_vez
 import tatil
 
 
@@ -273,7 +273,7 @@ class TelaGanhos(Screen):
                 cx2.add_widget(bts)
                 lay2.add_widget(cx2)
                 cx2.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-                bs.bind(on_release=lambda *_: (pop2.dismiss(), _confirmar_delete()))
+                bs.bind(on_release=uma_vez(lambda *_: (pop2.dismiss(), _confirmar_delete())))
                 bn.bind(on_release=lambda *_: pop2.dismiss())
                 _abrir_popup(cx2, pop2)
 
