@@ -25,6 +25,10 @@ def gravar():
         ('entrada rapida', [bash, os.path.join(AQUI, 'tour.sh'), '720', '1560', os.path.join(SCR, 'gr_rap'), '1.75'],
          dict(FOTOS='0', RAPIDA='1', TOUR_PY=os.path.join(AQUI, 'tela_teste.py'))),
     ]
+    for i in range(2):                    # o Yoru espiando a caixa da senha (senha errada e certa)
+        rodadas.append(('senha %d' % (i + 1),
+                        [bash, os.path.join(AQUI, 'tour.sh'), '720', '1560', os.path.join(SCR, 'gr_pin%d' % i), '1.75'],
+                        dict(CENA='pin', CADA='0', TOUR_PY=os.path.join(AQUI, 'filme_cenas.py'))))
     cenas = 'iai,estocada,x,carimbo,vitoria,pergaminho,nivel,meta'
     for i in range(3):
         rodadas.append(('cenas curtas %d' % (i + 1),

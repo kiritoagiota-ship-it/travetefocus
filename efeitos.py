@@ -970,47 +970,6 @@ class FundoAnimado(FloatLayout):
 #  EXPLOSÃO SAO — coordenadas globais (Window space)
 # ═══════════════════════════════════════════════════════════
 
-class FlashExplosao(Widget):
-    """Clarao do item sendo desintegrado: um brilho suave (borda esfumada,
-    nucleo branco) que cresce e some - antes era um retangulo chapado."""
-    escala = NumericProperty(1.0)
-
-    def __init__(self, pos, size, **kwargs):
-        super().__init__(**kwargs)
-        self.size_hint = (None, None)
-        self.size = size
-        self.pos  = pos
-        try:
-            from infinito import textura_radial
-            tex = textura_radial()
-        except Exception:
-            tex = None
-        with self.canvas:
-            PushMatrix()
-            self._sc = Scale(1, 1, 1)
-            self._c_glow = Color(0.2, 0.9, 1.0, 1)
-            self._r_glow = Rectangle(texture=tex)
-            self._c_nuc = Color(0.9, 1.0, 1.0, 1)
-            self._r_nuc = Rectangle(texture=tex)
-            PopMatrix()
-        self.bind(pos=self._upd, size=self._upd, escala=self._upd, opacity=self._upd)
-        self._upd()
-
-    def _upd(self, *_):
-        x, y = self.pos
-        w, h = self.size
-        cx, cy = x + w / 2.0, y + h / 2.0
-        self._sc.origin = (cx, cy)
-        self._sc.x = self._sc.y = self.escala
-        # glow largo (passa das bordas do item) e nucleo mais estreito
-        gw, gh = w * 1.35, h * 2.2
-        self._r_glow.pos, self._r_glow.size = (cx - gw / 2, cy - gh / 2), (gw, gh)
-        nw, nh = w * 1.05, h * 1.1
-        self._r_nuc.pos, self._r_nuc.size = (cx - nw / 2, cy - nh / 2), (nw, nh)
-        self._c_glow.a = 0.55
-        self._c_nuc.a = 0.85
-
-
 class CacoSAO(Widget):
     angulo = NumericProperty(0)
     escala = NumericProperty(1.0)
@@ -1063,15 +1022,146 @@ class PoeiraDigital(Widget):
         self.bind(pos=lambda i, v: setattr(i._rect, 'pos', v))
 
 
-def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14):
+_CACO_LUZ = (200, 255, 255)        # borda de cima/esquerda (onde bate a luz)
+_CACO_SOMBRA = (30, 130, 185)      # borda de baixo/direita
+_CACO_CLARO = (235, 255, 255)
+_CACO_CRISTAL = ((70, 200, 255), (150, 235, 255))
+_CACO_MAX_CELULAS = 4000          # itens grandes ganham blocos maiores (o custo fica igual)
+_CANTOS = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+
+
+def _textura_blocos(w, h, buf):
+    """Textura pequena (1 texel por bloco) ampliada sem suavizar."""
+    from kivy.graphics.texture import Texture
+    tex = Texture.create(size=(w, h), colorfmt='rgba')
+    tex.mag_filter = 'nearest'
+    tex.min_filter = 'nearest'
+    tex.blit_buffer(bytes(buf), colorfmt='rgba', bufferfmt='ubyte')
+    return tex
+
+
+def _foto_em_blocos(widget_alvo, gw, gh, b):
+    """A foto do item reduzida a blocos de b px: (nc, nr, cores) com as
+    linhas de baixo para cima; bloco transparente = None (fica fora dos cacos).
+    Cada bloco fica com o ponto mais claro de 2x2 amostras (o texto fino nao
+    some)."""
+    nc = max(1, int(math.ceil(gw / b)))
+    nr = max(1, int(math.ceil(gh / b)))
+    cel = [None] * (nc * nr)
+    try:
+        op = widget_alvo.opacity
+        widget_alvo.opacity = 1
+        tex = widget_alvo.export_as_image().texture
+        widget_alvo.opacity = op
+        px = tex.pixels
+        tw, th = tex.size
+        fr = (0.3, 0.7)                                # 2x2 pontos por bloco
+        colunas = [[min(tw - 1, int((i + f) * b / gw * tw)) * 4 for f in fr] for i in range(nc)]
+        for j in range(nr):
+            # a foto vem de cima para baixo (linha 0 = topo do item)
+            bases = [min(th - 1, max(0, int((1.0 - (j + f) * b / gh) * th))) * tw * 4 for f in fr]
+            for i in range(nc):
+                melhor, lum = None, -1
+                for base in bases:
+                    for col in colunas[i]:
+                        o = base + col
+                        if px[o + 3] > 50:
+                            v = px[o] + px[o + 1] + px[o + 2]
+                            if v > lum:
+                                melhor, lum = o, v
+                if melhor is not None:
+                    cel[j * nc + i] = (px[melhor], px[melhor + 1], px[melhor + 2])
+    except Exception as e:
+        print(f"[estilhacos] sem foto do item: {e}")
+    if not any(cel):
+        cel = [(12, 45, 75)] * (nc * nr)
+    return nc, nr, cel
+
+
+def _cacos_em_blocos(nc, nr, cel, n_alvo=24):
+    """Divide os blocos em cacos (celulas de Voronoi com sementes numa grade
+    tremida): devolve o dono de cada bloco (-1 = vazio) e o numero de cacos."""
+    t = max(1.0, math.sqrt(nc * nr / float(n_alvo)))
+    cols = max(1, min(8, int(round(nc / t))))
+    linhas = max(1, min(5, int(round(nr / t))))
+    lw, lh = nc / float(cols), nr / float(linhas)
+    sementes = {}
+    for tj in range(linhas):
+        for ti in range(cols):
+            sementes[(ti, tj)] = (len(sementes), (ti + random.uniform(0.2, 0.8)) * lw,
+                                  (tj + random.uniform(0.2, 0.8)) * lh)
+    dono = [-1] * (nc * nr)
+    for j in range(nr):
+        tj = min(linhas - 1, int(j / lh))
+        cy = j + 0.5
+        for i in range(nc):
+            if cel[j * nc + i] is None:
+                continue
+            ti = min(cols - 1, int(i / lw))
+            cx = i + 0.5
+            melhor, bd = 0, 1e18
+            for sj in (tj - 1, tj, tj + 1):
+                for si in (ti - 1, ti, ti + 1):
+                    s = sementes.get((si, sj))
+                    if s is not None:
+                        d = (cx - s[1]) ** 2 + ((cy - s[2]) * 1.3) ** 2
+                        if d < bd:
+                            bd, melhor = d, s[0]
+            dono[j * nc + i] = melhor
+    return dono, len(sementes)
+
+
+def _texturas_caco(g, d, dono, cel, nc, nr):
+    """As 4 caras de um caco: foto (contorno ciano de 1 bloco), branco (o
+    estalo), cristal e cristal ralado em xadrez (desfazendo)."""
+    i0 = min(c % nc for c in g)
+    i1 = max(c % nc for c in g)
+    j0 = min(c // nc for c in g)
+    j1 = max(c // nc for c in g)
+    w, h = i1 - i0 + 1, j1 - j0 + 1
+    foto, bran, cris, ralo = (bytearray(w * h * 4) for _ in range(4))
+    for c in g:
+        i, j = c % nc, c // nc
+        o = ((j - j0) * w + (i - i0)) * 4
+        esq_ = i > 0 and dono[c - 1] == d
+        dir_ = i < nc - 1 and dono[c + 1] == d
+        baixo = j > 0 and dono[c - nc] == d
+        cima = j < nr - 1 and dono[c + nc] == d
+        dentro = esq_ and dir_ and baixo and cima
+        reflexo = (i - j) % 11 == 0                    # risco de luz na diagonal (vidro)
+        if dentro:
+            r, gg, bb = cel[c]
+            # a foto com um veu ciano (vidro) e o reflexo um pouco mais claro
+            cf = (r * 3 // 4 + 10, gg * 3 // 4 + 50, bb * 3 // 4 + 64)
+            if reflexo:
+                cf = (min(255, cf[0] + 45), min(255, cf[1] + 60), min(255, cf[2] + 60))
+            cc = _CACO_CRISTAL[1] if reflexo else _CACO_CRISTAL[0]
+        else:
+            cf = _CACO_LUZ if (not cima or not esq_) else _CACO_SOMBRA
+            cc = _CACO_CLARO
+        foto[o:o + 4] = bytes((cf[0], cf[1], cf[2], 255))
+        bran[o:o + 4] = b'\xff\xff\xff\xff'
+        cris[o:o + 4] = bytes((cc[0], cc[1], cc[2], 255))
+        if (i + j) % 2:
+            ralo[o:o + 4] = bytes((cc[0], cc[1], cc[2], 255))
+    texs = tuple(_textura_blocos(w, h, buf) for buf in (foto, bran, cris, ralo))
+    return texs, i0, j0, w, h
+
+
+def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14, px=None, abaixo_de=None,
+                        racha=None):
     """
-    Estilhacos no estilo SAO: o item se parte em poligonos com a imagem real
-    dele; os cacos voam girando, viram cristal ciano e se desfazem em
-    pontinhos de luz que sobem. Coordenadas da janela; tudo num unico
-    Clock (leve mesmo com varios itens de uma vez, como no WIPE).
-    corte = angulo (graus) do golpe que acertou o item: antes de explodir
-    ele racha ao longo do talho (uma linha de luz acende e as duas metades
-    deslizam em sentidos contrarios) e os cacos voam na direcao do golpe.
+    Estilhacos no estilo SAO, em pixel art: a foto do item vira blocos de
+    `px` px de tela e se parte em cacos feitos desses blocos (contorno ciano
+    de 1 bloco). Os cacos piscam brancos no estalo, voam em degraus de
+    bloco (30 por segundo), giram de 90 em 90 graus, viram cristal ciano,
+    se desfazem em xadrez e soltam faiscas quadradas que sobem.
+    corte = angulo (graus) do golpe que acertou o item, ou dois angulos (o
+    X): antes de voar ele racha ao longo de cada talho (uma fileira de
+    blocos de luz acende e os pedacos se afastam um bloco de cada vez,
+    durante `racha` s) e os cacos seguem o golpe.
+    abaixo_de = camada (na Window) que continua por cima dos cacos - o Yoru
+    nunca fica escondido atras deles.
     """
     if tremor:
         tremer_tela(tremor)
@@ -1098,173 +1188,148 @@ def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14):
         else:
             gx, gy = widget_alvo.to_window(0, 0)
         gw, gh = max(1.0, widget_alvo.width), max(1.0, widget_alvo.height)
-        # foto do item (com ele visivel), depois some
-        tex = None
-        try:
-            op = widget_alvo.opacity
-            widget_alvo.opacity = 1
-            tex = widget_alvo.export_as_image().texture
-            widget_alvo.opacity = op
-        except Exception as e:
-            print(f"[estilhacos] sem foto do item: {e}")
+        b = float(px or max(3, round(dp(3))))
+        b = max(b, math.ceil(math.sqrt(gw * gh / float(_CACO_MAX_CELULAS))))
+        nc, nr, cel = _foto_em_blocos(widget_alvo, gw, gh, b)
         widget_alvo.opacity = 0
-        Window.add_widget(camada)
+        dono, n = _cacos_em_blocos(nc, nr, cel)
+        grupos = [[] for _ in range(n)]
+        for c, d in enumerate(dono):
+            if d >= 0:
+                grupos[d].append(c)
 
-        racha = 0.16 if corte is not None else 0.0     # tempo rachando antes de voar
-        if corte is not None:
-            ua = math.radians(corte)
-            ux, uy = math.cos(ua), math.sin(ua)
-        else:
-            ux, uy = 1.0, 0.0
-        nx, ny = -uy, ux
-
-        def _flash(*_):
-            try:
-                flash = FlashExplosao((gx, gy), (gw, gh))
-                camada.add_widget(flash)
-                Animation(opacity=0, escala=1.5, duration=0.22).start(flash)
-            except Exception:
-                pass
-        if racha:
-            Clock.schedule_once(_flash, racha)
-        else:
-            _flash()
-
-        # malha triangular com pontos internos deslocados (cacos irregulares)
-        cols = max(3, min(8, int(gw / dp(46)) + 1))
-        linhas = max(2, min(5, int(gh / dp(24)) + 1))
-        pts = []
-        for j in range(linhas + 1):
-            fila = []
-            for i in range(cols + 1):
-                x = gx + gw * i / cols
-                y = gy + gh * j / linhas
-                if 0 < i < cols:
-                    x += random.uniform(-0.32, 0.32) * gw / cols
-                if 0 < j < linhas:
-                    y += random.uniform(-0.32, 0.32) * gh / linhas
-                fila.append((x, y))
-            pts.append(fila)
-        tris = []
-        for j in range(linhas):
-            for i in range(cols):
-                a, b = pts[j][i], pts[j][i + 1]
-                c, d = pts[j + 1][i + 1], pts[j + 1][i]
-                if random.random() < 0.5:
-                    tris += [(a, b, c), (a, c, d)]
-                else:
-                    tris += [(a, b, d), (b, c, d)]
-
+        cortes = [] if corte is None else (list(corte) if isinstance(corte, (list, tuple)) else [corte])
+        racha = (0.16 if racha is None else racha) if cortes else 0.0     # tempo rachando antes de voar
+        dirs = [(math.cos(math.radians(a)), math.sin(math.radians(a))) for a in cortes] or [(1.0, 0.0)]
+        ux, uy = dirs[0]
         ccx, ccy = gx + gw / 2.0, gy + gh / 2.0
+
         cacos = []
-        meia = math.hypot(gw, gh) / 2.0
+        talho, brilho_talho = [], []
         with camada.canvas:
-            for tri in tris:
-                mx = sum(p[0] for p in tri) / 3.0
-                my = sum(p[1] for p in tri) / 3.0
-                vs = []
-                for (x, y) in tri:
-                    vs.extend((x, y, (x - gx) / gw, 1.0 - (y - gy) / gh))
-                PushMatrix()
-                tr = Translate(0, 0)
-                rot = Rotate(angle=0, origin=(mx, my))
+            for d, g in enumerate(grupos):
+                if not g:
+                    continue
+                texs, i0, j0, w, h = _texturas_caco(g, d, dono, cel, nc, nr)
                 cor = Color(1, 1, 1, 1)
-                m = Mesh(mode='triangle_fan', indices=[0, 1, 2], vertices=vs)
-                if tex is not None:
-                    m.texture = tex
-                else:
-                    cor.rgba = (0.05, 0.25, 0.4, 0.95)
-                # brilho de cristal por cima da foto (acende no estalo e cresce no voo)
-                cor_brilho = Color(0.55, 0.95, 1.0, 0)
-                Mesh(mode='triangle_fan', indices=[0, 1, 2],
-                     vertices=[v for p in tri for v in (p[0], p[1], 0, 0)])
-                cor_borda = Color(0.55, 1.0, 1.0, 0.9)
-                Line(points=[v for p in tri for v in p], close=True, width=1.1)
-                PopMatrix()
+                ret = Rectangle(texture=texs[0], pos=(gx + i0 * b, gy + j0 * b), size=(w * b, h * b))
+                mx, my = gx + (i0 + w / 2.0) * b, gy + (j0 + h / 2.0) * b
                 dx, dy = mx - ccx, my - ccy
-                lado = 1.0 if dx * nx + dy * ny >= 0 else -1.0
-                if corte is None:
+                # para que lado de cada talho o caco ficou: e para la que ele se afasta
+                sx = sy = 0.0
+                for cx_, cy_ in dirs:
+                    lado = 1.0 if dx * -cy_ + dy * cx_ >= 0 else -1.0
+                    sx += -cy_ * lado
+                    sy += cx_ * lado
+                if not cortes:
                     # voa para fora do centro do item, com um empurrao para cima
                     ang = math.atan2(dy + random.uniform(-0.2, 0.2) * gh, dx + random.uniform(-0.3, 0.3) * gw)
                     v = dp(random.uniform(140, 420))
                     vx, vy = math.cos(ang) * v, math.sin(ang) * v * 0.7 + dp(random.uniform(120, 260))
                 else:
-                    # cada metade se afasta do talho e tudo segue o golpe
+                    # cada pedaco se afasta do talho e tudo segue o golpe
                     afasta = dp(random.uniform(90, 260))
-                    segue = dp(random.uniform(160, 420))
-                    vx = nx * lado * afasta + ux * segue + random.uniform(-1, 1) * dp(60)
-                    vy = ny * lado * afasta + uy * segue + dp(random.uniform(60, 200))
-                cacos.append({
-                    'tr': tr, 'rot': rot, 'cor': cor, 'borda': cor_borda, 'brilho': cor_brilho,
-                    'x': 0.0, 'y': 0.0, 'lado': lado,
-                    'vx': vx, 'vy': vy,
-                    'va': random.uniform(-540, 540), 'a': 0.0, 'mx': mx, 'my': my,
-                    'vida': random.uniform(0.7, 1.0), 'soltou': False, 'tem_tex': tex is not None})
-            # o talho: linha de luz atravessando o item na direcao do golpe
-            cor_talho = Color(1, 1, 1, 0)
-            talho = Line(points=[ccx - ux * meia, ccy - uy * meia, ccx + ux * meia, ccy + uy * meia],
-                         width=dp(2.2))
-            cor_talho2 = Color(0.55, 1.0, 1.0, 0)
-            talho2 = Line(points=[ccx - ux * meia, ccy - uy * meia, ccx + ux * meia, ccy + uy * meia],
-                          width=dp(6))
-            # pontinhos de luz (os cacos viram luz no fim)
+                    segue = dp(random.uniform(160, 420)) / len(dirs)
+                    vx = sx * afasta + ux * segue + random.uniform(-1, 1) * dp(60)
+                    vy = sy * afasta + uy * segue + dp(random.uniform(60, 200))
+                cacos.append({'ret': ret, 'cor': cor, 'texs': texs, 'w': w, 'h': h, 'mx': mx, 'my': my,
+                              'x': 0.0, 'y': 0.0, 'vx': vx, 'vy': vy, 'sx': sx, 'sy': sy,
+                              'giro': random.choice((0, 0, 1, -1, 1, -1)), 'per': random.uniform(0.07, 0.13),
+                              'rq': 0, 'cara': 0, 'vida': random.uniform(0.7, 1.0), 'soltou': False})
+            if cortes:
+                # os talhos em blocos: miolo branco e brilho ciano do lado
+                meia = math.hypot(gw, gh) / 2.0 + 2 * b
+                vistos = set()
+                brilhos = set()
+                passos = int(meia / (b * 0.5))
+                for cx_, cy_ in dirs:
+                    ox, oy = (1, 0) if abs(cy_) >= abs(cx_) else (0, 1)
+                    for s in range(-passos, passos + 1):
+                        ci = math.floor((ccx + cx_ * s * b * 0.5 - gx) / b)
+                        cj = math.floor((ccy + cy_ * s * b * 0.5 - gy) / b)
+                        if not (-1 <= ci <= nc and -1 <= cj <= nr):
+                            continue                  # o talho so risca o item (e 1 bloco em volta)
+                        vistos.add((ci, cj))
+                        for sg in (-1, 1):
+                            brilhos.add((ci + sg * ox, cj + sg * oy))
+                c_brilho = Color(0.55, 1.0, 1.0, 0)
+                for ci, cj in brilhos - vistos:
+                    brilho_talho.append(Rectangle(pos=(gx + ci * b, gy + cj * b), size=(b, b)))
+                c_talho = Color(1, 1, 1, 0)
+                for ci, cj in vistos:
+                    talho.append(Rectangle(pos=(gx + ci * b, gy + cj * b), size=(b, b)))
+            # faiscas quadradas (os cacos viram luz no fim)
             luzes = []
             for _ in range(min(90, len(cacos) * 3)):
-                c = Color(*random.choice(((0.7, 1.0, 1.0, 0), (0.7, 1.0, 1.0, 0), (0.78, 0.6, 1.0, 0))))
-                r = Rectangle(size=(0, 0))
-                luzes.append([c, r, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+                c = Color(*random.choice(((0.7, 1.0, 1.0, 1), (1.0, 1.0, 1.0, 1), (0.78, 0.6, 1.0, 1))))
+                luzes.append([c, Rectangle(size=(0, 0)), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        Window.add_widget(camada)
+        if abaixo_de is not None and abaixo_de.parent is Window:
+            Window.remove_widget(abaixo_de)                # o Yoru volta para cima dos cacos
+            Window.add_widget(abaixo_de)
+
+        def _poe(k):
+            """Enquadra o caco na grade de blocos, girado de 90 em 90."""
+            rq = k['rq'] % 4
+            w, h = (k['w'], k['h']) if rq % 2 == 0 else (k['h'], k['w'])
+            cx, cy = k['mx'] + k['x'], k['my'] + k['y']
+            k['ret'].pos = (gx + round((cx - w * b / 2.0 - gx) / b) * b,
+                            gy + round((cy - h * b / 2.0 - gy) / b) * b)
+            k['ret'].size = (w * b, h * b)
+            cantos = _CANTOS[-rq:] + _CANTOS[:-rq] if rq else _CANTOS
+            k['ret'].tex_coords = tuple(v for p in cantos for v in p)
+
         livres = list(range(len(luzes)))
         vivas = []
         t = [0.0]
+        degrau = [-1]
         grav = dp(1100)
 
         def _passo(dt):
             try:
                 dt = min(dt, 1 / 30.)
                 t[0] += dt
+                d = int(t[0] * 30)
+                novo = d != degrau[0]             # desenho em degraus de 1/30 s
+                degrau[0] = d
                 if racha and t[0] < racha:
-                    # rachando: o talho acende e as metades deslizam (sem voar ainda)
-                    e = 1 - (1 - t[0] / racha) ** 3
-                    cor_talho.a = min(1.0, t[0] / 0.04)
-                    cor_talho2.a = 0.45 * cor_talho.a
-                    for k in cacos:
-                        k['x'] = nx * k['lado'] * dp(6) * e + ux * k['lado'] * dp(4) * e
-                        k['y'] = ny * k['lado'] * dp(6) * e + uy * k['lado'] * dp(4) * e
-                        k['tr'].xy = (k['x'], k['y'])
-                        k['brilho'].a = 0.25 * e
+                    # rachando: o talho acende e os pedacos se afastam bloco a bloco
+                    if novo:
+                        c_talho.a = 1
+                        c_brilho.a = 1
+                        passo = min(3, 1 + d // 2)
+                        for k in cacos:
+                            k['x'] = round(k['sx'] * passo) * b
+                            k['y'] = round(k['sy'] * passo) * b
+                            _poe(k)
                     return
-                if racha:
-                    fade = max(0.0, 1 - (t[0] - racha) / 0.18)
-                    cor_talho.a = fade
-                    cor_talho2.a = 0.45 * fade
-                    talho.width = dp(2.2) + dp(3) * (1 - fade)
-                tv = t[0] - racha                         # tempo desde que os cacos soltaram
+                tv = t[0] - racha                 # tempo desde que os cacos soltaram
+                if racha and novo:
+                    c_talho.a = 1 if tv < 1 / 30. else 0
+                    c_brilho.a = 1 if tv < 3 / 30. else 0
                 for k in cacos:
                     u = tv / k['vida']
-                    if u >= 1:
-                        if k['cor'].a:
-                            k['cor'].a = 0
-                            k['borda'].a = 0
-                            k['brilho'].a = 0
+                    if k['cara'] == 4:
                         continue
                     k['vy'] -= grav * dt
                     k['vx'] *= 0.985
                     k['x'] += k['vx'] * dt
                     k['y'] += k['vy'] * dt
-                    k['a'] += k['va'] * dt
-                    k['tr'].xy = (k['x'], k['y'])
-                    k['rot'].origin = (k['mx'], k['my'])
-                    k['rot'].angle = k['a']
-                    # vira cristal: a foto vai clareando para o ciano e some
-                    cristal = min(1.0, u * 1.6)
-                    alfa = 1.0 if u < 0.55 else max(0.0, 1 - (u - 0.55) / 0.45)
-                    if k['tem_tex']:
-                        k['cor'].rgba = (1 - 0.45 * cristal, 1.0, 1.0, alfa)
-                    else:
-                        k['cor'].a = 0.95 * alfa
-                    estalo = max(0.0, 1 - tv / 0.1)
-                    k['brilho'].a = alfa * min(0.85, 0.7 * estalo + 0.4 * cristal)
-                    k['borda'].a = 0.9 * alfa * (0.6 + 0.4 * math.sin(tv * 30 + k['mx']))
+                    if not novo:
+                        continue
+                    cara = 1 if tv < 2 / 30. else (0 if u < 0.45 else (2 if u < 0.72 else (3 if u < 1 else 4)))
+                    if cara != k['cara']:
+                        k['cara'] = cara
+                        if cara == 4:
+                            k['ret'].size = (0, 0)
+                            k['cor'].a = 0
+                        else:
+                            k['ret'].texture = k['texs'][cara]
+                    if cara == 4:
+                        continue
+                    if k['giro']:
+                        k['rq'] = k['giro'] * int(tv / k['per'])
+                    _poe(k)
                     if u > 0.6 and not k['soltou']:
                         k['soltou'] = True
                         for _ in range(3):
@@ -1272,8 +1337,8 @@ def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14):
                                 break
                             i = livres.pop()
                             L = luzes[i]
-                            L[2] = k['mx'] + k['x'] + random.uniform(-dp(6), dp(6))
-                            L[3] = k['my'] + k['y'] + random.uniform(-dp(6), dp(6))
+                            L[2] = k['mx'] + k['x'] + random.uniform(-2, 2) * b
+                            L[3] = k['my'] + k['y'] + random.uniform(-2, 2) * b
                             L[4] = random.uniform(-dp(30), dp(30))
                             L[5] = dp(random.uniform(60, 150))
                             L[6] = L[7] = random.uniform(0.35, 0.6)
@@ -1282,18 +1347,16 @@ def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14):
                     L = luzes[i]
                     L[6] -= dt
                     if L[6] <= 0:
-                        L[0].a = 0
                         L[1].size = (0, 0)
                         vivas.remove(i)
                         livres.append(i)
                         continue
                     L[2] += L[4] * dt
                     L[3] += L[5] * dt
-                    kk = L[6] / L[7]
-                    s = dp(2.6) * (0.5 + 0.5 * kk)
-                    L[1].pos = (L[2] - s / 2, L[3] - s / 2)
-                    L[1].size = (s, s)
-                    L[0].a = kk
+                    if novo:
+                        s = b if L[6] > L[7] * 0.5 else max(1.0, round(b / 2.0))   # encolhe num degrau
+                        L[1].pos = (round(L[2] / s) * s, round(L[3] / s) * s)
+                        L[1].size = (s, s)
                 if tv >= 1.15:
                     _acabar()
                     return False

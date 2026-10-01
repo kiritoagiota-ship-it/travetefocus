@@ -33,6 +33,11 @@ TESTAR O APP (janela do tamanho do celular: 720x1560, densidade 1.75)
 ANIMACAO QUADRO A QUADRO (relogio simulado: 60 quadros/s exatos, a foto nao atrasa)
   filme.py          CENA=abertura|rapida SEG=22 CADA=2 TOUR_PY=dev/filme.py
                     bash dev/tour.sh 720 1560 SAIDA 1.75  -> fNNNNN.png + filme.json
+  filme_cenas.py    TODAS as aparicoes do Yoru no app de verdade (dados de exemplo):
+                    CENA=app (entrada rapida, +XP, apagar peca, finalizar, nivel,
+                    meta, apagar periodo, WhatsApp, apagar turno, WIPE) ou CENA=pin
+                    CENA=app CADA=3 TOUR_PY=dev/filme_cenas.py bash dev/tour.sh 720 1560 SAIDA 1.75
+                    -> fNNNNNN.png + filme.json (fases com o quadro de cada cena)
   analisa_filme.py  PASTA [quadros]: por trecho, desenhos novos x deslizando x
                     girando; desenhos por segundo do corpo, sobretudo e cabeca
                     (alvo: 12 a 18 por segundo)
