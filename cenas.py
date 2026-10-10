@@ -5671,6 +5671,10 @@ def kirito_carimbo(alvo, on_impacto=None):
         pos = s.no_quadro(pos[0], pos[1], [arma, corta])
         k.ancorar(*pos)
         k.mostrar(arma)
+        # o corte do carimbo: um arco de luz curto atravessando o item (em
+        # pixel, como os outros golpes) - antes era so uma linha de 1 pixel
+        s.preparar_arco('carimbo', ArcoCorte.pelo_meio((s.cx, s.cy), 0 if esq else 180, s.rw * 0.84,
+                                                       0.04, s.te * 8))
 
         def _ve():
             # ve o lote novo: !! e olhos brilhando
@@ -5695,6 +5699,7 @@ def kirito_carimbo(alvo, on_impacto=None):
                     if not esq:
                         linha.reverse()
                     s.cam.add_widget(_PixelsLuz([linha], s.te, cresce=0.05, fica=0.12, some=0.15), index=0)
+                    s.soltar_arco('carimbo', dur=0.08, decai=0.2)
                     s.faiscas.estourar(s.cx, s.cy, CIANO, n=8, forca=dp(130), tam=s.ps * 0.7)
                     _som('corte')
                     _gemido()

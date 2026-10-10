@@ -7,6 +7,8 @@ CENA=app (padrao): senha ainda valendo -> entrada rapida -> menu -> +XP
   (pergaminho), apagar o dia (estocada), WIPE.
 CENA=pin: sem sessao -> o Yoru espiando a caixa da senha, senha errada,
   senha certa (ate o comeco da abertura).
+CENA=telas: uma foto parada de cada tela e de cada aviso do app
+  (tela_NN-nome.png), para conferir se tem coisa fora do lugar. Usar CADA=0.
 
 uso (Git Bash, em app/):
   CENA=app CADA=3 TOUR_PY=dev/filme_cenas.py bash dev/tour.sh 720 1560 SAIDA 1.75
@@ -54,7 +56,7 @@ dados = {
 }
 with open(os.path.join(pasta_app, 'dados.json'), 'w', encoding='utf-8') as f:
     json.dump(dados, f, ensure_ascii=False)
-if CENA == 'app':
+if CENA in ('app', 'telas'):
     with open(os.path.join(pasta_app, '.tf_session'), 'w') as f:
         f.write(str(time.time()))
 
@@ -128,8 +130,28 @@ def _yorus():
     return out
 
 
+FOTO = [None]
+
+
+def foto(nome):
+    """Tira a foto da tela no proximo quadro desenhado (pede um desenho
+    novo: com a tela parada o Kivy nao redesenha sozinho)."""
+    FOTO[0] = nome
+    Window.canvas.ask_update()
+
+
 def _quadro(*_):
     Q[0] += 1
+    if FOTO[0]:
+        nome, FOTO[0] = FOTO[0], None
+        try:
+            w, h = Window.size
+            dados_px = glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE)
+            im = Image.frombytes('RGBA', (w, h), dados_px).transpose(Image.FLIP_TOP_BOTTOM).convert('RGB')
+            im.save(os.path.join(SAIDA, f'tela_{nome}.png'), compress_level=3)
+            print(f'[cenas] foto {nome}')
+        except Exception as e:
+            LOG['erros'].append(f'foto {nome}: {e}')
     if not GRAVA[0]:
         return
     reg = []
@@ -314,12 +336,70 @@ def roteiro_app():
     Roteiro(passos).rodar()
 
 
+def roteiro_telas():
+    """Uma foto parada de cada tela e de cada aviso."""
+    def ir(nome):
+        return lambda: app().mudar_tela(nome)
+
+    def focar(nome_id):
+        return lambda: setattr(tela().ids[nome_id], 'focus', True)
+
+    def _apagar_peca():
+        t = tela()
+        itens = list(t.ids.lista_container.children)
+        btn = itens[len(itens) // 2]
+        dado = next((r for r in app().registros if r[0] in btn.text), app().registros[0])
+        t.confirmar_delete(dado, btn)
+
+    def _x_periodo():
+        for w in tela().walk():
+            if (w.get_root_window() and hasattr(w, 'is_event_type') and w.is_event_type('on_release')
+                    and str(getattr(w, 'text', '')).strip() in ('X', '\u2715')):
+                w.dispatch('on_release')
+                return
+        LOG['erros'].append('X do periodo nao achado')
+
+    def _calc():
+        t = tela()
+        for ch in ('1', '2', '5', '0', '*', '3', '=', '8', '4', '6', '/', '3'):
+            t.apertar(ch)
+
+    passos = [
+        (0.5, lambda: foto('01-menu')),
+        (0.3, ir('registro')), (2.0, soltar_foco), (0.4, lambda: foto('02-registro')),
+        (0.3, focar('nome_input')), (0.8, lambda: foto('03-registro-teclado-letras')),
+        (0.2, lambda: setattr(tela().ids.nome_input, 'text', 'Blusa manga longa')),
+        (0.3, focar('qtd_input')), (0.8, lambda: foto('04-registro-teclado-numeros')),
+        (0.2, lambda: (setattr(tela().ids.qtd_input, 'text', '75'), soltar_foco(), tela().adicionar_item())),
+        (0.8, lambda: foto('05-aviso-xp')),
+        (0.2, lambda: setattr(campo_do_popup(), 'text', '3')), (0.3, lambda: apertar('CONFIRMAR')),
+        (4.2, soltar_foco), (0.5, lambda: foto('06-registro-com-pecas')),
+        (0.3, _apagar_peca), (0.8, lambda: foto('07-aviso-apagar-peca')), (0.2, lambda: apertar('CANCELAR')),
+        (0.6, lambda: tela().finalizar_dia()), (0.9, lambda: foto('08-aviso-salvar-turno')),
+        (0.2, lambda: apertar('SALVAR TURNO')), (5.5, lambda: foto('09-registro-vazio')),
+        (0.3, ir('memorias')), (2.2, lambda: foto('10-memorias')),
+        (0.3, lambda: tela().abrir_detalhes_memoria(app().memorias[-1])),
+        (0.9, lambda: foto('11-memoria-do-dia')), (0.2, fechar_popups),
+        (0.6, lambda: tela().confirmar_wipe()), (0.9, lambda: foto('12-aviso-wipe')),
+        (0.2, lambda: apertar('CANCELAR')),
+        (0.6, ir('progresso')), (3.2, lambda: foto('13-progresso')),
+        (0.3, ir('ganhos')), (2.2, soltar_foco), (0.4, lambda: foto('14-ganhos')),
+        (0.3, lambda: tela().fechar_periodo()), (5.5, lambda: foto('15-ganhos-resultado')),
+        (0.2, fechar_popups), (0.9, lambda: foto('16-ganhos-fechado')),
+        (0.3, _x_periodo), (0.9, lambda: foto('17-aviso-apagar-periodo')), (0.2, lambda: apertar('CANCELAR')),
+        (0.6, ir('calculadora')), (1.6, _calc), (0.6, lambda: foto('18-calculadora')),
+        (0.3, ir('menu')), (1.6, lambda: apertar('TROCAR SENHA')), (0.9, lambda: foto('19-aviso-trocar-senha')),
+        (0.3, fechar_popups), (0.6, fim),
+    ]
+    Roteiro(passos).rodar()
+
+
 def esperar_menu(dt):
     if app().root.ids.sm.current != 'menu':
         Clock.schedule_once(esperar_menu, 0.05)
         return
     fase('menu')
-    Clock.schedule_once(lambda dt: roteiro_app(), 1.0)
+    Clock.schedule_once(lambda dt: (roteiro_telas if CENA == 'telas' else roteiro_app)(), 1.0)
 
 
 def roteiro_pin():
@@ -334,8 +414,10 @@ def roteiro_pin():
         if c is not None:
             c.text = txt
             c.dispatch('on_text_validate')
-    passos = [(4.0, lambda: (fase('pin errado'), _digita('1111'))),
-              (3.5, lambda: (fase('pin certo'), _digita('2004'))),
+    passos = [(3.6, lambda: foto('20-senha')),
+              (0.4, lambda: (fase('pin errado'), _digita('1111'))),
+              (1.2, lambda: foto('21-senha-errada')),
+              (2.3, lambda: (fase('pin certo'), _digita('2004'))),
               (3.0, lambda: fase('fim pin')), (0.3, fim)]
     Roteiro(passos).rodar()
 

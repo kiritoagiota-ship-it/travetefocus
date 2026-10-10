@@ -96,6 +96,7 @@
     height:            dp(68)
     font_size:         "15sp"
     halign:            "left"
+    valign:            "middle"
     text_size:         self.size
     markup:            True
     canvas.before:
@@ -147,7 +148,7 @@
     background_color:  0, 0, 0, 0
     foreground_color:  0, 0.9, 1, 1
     cursor_color:      0, 0.9, 1, 1
-    padding:           [dp(14), dp(14)]
+    padding:           [dp(14), max(0, (self.height - self.line_height) / 2.0)]
     canvas.before:
         Color:
             rgba: 0.04, 0.04, 0.12, 1
@@ -459,7 +460,7 @@
 
             # ── Rodapé ────────────────────────────────────────
             Label:
-                text:      "[ SISTEMA OPERACIONAL DE CONFECÇÃO  ·  v" + app.versao + " ]"
+                text:      "[ SISTEMA OPERACIONAL DE CONFECÇÃO  //  v" + app.versao + " ]"
                 font_name: "orbitron.ttf"
                 font_size: "9sp"
                 color:     rgba("#ffffff14")
@@ -1208,8 +1209,8 @@
                     text_size:   self.size
                 InputHolografico:
                     id:           inp_valor_base
-                    text:         "0.25"
-                    input_filter: 'float'
+                    text:         "0,25"
+                    input_filter: root.filtro_reais
                     font_size:    "16sp"
                     halign:       "center"
                     size_hint_x:  0.28
@@ -1224,8 +1225,8 @@
                     text_size:   self.size
                 InputHolografico:
                     id:           inp_valor_bonus
-                    text:         "0.30"
-                    input_filter: 'float'
+                    text:         "0,30"
+                    input_filter: root.filtro_reais
                     font_size:    "16sp"
                     halign:       "center"
                     size_hint_x:  0.28

@@ -238,7 +238,7 @@ class TelaLoading(Screen):
             size_hint_y=None, height=dp(22), halign="center", valign="middle")
         lbl_inst.text_size = (Window.width * 0.80, None)
 
-        # Botao ANTES do input — teclado nao cobre o botao
+        # o teclado do app sobe a caixa inteira: o campo vem antes do botao
         btn = BotaoAngular(
             text=">>  VERIFICAR  <<",
             size_hint_y=None, height=dp(50))
@@ -259,7 +259,7 @@ class TelaLoading(Screen):
             size_hint_y=None, height=dp(24), halign="center", valign="middle")
         lbl_status.text_size = (Window.width * 0.80, None)
 
-        for w in [lbl_titulo, lbl_sub, lbl_inst, btn, inp_pin, lbl_status]:
+        for w in [lbl_titulo, lbl_sub, lbl_inst, inp_pin, btn, lbl_status]:
             caixa.add_widget(w)
 
         layout.add_widget(caixa)

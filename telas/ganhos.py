@@ -141,10 +141,15 @@ class TelaGanhos(Screen):
         return self._detalhe_ganho(total_pecas)[4]
 
     # ── tela ────────────────────────────────────────────────────────────
+    @staticmethod
+    def filtro_reais(texto, desfazendo=False):
+        """So numeros e virgula nos campos de R$ (o ponto vira virgula)."""
+        return ''.join(c for c in texto.replace('.', ',') if c.isdigit() or c == ',')
+
     def _atualizar_config_ui(self):
         cfg = self._cfg()
-        self.ids.inp_valor_base.text  = f"{cfg['valor_base']:.2f}"
-        self.ids.inp_valor_bonus.text = f"{cfg['valor_bonus']:.2f}"
+        self.ids.inp_valor_base.text  = f"{cfg['valor_base']:.2f}".replace('.', ',')
+        self.ids.inp_valor_bonus.text = f"{cfg['valor_bonus']:.2f}".replace('.', ',')
         self.ids.inp_meta_bonus.text  = str(int(cfg['meta_bonus']))
         self.ids.spin_tipo.text       = cfg['tipo_periodo'].capitalize()
 
@@ -418,7 +423,7 @@ class TelaGanhos(Screen):
             sem_meta = round(n_bonus * float(cfg['valor_base']), 2)
             linha_base = (f"[color=#ffcc00]{em('🔥')} META BATIDA: {fmt_br(n_bonus)} x "
                           f"{_reais(cfg['valor_bonus'])}   {_reais(v_bonus)}[/color]")
-            linha_bonus = (f"[color=#8c96aa]sem a meta seriam {_reais(sem_meta)} "
+            linha_bonus = (f"[color=#8c96aa]sem a meta seriam {_reais(sem_meta)}\n"
                            f"(+{_reais(v_bonus - sem_meta)} de bônus)[/color]")
         else:
             linha_base = (f"[color=#aab4c8]{fmt_br(n_base)} x {_reais(cfg['valor_base'])}[/color]"
@@ -435,7 +440,9 @@ class TelaGanhos(Screen):
                   f"[color=#aab4c8]Total a receber[/color]   "
                   f"[color=#00ff88][b]{_reais(total)}[/b][/color]"),
             markup=True, font_name="rajdhani.ttf", font_size="16sp",
-            halign="center", size_hint_y=None, height=dp(190)))
+            halign="center", valign="middle", size_hint_y=None, height=dp(190)))
+        texto = caixa.children[0]
+        texto.bind(size=lambda i, s: setattr(i, 'text_size', s))     # linha comprida quebra dentro da caixa
 
         btn = BotaoAngular(text=">>  OK", size_hint_y=None, height=dp(50))
         btn.bind(on_release=lambda *_: pop.dismiss())

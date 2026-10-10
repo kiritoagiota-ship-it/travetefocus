@@ -1494,6 +1494,9 @@ class _TecladoBase(BoxLayout):
                 t.text = t.text[:-1] + _PROXIMO_ACENTO[ult]
         elif char == ' ':
             t.text += ' '
+        elif char == ',':
+            if ',' not in t.text and '.' not in t.text:      # uma virgula so
+                t.text += ','
         else:
             t.text += char
         self._mudou()
@@ -1626,7 +1629,7 @@ class TecladoLetras(_TecladoBase):
 class TecladoNumeros(_TecladoBase):
     """
     Teclado SAO apenas com numeros 0-9.
-    decimal=True inclui ponto para campos R$.
+    decimal=True inclui a virgula para campos R$.
     Font 26sp — confortavel nos botoes maiores.
     """
 
@@ -1643,7 +1646,7 @@ class TecladoNumeros(_TecladoBase):
 
         last = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(5))
         if decimal:
-            last.add_widget(self._key('.',   font_size='22sp', size_hint_x=0.25))
+            last.add_widget(self._key(',',   font_size='22sp', size_hint_x=0.25))
             last.add_widget(self._key('0',   font_size='26sp', size_hint_x=0.25))
             last.add_widget(self._key('DEL', font_size='12sp', size_hint_x=0.25))
             last.add_widget(self._key('OK',  font_size='14sp', size_hint_x=0.25))
