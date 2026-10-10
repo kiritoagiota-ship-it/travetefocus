@@ -516,12 +516,24 @@
             size_hint_y:     None
             height:          dp(58)
             input_filter:    'int'
-        BotaoAngular:
-            text:        ">>  Adicionar Lote  <<"
-            font_size:   "16sp"
+        BoxLayout:
             size_hint_y: None
             height:      dp(58)
-            on_release:  root.adicionar_item()
+            spacing:     dp(10)
+            BotaoAngular:
+                text:        ">>  Adicionar Lote"
+                font_size:   "16sp"
+                size_hint_x: 0.62
+                on_release:  root.adicionar_item()
+            BotaoAngular:
+                text:         "COLAR DO\nWHATSAPP"
+                font_size:    "12sp"
+                halign:       "center"
+                size_hint_x:  0.38
+                cor_borda:    [0, 1, 0.55, 0.9]
+                cor_borda_kv: [0, 1, 0.55, 0.9]
+                cor_texto:    [0, 1, 0.55, 1.0]
+                on_release:   root.colar_whatsapp()
         Widget:
             size_hint_y: None
             height:      dp(1)

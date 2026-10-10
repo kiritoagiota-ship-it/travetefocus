@@ -9,6 +9,10 @@ CENA=pin: sem sessao -> o Yoru espiando a caixa da senha, senha errada,
   senha certa (ate o comeco da abertura).
 CENA=telas: uma foto parada de cada tela e de cada aviso do app
   (tela_NN-nome.png), para conferir se tem coisa fora do lugar. Usar CADA=0.
+CENA=zap: COLAR DO WHATSAPP de ponta a ponta (texto de exemplo no lugar do
+  que estaria copiado): lista do que achou, tirar uma peça, XP, a lista do
+  registro, finalizar (um turno por dia) e as memorias. Confere os dados
+  gravados e escreve o resultado em filme.json ('zap'). Usar CADA=0.
 
 uso (Git Bash, em app/):
   CENA=app CADA=3 TOUR_PY=dev/filme_cenas.py bash dev/tour.sh 720 1560 SAIDA 1.75
@@ -56,7 +60,7 @@ dados = {
 }
 with open(os.path.join(pasta_app, 'dados.json'), 'w', encoding='utf-8') as f:
     json.dump(dados, f, ensure_ascii=False)
-if CENA in ('app', 'telas'):
+if CENA in ('app', 'telas', 'zap'):
     with open(os.path.join(pasta_app, '.tf_session'), 'w') as f:
         f.write(str(time.time()))
 
@@ -394,12 +398,70 @@ def roteiro_telas():
     Roteiro(passos).rodar()
 
 
+TEXTO_ZAP = '''[05/10/2026, 17:32] Kirito: Camisa polo 180
+[05/10/2026, 17:33] Kirito: Calça jeans 95
+[05/10/2026, 17:40] Chefe: beleza, amanhã tem mais
+[06/10/2026, 17:41] Kirito: 120 bermuda
+[06/10/2026, 17:42] Kirito: vestido longo - 60 un
+[07/10/2026, 17:30] Kirito: Jaqueta corta-vento 40
+camisa 2 bolsos 150
+[07/10/2026, 17:31] Kirito: total 190
+[08/10/2026, 18:02] Kirito: 📋 *PRODUÇÃO DO DIA*
+📅 08/10/2026 (quinta)
+
+🧵 Regata — *210*
+🧵 Short — *1.050*
+
+✅ *TOTAL: 1.260 peças*
+[09/10/2026, 17:45] Kirito: Camisa polo 200
+[09/10/2026, 17:46] Kirito: chego 7 horas amanhã'''
+
+
+def roteiro_zap():
+    """COLAR DO WHATSAPP de ponta a ponta, conferindo os dados no fim."""
+    import telas.registro as TR
+    TR.ler_area_de_transferencia = lambda: TEXTO_ZAP
+    antes = {'memorias': len(app().memorias), 'registros': len(app().registros), 'xp': app().total_xp}
+
+    def _tirar_uma():
+        for w in popup().walk():
+            if 'Vestido longo' in str(getattr(w, 'text', '')) and hasattr(w, 'is_event_type')                     and w.is_event_type('on_release'):
+                w.dispatch('on_release')
+                return
+        LOG['erros'].append('zap: peça para tirar nao achada')
+
+    def _confere():
+        a = app()
+        novas = a.memorias[antes['memorias']:]
+        LOG['zap'] = {
+            'turnos_novos': [[m['data'].split()[0], m['total'], m['xp'], [list(i) for i in m['itens']]]
+                             for m in novas],
+            'registros_depois': len(a.registros), 'xp_ganho': a.total_xp - antes['xp'],
+            'streak': a.streak, 'ultima_data': a.ultima_data}
+        print('[cenas] zap', json.dumps(LOG['zap'], ensure_ascii=False))
+
+    passos = [
+        (0.3, lambda: app().mudar_tela('registro')), (2.0, soltar_foco),
+        (0.4, lambda: foto('z1-registro-com-botao')),
+        (0.3, lambda: tela().colar_whatsapp()), (0.9, lambda: foto('z2-achado')),
+        (0.2, _tirar_uma), (0.5, lambda: foto('z3-tirou-uma')),
+        (0.2, lambda: apertar('CONTINUAR')), (1.0, lambda: setattr(campo_do_popup(), 'text', '3')),
+        (0.4, lambda: foto('z4-xp')), (0.2, lambda: apertar('CONFIRMAR')),
+        (1.6, soltar_foco), (0.5, lambda: foto('z5-lista')),
+        (0.3, lambda: tela().finalizar_dia()), (0.9, lambda: foto('z6-resumo')),
+        (0.2, lambda: apertar('SALVAR TURNO')), (5.5, _confere),
+        (0.2, lambda: app().mudar_tela('memorias')), (2.4, lambda: foto('z7-memorias')),
+        (0.4, fim),
+    ]
+    Roteiro(passos).rodar()
+
+
 def esperar_menu(dt):
     if app().root.ids.sm.current != 'menu':
         Clock.schedule_once(esperar_menu, 0.05)
         return
     fase('menu')
-    Clock.schedule_once(lambda dt: (roteiro_telas if CENA == 'telas' else roteiro_app)(), 1.0)
+    Clock.schedule_once(lambda dt: {'telas': roteiro_telas, 'zap': roteiro_zap}.get(CENA, roteiro_app)(), 1.0)
 
 
 def roteiro_pin():

@@ -6,7 +6,8 @@ from kivy.clock import Clock
 from kivy.metrics import dp
 from efeitos import ListaItem, explodir_estilhacos, tremer_tela
 from helpers import (popup_pedir_xp, popup_delete_engracado, popup_resumo_dia, animar_ganho_xp,
-                     anexar_teclado, sugestoes_pecas)
+                     anexar_teclado, sugestoes_pecas, popup_importar_zap, popup_aviso,
+                     ler_area_de_transferencia)
 from datetime import datetime
 import som
 import tatil
@@ -72,12 +73,68 @@ class TelaRegistro(Screen):
 
         novos = []
         for r in registros:
-            nome = r[0][:18] + "…" if len(r[0]) > 18 else r[0]
-            btn  = self._make_item(f"  {nome}   ·   {r[1]} un.   ·   +{r[2]} XP")
+            btn = self._make_item(self._texto_item(r))
             btn.bind(on_release=lambda x, dado=r, w=btn: self.confirmar_delete(dado, w))
             self.ids.lista_container.add_widget(btn)
             novos.append(btn)
         entrada_cascata(novos)
+
+    @staticmethod
+    def _dia_do_item(r):
+        """Dia ('dd/mm/aaaa') de uma peça colada do WhatsApp; '' = sem dia."""
+        return str(r[3]) if len(r) > 3 and r[3] else ''
+
+    def _texto_item(self, r):
+        dia = self._dia_do_item(r)
+        if dia:                                   # veio do WhatsApp: mostra de que dia e
+            nome = r[0][:13] + "…" if len(r[0]) > 13 else r[0]
+            return (f"  [color=#3dff8f]{dia[:5]}[/color]  {nome}   ·   {r[1]} un.   ·   +{r[2]} XP")
+        nome = r[0][:18] + "…" if len(r[0]) > 18 else r[0]
+        return f"  {nome}   ·   {r[1]} un.   ·   +{r[2]} XP"
+
+    # ── colar do WhatsApp ────────────────────────────────────────────────
+    def colar_whatsapp(self):
+        """Le o que esta copiado, acha as peças (nome e quantidade) de cada
+        dia e, depois de conferir e dizer o XP, joga tudo na lista."""
+        import importar_zap
+        try:
+            self.ids.nome_input.focus = False
+            self.ids.qtd_input.focus = False
+        except Exception:
+            pass
+        texto = ler_area_de_transferencia()
+        achado = importar_zap.ler(texto) if texto.strip() else {'itens': []}
+        if not achado['itens']:
+            som.tocar_erro()
+            tatil.erro()
+            popup_aviso(("Não achei peças no texto copiado." if texto.strip() else "Não tem nada copiado.") +
+                        "\nNo WhatsApp, segure uma mensagem,\nmarque as outras e toque em COPIAR.\n"
+                        "Depois volte aqui e toque de novo.", titulo="COLAR DO WHATSAPP")
+            return
+        tatil.confirmar()
+        popup_importar_zap(achado['itens'], self._pedir_xp_do_lote)
+
+    def _pedir_xp_do_lote(self, itens):
+        pecas = sum(it['qtd'] for it in itens)
+        n = len(itens)
+        Clock.schedule_once(lambda dt: popup_pedir_xp(
+            f"{n} {'lote' if n == 1 else 'lotes'}", pecas, lambda xp: self._salvar_lote(itens, xp),
+            titulo=">> COLADO DO WHATSAPP", pergunta="XP por peça (vale para todas):"), 0.25)
+
+    def _salvar_lote(self, itens, xp):
+        app = App.get_running_app()
+        ganho = 0
+        for it in itens:
+            xp_total = max(0, int(xp)) * int(it['qtd'])
+            app.registros.append([it['nome'], str(it['qtd']), xp_total, it['dia']])
+            ganho += xp_total
+        app.total_xp += ganho
+        app.salvar_dados()
+        som.tocar_add()
+        tatil.confirmar()
+        self.atualizar()
+        if ganho:
+            Clock.schedule_once(lambda dt: animar_ganho_xp(ganho), 0.3)
 
     def adicionar_item(self):
         n = self.ids.nome_input.text.strip()
@@ -115,8 +172,7 @@ class TelaRegistro(Screen):
         self.ids.empty_state.opacity = 0
         self.ids.empty_state.height  = 0
         dado = app.registros[-1]
-        nome_curto = n[:18] + "…" if len(n) > 18 else n
-        btn = self._make_item(f"  {nome_curto}   ·   {q} un.   ·   +{xp_total} XP")
+        btn = self._make_item(self._texto_item(dado))
         btn.bind(on_release=lambda x, d=dado, w=btn: self.confirmar_delete(d, w))
         self.ids.lista_container.add_widget(btn)
         entrada_cascata([btn], dy=dp(30))
@@ -159,39 +215,40 @@ class TelaRegistro(Screen):
             return
         tot_pecas = sum(int(x[1]) for x in app.registros)
         tot_xp    = sum(int(x[2]) for x in app.registros)
+        # peças coladas do WhatsApp ja tem dia: cada dia vira um turno separado
+        por_dia = {}
+        for r in app.registros:
+            por_dia.setdefault(self._dia_do_item(r), []).append(r)
+        sem_dia = por_dia.pop('', [])
+
+        def _ordem(dia):
+            try:
+                return datetime.strptime(dia, "%d/%m/%Y")
+            except ValueError:
+                return datetime.max
+        dias = sorted(por_dia, key=_ordem)
 
         def _confirmar(data_str):
             import time
             # Guardar XP anterior para animacao de progresso
             app.xp_anterior = getattr(app, "total_xp", 0)
-            app.memorias.append({
-                "data":  data_str, "total": tot_pecas,
-                "xp":    tot_xp,  "itens": list(app.registros),
-                "ts":    round(time.time(), 3),     # identidade do turno (ganhos)
-            })
-            dia_str = data_str.strip().split()[0].strip()
-            if app.ultima_data:
-                try:
-                    from datetime import datetime as DT
-                    d1   = DT.strptime(app.ultima_data, "%d/%m/%Y")
-                    d2   = DT.strptime(dia_str,         "%d/%m/%Y")
-                    diff = (d2 - d1).days
-                    if diff == 1:
-                        app.streak += 1
-                    elif diff > 1:
-                        app.streak = 1
-                    # diff == 0: mesmo dia; diff < 0: lancamento de um dia
-                    # antigo - nao mexe na sequencia nem na ultima data
-                    if diff >= 0:
-                        app.ultima_data = dia_str
-                except Exception:
-                    app.streak = 1
-                    app.ultima_data = dia_str
-            else:
-                app.streak = 1
-                app.ultima_data = dia_str
+            partes = data_str.strip().split()
+            hora = partes[1] if len(partes) > 1 else datetime.now().strftime("%H:%M")
+            grupos = {d: list(por_dia[d]) for d in dias}
+            if sem_dia:                             # as digitadas vao para a data escolhida
+                grupos.setdefault(partes[0], []).extend(sem_dia)
+            agora = time.time()
+            for k, dia in enumerate(sorted(grupos, key=_ordem)):
+                itens = [[r[0], r[1], r[2]] for r in grupos[dia]]
+                app.memorias.append({
+                    "data":  f"{dia}  {hora}",
+                    "total": sum(int(x[1]) for x in itens),
+                    "xp":    sum(int(x[2]) for x in itens),
+                    "itens": itens,
+                    "ts":    round(agora + k * 0.001, 3),     # identidade do turno (ganhos)
+                })
             app.registros.clear()
-            app.recalcular_totais()
+            app.recalcular_totais()                 # total, melhor dia e sequencia saem das datas
             app.salvar_dados()
             som.tocar_finalizar()
             tatil.vitoria()
@@ -204,4 +261,6 @@ class TelaRegistro(Screen):
             except Exception as e:
                 print(f"[registro] vitoria: {e}")
 
-        popup_resumo_dia(tot_pecas, tot_xp, _confirmar)
+        popup_resumo_dia(tot_pecas, tot_xp, _confirmar,
+                         dias=[(d, sum(int(x[1]) for x in por_dia[d])) for d in dias],
+                         pede_data=bool(sem_dia) or not dias)

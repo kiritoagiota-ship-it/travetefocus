@@ -1055,7 +1055,7 @@ def _foto_em_blocos(widget_alvo, gw, gh, b):
         widget_alvo.opacity = op
         px = tex.pixels
         tw, th = tex.size
-        fr = (0.3, 0.7)                                # 2x2 pontos por bloco
+        fr = (0.3, 0.7) if nc * nr <= 5000 else (0.5,)  # 2x2 pontos por bloco (item enorme: 1)
         colunas = [[min(tw - 1, int((i + f) * b / gw * tw)) * 4 for f in fr] for i in range(nc)]
         for j in range(nr):
             # a foto vem de cima para baixo (linha 0 = topo do item)
@@ -1083,7 +1083,7 @@ def _cacos_em_blocos(nc, nr, cel, n_alvo=24):
     tremida): devolve o dono de cada bloco (-1 = vazio) e o numero de cacos."""
     t = max(1.0, math.sqrt(nc * nr / float(n_alvo)))
     cols = max(1, min(8, int(round(nc / t))))
-    linhas = max(1, min(5, int(round(nr / t))))
+    linhas = max(1, min(8, int(round(nr / t))))
     lw, lh = nc / float(cols), nr / float(linhas)
     sementes = {}
     for tj in range(linhas):
@@ -1149,7 +1149,7 @@ def _texturas_caco(g, d, dono, cel, nc, nr):
 
 
 def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14, px=None, abaixo_de=None,
-                        racha=None):
+                        racha=None, ponto=None, adiar=False, max_celulas=None, n_cacos=24):
     """
     Estilhacos no estilo SAO, em pixel art: a foto do item vira blocos de
     `px` px de tela e se parte em cacos feitos desses blocos (contorno ciano
@@ -1162,8 +1162,13 @@ def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14, px=N
     durante `racha` s) e os cacos seguem o golpe.
     abaixo_de = camada (na Window) que continua por cima dos cacos - o Yoru
     nunca fica escondido atras deles.
+    ponto = (x, y) na janela por onde o talho passa (padrao: o meio do item).
+    adiar=True: so PREPARA (foto, cacos, texturas - a parte pesada) e devolve
+    a funcao que solta a explosao; assim a conta pode ser feita num momento
+    em que a cena esta congelada, e a explosao sai sem tranco.
+    max_celulas / n_cacos: limite de blocos e quantos cacos (itens grandes).
     """
-    if tremor:
+    if tremor and not adiar:
         tremer_tela(tremor)
     fim = [False]
 
@@ -1181,6 +1186,10 @@ def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14, px=N
         except Exception as e:
             print(f"[estilhacos] callback: {e}")
 
+    def _falhou(*_):
+        widget_alvo.opacity = 0
+        _acabar()
+
     camada = Widget(size_hint=(None, None), size=Window.size, pos=(0, 0))
     try:
         if widget_alvo.parent:
@@ -1189,10 +1198,9 @@ def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14, px=N
             gx, gy = widget_alvo.to_window(0, 0)
         gw, gh = max(1.0, widget_alvo.width), max(1.0, widget_alvo.height)
         b = float(px or max(3, round(dp(3))))
-        b = max(b, math.ceil(math.sqrt(gw * gh / float(_CACO_MAX_CELULAS))))
+        b = max(b, math.ceil(math.sqrt(gw * gh / float(max_celulas or _CACO_MAX_CELULAS))))
         nc, nr, cel = _foto_em_blocos(widget_alvo, gw, gh, b)
-        widget_alvo.opacity = 0
-        dono, n = _cacos_em_blocos(nc, nr, cel)
+        dono, n = _cacos_em_blocos(nc, nr, cel, n_cacos)
         grupos = [[] for _ in range(n)]
         for c, d in enumerate(dono):
             if d >= 0:
@@ -1202,7 +1210,7 @@ def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14, px=N
         racha = (0.16 if racha is None else racha) if cortes else 0.0     # tempo rachando antes de voar
         dirs = [(math.cos(math.radians(a)), math.sin(math.radians(a))) for a in cortes] or [(1.0, 0.0)]
         ux, uy = dirs[0]
-        ccx, ccy = gx + gw / 2.0, gy + gh / 2.0
+        ccx, ccy = ponto if ponto is not None else (gx + gw / 2.0, gy + gh / 2.0)
 
         cacos = []
         talho, brilho_talho = [], []
@@ -1263,11 +1271,6 @@ def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14, px=N
             for _ in range(min(90, len(cacos) * 3)):
                 c = Color(*random.choice(((0.7, 1.0, 1.0, 1), (1.0, 1.0, 1.0, 1), (0.78, 0.6, 1.0, 1))))
                 luzes.append([c, Rectangle(size=(0, 0)), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        Window.add_widget(camada)
-        if abaixo_de is not None and abaixo_de.parent is Window:
-            Window.remove_widget(abaixo_de)                # o Yoru volta para cima dos cacos
-            Window.add_widget(abaixo_de)
-
         def _poe(k):
             """Enquadra o caco na grade de blocos, girado de 90 em 90."""
             rq = k['rq'] % 4
@@ -1364,12 +1367,28 @@ def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14, px=N
                 print(f"[estilhacos] {e}")
                 _acabar()
                 return False
-        Clock.schedule_interval(_passo, 1 / 60.)
-        Clock.schedule_once(_acabar, 2.0 + racha)  # seguranca
+        def _soltar(*_):
+            try:
+                widget_alvo.opacity = 0
+                Window.add_widget(camada)
+                if abaixo_de is not None and abaixo_de.parent is Window:
+                    Window.remove_widget(abaixo_de)            # o Yoru volta para cima dos cacos
+                    Window.add_widget(abaixo_de)
+                if tremor and adiar:
+                    tremer_tela(tremor)
+                Clock.schedule_interval(_passo, 1 / 60.)
+                Clock.schedule_once(_acabar, 2.0 + racha)      # seguranca
+            except Exception as e:
+                print(f"[estilhacos] soltar: {e}")
+                _falhou()
+        if adiar:
+            return _soltar
+        _soltar()
     except Exception as e:
         print(f"[estilhacos] ignorado: {e}")
-        widget_alvo.opacity = 0
-        _acabar()
+        if adiar:
+            return _falhou
+        _falhou()
 
 
 # ══════════════════════════════════════════════════════════════════════

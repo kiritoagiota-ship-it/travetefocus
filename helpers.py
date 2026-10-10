@@ -20,6 +20,7 @@ import math
 import random
 
 import som
+from animacoes_ui import fmt_br
 from efeitos import (
     InputHolografico, BotaoAngular, BotaoAngularAlerta,
     ListaItem, tremer_tela, explodir_estilhacos
@@ -513,7 +514,8 @@ def anexar_teclado(inp, tipo='letras', decimal=False, sugestoes=None):
     inp.bind(on_touch_down=_toque_campo)
 
 
-def popup_pedir_xp(nome: str, quantidade: int, on_save):
+def popup_pedir_xp(nome: str, quantidade: int, on_save, titulo=">> LOTE DETECTADO",
+                   pergunta="Valor de XP por peça:"):
     pop, layout = _make_popup()
     h = min(dp(290), int(Window.height * 0.52))
     caixa = BoxLayout(
@@ -522,10 +524,10 @@ def popup_pedir_xp(nome: str, quantidade: int, on_save):
     aplicar_fundo_holografico(caixa, (0.55, 0.05, 0.95, 0.9))
 
     lbl_info = Label(
-        text=(f"[color=#8a2be2]>> LOTE DETECTADO[/color]\n"
+        text=(f"[color=#8a2be2]{titulo}[/color]\n"
               f"[color=#00e5ff][b]{nome}[/b][/color]   "
               f"[color=#555555]× {quantidade} un.[/color]\n"
-              f"[color=#444444]Valor de XP por peça:[/color]"),
+              f"[color=#444444]{pergunta}[/color]"),
         markup=True, font_name="orbitron.ttf", font_size="12sp",
         halign="center", size_hint_y=None, height=dp(72))
 
@@ -567,6 +569,154 @@ def popup_pedir_xp(nome: str, quantidade: int, on_save):
     _abrir_popup(caixa, pop)
     _bind_teclado(caixa, pop)
     # teclado customizado SAO — sem teclado Android
+
+
+def ler_area_de_transferencia():
+    """O texto que esta copiado no celular ('' se nao der para ler)."""
+    try:
+        from kivy.core.clipboard import Clipboard
+        return Clipboard.paste() or ''
+    except Exception as e:
+        print(f"[colar] {e}")
+        return ''
+
+
+_DIAS_CURTOS = ('seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom')
+
+
+def dia_curto(dia):
+    """'05/10/2026' -> '05/10 (seg)'"""
+    try:
+        d = datetime.strptime(dia, "%d/%m/%Y")
+        return f"{d.strftime('%d/%m')} ({_DIAS_CURTOS[d.weekday()]})"
+    except ValueError:
+        return dia
+
+
+def popup_importar_zap(itens, on_confirm):
+    """O que foi achado no texto copiado do WhatsApp, separado por dia.
+    Tocar numa peça tira (ou devolve) ela. on_confirm(itens que ficaram)."""
+    import importar_zap
+    from kivy.uix.scrollview import ScrollView
+    from kivy.uix.gridlayout import GridLayout
+    pop, layout = _make_popup()
+    alt = min(int(dp(610)), int(Window.height * 0.86))
+    caixa = BoxLayout(orientation='vertical', padding=[dp(16), dp(14), dp(16), dp(14)], spacing=dp(8),
+                      size_hint=(0.92, None), height=alt)
+    aplicar_fundo_holografico(caixa, (0.15, 0.95, 0.5, 0.9))
+    caixa.add_widget(Label(
+        text="[b][color=#3dff8f]>>  COLADO DO WHATSAPP[/color][/b]", markup=True, font_name="orbitron.ttf",
+        font_size="14sp", size_hint_y=None, height=dp(28), halign="center"))
+    lbl_resumo = Label(markup=True, font_name="rajdhani.ttf", font_size="17sp", size_hint_y=None,
+                       height=dp(26), halign="center", valign="middle")
+    caixa.add_widget(lbl_resumo)
+    caixa.add_widget(Label(
+        text="[color=#6f7a92]Toque numa peça para tirar da lista.[/color]", markup=True,
+        font_name="rajdhani.ttf", font_size="13sp", size_hint_y=None, height=dp(18), halign="center"))
+    rolagem = ScrollView(bar_width=dp(3))
+    grade = GridLayout(cols=1, size_hint_y=None, spacing=dp(5), padding=[0, dp(2), 0, dp(2)])
+    grade.bind(minimum_height=grade.setter('height'))
+    rolagem.add_widget(grade)
+    caixa.add_widget(rolagem)
+    ativos = [True] * len(itens)
+    cabecas = []                                   # (label, [indices])
+    varios = len({it.get('quem', '') for it in itens}) > 1
+
+    def _resumo():
+        vivos = [it for i, it in enumerate(itens) if ativos[i]]
+        dias = len({it['dia'] for it in vivos})
+        pecas = sum(it['qtd'] for it in vivos)
+        lbl_resumo.text = (f"[color=#aab4c8]{len(vivos)} {'lote' if len(vivos) == 1 else 'lotes'} em "
+                           f"{dias} {'dia' if dias == 1 else 'dias'}[/color]   "
+                           f"[color=#00e5ff][b]{fmt_br(pecas)} un.[/b][/color]")
+        for lbl, dia, idxs in cabecas:
+            tot = sum(itens[i]['qtd'] for i in idxs if ativos[i])
+            lbl.text = (f"[color=#3dff8f]{dia_curto(dia)}[/color]"
+                        f"   [color=#6f7a92]{fmt_br(tot)} un.[/color]")
+
+    def _texto(i):
+        it = itens[i]
+        quem = f"   [color=#6f7a92]{it['quem'][:12]}[/color]" if varios and it.get('quem') else ""
+        nome = it['nome'] if len(it['nome']) <= 24 else it['nome'][:23] + "…"
+        if ativos[i]:
+            return f"  {nome}   [color=#00ff88]{fmt_br(it['qtd'])} un.[/color]{quem}"
+        return f"  [color=#4a5068][s]{nome}   {fmt_br(it['qtd'])} un.[/s]   (fora)[/color]"
+
+    def _alternar(btn, i):
+        ativos[i] = not ativos[i]
+        btn.text = _texto(i)
+        btn.cor_borda = [0.0, 0.85, 1.0, 0.85] if ativos[i] else [0.25, 0.28, 0.4, 0.5]
+        try:
+            import tatil
+            tatil.tecla()
+        except Exception:
+            pass
+        _resumo()
+
+    pos = {id(it): i for i, it in enumerate(itens)}
+    for dia, grupo in importar_zap.por_dia(itens):
+        idxs = [pos[id(it)] for it in grupo]
+        cab = Label(markup=True, font_name="orbitron.ttf", font_size="11sp", size_hint_y=None, height=dp(24),
+                    halign="left", valign="bottom")
+        cab.bind(size=lambda i, s: setattr(i, 'text_size', s))
+        grade.add_widget(cab)
+        cabecas.append((cab, dia, idxs))
+        for i in idxs:
+            b = ListaItem(text=_texto(i), font_size="15sp")
+            b.height = dp(42)
+            b.bind(on_release=lambda inst, i=i: _alternar(inst, i))
+            grade.add_widget(b)
+    _resumo()
+
+    botoes = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(12))
+    btn_ok = BotaoAngular(text=">>  CONTINUAR", size_hint_x=0.6)
+    btn_ok.cor_borda = btn_ok.cor_borda_kv = [0, 1, 0.55, 0.9]
+    btn_ok.cor_texto = [0, 1, 0.55, 1]
+    btn_nao = BotaoAngular(text="CANCELAR", size_hint_x=0.4)
+    botoes.add_widget(btn_ok)
+    botoes.add_widget(btn_nao)
+    caixa.add_widget(botoes)
+    layout.add_widget(caixa)
+    caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+    feito = [False]
+
+    def _continuar(*_):
+        vivos = [it for i, it in enumerate(itens) if ativos[i]]
+        if not vivos:
+            tremer_widget(btn_ok)
+            return
+        if feito[0]:
+            return
+        feito[0] = True
+        pop.dismiss()
+        on_confirm(vivos)
+
+    btn_ok.bind(on_release=_continuar)
+    btn_nao.bind(on_release=lambda *_: pop.dismiss())
+    _abrir_popup(caixa, pop)
+
+
+def popup_aviso(texto, cor='#00e5ff', titulo=None):
+    """Aviso curto com um OK."""
+    pop, layout = _make_popup()
+    linhas = texto.count('\n') + 1
+    caixa = BoxLayout(orientation='vertical', padding=[dp(22), dp(18), dp(22), dp(18)], spacing=dp(12),
+                      size_hint=(0.86, None), height=dp(132) + dp(22) * linhas + (dp(26) if titulo else 0))
+    aplicar_fundo_holografico(caixa, (0, 0.9, 1, 0.9))
+    if titulo:
+        caixa.add_widget(Label(text=f"[b][color={cor}]{titulo}[/color][/b]", markup=True,
+                               font_name="orbitron.ttf", font_size="13sp", size_hint_y=None, height=dp(26),
+                               halign="center"))
+    lbl = Label(text=f"[color=#c8d2e6]{texto}[/color]", markup=True, font_name="rajdhani.ttf", font_size="16sp",
+                halign="center", valign="middle")
+    lbl.bind(size=lambda i, s: setattr(i, 'text_size', s))
+    caixa.add_widget(lbl)
+    btn = BotaoAngular(text=">>  OK", size_hint_y=None, height=dp(50))
+    btn.bind(on_release=lambda *_: pop.dismiss())
+    caixa.add_widget(btn)
+    layout.add_widget(caixa)
+    caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+    _abrir_popup(caixa, pop)
 
 
 def popup_delete_engracado(on_confirm, pergunta="Desintegrar este registro?", botao="DESINTEGRAR"):
@@ -759,10 +909,16 @@ def popup_trocar_senha():
     return pop
 
 
-def popup_resumo_dia(tot_pecas, tot_xp, on_confirm):
+def popup_resumo_dia(tot_pecas, tot_xp, on_confirm, dias=None, pede_data=True):
+    """dias = [(dia 'dd/mm/aaaa', pecas)] das peças que ja tem dia (coladas do
+    WhatsApp): cada dia vira um turno separado. pede_data=False: nenhuma
+    peça sem dia, o campo da data some."""
     pop, layout = _make_popup()
+    dias = list(dias or [])
+    mostra = dias[:6]
+    extra_h = (dp(26) + dp(21) * (len(mostra) + (1 if len(dias) > len(mostra) else 0))) if dias else 0
     # dp() garante tamanho correto em qualquer densidade de tela
-    alt = min(int(dp(400)), int(Window.height * 0.68))
+    alt = min(int(dp(400) + extra_h - (0 if pede_data else dp(92))), int(Window.height * 0.86))
     caixa = BoxLayout(
         orientation='vertical',
         padding=[dp(26), dp(16), dp(26), dp(16)],
@@ -789,11 +945,30 @@ def popup_resumo_dia(tot_pecas, tot_xp, on_confirm):
                     f"[color=#00ff88][b]+{tot_xp} XP[/b][/color]"),
               markup=True, font_name="rajdhani.ttf", font_size="18sp",
               halign="center", size_hint_y=None, height=dp(88)),
-        Label(text="[color=#555555]Data do turno:[/color]",
-              markup=True, font_name="orbitron.ttf", font_size="11sp",
-              halign="center", size_hint_y=None, height=dp(22)),
     ]:
         caixa.add_widget(w)
+    if dias:
+        linhas = [f"[color=#3dff8f]{dia_curto(d)}[/color]   [color=#00e5ff]{fmt_br(p)} un.[/color]"
+                  for d, p in mostra]
+        if len(dias) > len(mostra):
+            resto = dias[len(mostra):]
+            linhas.append(f"[color=#6f7a92]e mais {len(resto)} "
+                          f"{'dia' if len(resto) == 1 else 'dias'} "
+                          f"({fmt_br(sum(p for _, p in resto))} un.)[/color]")
+        caixa.add_widget(Label(
+            text=f"[color=#555555]{len(dias)} {'TURNO SEPARADO' if len(dias) == 1 else 'TURNOS SEPARADOS'} "
+                 f"POR DIA:[/color]",
+            markup=True, font_name="orbitron.ttf", font_size="10sp", halign="center", size_hint_y=None,
+            height=dp(22)))
+        caixa.add_widget(Label(
+            text="\n".join(linhas), markup=True, font_name="rajdhani.ttf", font_size="15sp", halign="center",
+            valign="middle", size_hint_y=None, height=dp(21) * len(linhas)))
+    if pede_data:
+        caixa.add_widget(Label(
+            text=("[color=#555555]Data das peças sem dia:[/color]" if dias
+                  else "[color=#555555]Data do turno:[/color]"),
+            markup=True, font_name="orbitron.ttf", font_size="11sp",
+            halign="center", size_hint_y=None, height=dp(22)))
 
     inp_data = InputHolografico(
         text=hoje.strftime("%d/%m/%Y"),
@@ -808,7 +983,8 @@ def popup_resumo_dia(tot_pecas, tot_xp, on_confirm):
     lbl_aviso.bind(size=lambda i, s: setattr(i, 'text_size', s))
     btn = BotaoAngular(text=">>  SALVAR TURNO  <<", size_hint_y=None, height=dp(52))
     # o campo vem antes do botao: o teclado sobe a caixa inteira
-    caixa.add_widget(inp_data)
+    if pede_data:
+        caixa.add_widget(inp_data)
     caixa.add_widget(lbl_aviso)
     caixa.add_widget(btn)
 
@@ -820,7 +996,7 @@ def popup_resumo_dia(tot_pecas, tot_xp, on_confirm):
     def _confirmar(*_):
         if salvo[0]:                      # toque duplo: o turno ja foi salvo
             return
-        d, motivo = ler_data(inp_data.text)
+        d, motivo = ler_data(inp_data.text) if pede_data else (hoje, None)
         if d is None:                     # antes virava 'hoje' sem avisar
             lbl_aviso.text = f"[color=#ff4455]{motivo}[/color]"
             try:
