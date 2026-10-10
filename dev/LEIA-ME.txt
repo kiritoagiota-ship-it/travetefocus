@@ -38,11 +38,29 @@ ANIMACAO QUADRO A QUADRO (relogio simulado: 60 quadros/s exatos, a foto nao atra
                     meta, apagar periodo, WhatsApp, apagar turno, WIPE) ou CENA=pin
                     CENA=app CADA=3 TOUR_PY=dev/filme_cenas.py bash dev/tour.sh 720 1560 SAIDA 1.75
                     -> fNNNNNN.png + filme.json (fases com o quadro de cada cena)
+                    CENA=telas CADA=0: foto de cada tela e aviso (tela_NN-nome.png);
+                    CENA=zap CADA=0: o COLAR DO WHATSAPP de ponta a ponta
   analisa_filme.py  PASTA [quadros]: por trecho, desenhos novos x deslizando x
                     girando; desenhos por segundo do corpo, sobretudo e cabeca
                     (alvo: 12 a 18 por segundo)
   folha_filme.py    PASTA ini fim passo SAIDA: folha de quadros recortada no Yoru
   zoom_filme.py     PASTA SAIDA q1,q2,...: quadros ampliados (pixel duro)
+
+O CHEFE DA ABERTURA ("THE ABYSS WARDEN" - desenhado aqui, sem referencia)
+  chefe_arte.py     Desenha o chefe em pixel art, peca por peca (capa, pernas,
+                    tronco, cabeca, ombreiras, bracos, garra, montante): formas
+                    pintadas em faixas de cor, quinas, frisos, fendas de lava.
+                    previa SAIDA.png [zoom] (montado) / pecas SAIDA.png (separadas)
+  chefe_rig.py      Anima o chefe peca por peca (capa em tiras ao vento, respira,
+                    bracos e montante girando, fendas pulsando, fogo e faiscas):
+                    gerar (-> app/chefe/clipes.bin), gif [clipes|todos] SAIDA.gif,
+                    folha CLIPE SAIDA.png. Mudou pose/tempo: editar clipes().
+  sons_chefe.py     O rugido do chefe (sons/rugido.wav), sintetizado.
+
+COLAR DO WHATSAPP
+  teste_importar.py Testa importar_zap.ler com 10 jeitos de texto copiado do
+                    WhatsApp (python dev/teste_importar.py -> "0 falhas").
+                    O fluxo inteiro no app: CENA=zap no filme_cenas.py.
 
 BANKAI (desenhos da referencia do usuario, copiados pixel a pixel)
   bankai_ref.py     copia uma pose da referencia (referencias/2026-09-29_bankai_referencia.png)

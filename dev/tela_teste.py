@@ -834,7 +834,8 @@ def roteiro_teste():
                                          f"popups = {_popups()}")))
         passos.append((0.3, lambda: _toque_duplo('APAGAR')))
         passos.append((0.8, lambda: _toque_duplo('APAGAR')))          # o APAGAR da pergunta (2 toques)
-        passos.append((3.0, lambda: fase(f"D depois de confirmar: turnos apagados = {est['mem1'] - len(app_().memorias)}, "
+        # (o Yoru crava a estocada e o cartao vira cacos: uns 4 s ate apagar)
+        passos.append((5.5, lambda: fase(f"D depois de confirmar: turnos apagados = {est['mem1'] - len(app_().memorias)}, "
                                          f"popups = {_popups()}")))
     if _os.environ.get('VOLTA') == '1':               # botao VOLTAR do Android (tecla 27)
         def _voltar():
