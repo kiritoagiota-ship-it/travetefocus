@@ -6321,13 +6321,13 @@ def _linhas_de(widgets, limite=6, area=None):
     return out[:limite]
 
 
-def kirito_vitoria(alvo, linhas=None):
+def kirito_vitoria(alvo, linhas=None, area=None):
     """FINALIZAR TURNO - guardar o turno: o Yoru aparece com a lamina na
     mao; as pecas do dia (`linhas`: onde cada uma estava na lista) viram luz
     e se juntam num cartao do turno ao lado dele; ele sacode a lamina,
     embainha ate o clique, carimba o cartao com a mao (o visto verde de
     salvo), o cartao voa para as Memorias e ele comemora. Nenhum corte."""
-    if _na_fila(lambda: kirito_vitoria(alvo, linhas)):
+    if _na_fila(lambda: kirito_vitoria(alvo, linhas, area)):
         return
     try:
         s = _Mini(alvo, None, seguranca=6.0, destruir=False)
@@ -6343,7 +6343,7 @@ def kirito_vitoria(alvo, linhas=None):
                   P['embainha1_b'], P['embainha1_c'], P['guardado']]
         bate_a = _com(P['joga_arma'], olhos='s')
         bate = _com(P['joga'], olhos='g')
-        riscos = _linhas_de(linhas, limite=7)
+        riscos = _linhas_de(linhas, limite=7, area=area)      # so as pecas que estavam a vista
         b = te * 4
         lc, ac = len(_CARTAO[0]) * b, len(_CARTAO) * b
         # ele a esquerda, o cartao a direita, na altura de onde a lista estava
@@ -6466,7 +6466,7 @@ def _vistos(camada, x, y, te, cor=VERDE_ZAP):
     camada.add_widget(_EfeitoPixel(cores, 0.8, forma))
 
 
-def kirito_carta(alvo, on_fim=None, linhas=None):
+def kirito_carta(alvo, on_fim=None, linhas=None, area=None):
     """ENVIAR PRO WHATSAPP: o Yoru aparece ao lado do botao com a mao
     estendida; as linhas do turno (`linhas`: os widgets de cada peca) acendem
     em verde e voam para a mao dele, onde viram uma carta; ele joga a carta
@@ -6503,7 +6503,7 @@ def kirito_carta(alvo, on_fim=None, linhas=None):
         carta.linhas = 0
         na_mao = lambda: (k.ponto_mao(1)[0] + b * 2, k.ponto_mao(1)[1] + b * 6)
         carta.segue = na_mao
-        riscos = _linhas_de(linhas, limite=6)
+        riscos = _linhas_de(linhas, limite=6, area=area)      # so as linhas que estao a vista
 
         def _junta():
             s.cam.add_widget(carta)

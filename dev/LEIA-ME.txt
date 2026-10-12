@@ -41,6 +41,8 @@ ANIMACAO QUADRO A QUADRO (relogio simulado: 60 quadros/s exatos, a foto nao atra
                     -> fNNNNNN.png + filme.json (fases com o quadro de cada cena)
                     CENA=telas CADA=0: foto de cada tela e aviso (tela_NN-nome.png);
                     CENA=zap CADA=0: o COLAR DO WHATSAPP de ponta a ponta
+                    CENA=varre CADA=0 VARRE="turnos,itens,pecas": casos extremos de
+                    guardar o turno, carta e WIPE (ex.: "1,0,1" e "40,30,14")
   analisa_filme.py  PASTA [quadros]: por trecho, desenhos novos x deslizando x
                     girando; desenhos por segundo do corpo, sobretudo e cabeca
                     (alvo: 12 a 18 por segundo)

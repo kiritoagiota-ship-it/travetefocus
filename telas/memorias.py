@@ -472,8 +472,10 @@ class TelaMemorias(Screen):
             # sai voando - o WhatsApp abre quando ele sai de cena
             try:
                 from cenas import kirito_carta
+                sx, sy = scroll.to_window(scroll.x, scroll.y)
                 kirito_carta(btn_zap, _enviar,
-                             linhas=[w for w in items_box.children if w is not titulo][::-1])
+                             linhas=[w for w in items_box.children if w is not titulo][::-1],
+                             area=(sx, sy, sx + scroll.width, sy + scroll.height))
             except Exception as e:
                 print(f"[whatsapp] carta: {e}")
                 _enviar()

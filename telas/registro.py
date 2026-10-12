@@ -254,7 +254,13 @@ class TelaRegistro(Screen):
             tatil.vitoria()
             tremer_tela(12)
             # onde cada peca estava na lista: e dali que elas voam para o cartao do turno
-            linhas = []
+            linhas, area = [], None
+            try:
+                sv = self.ids.lista_container.parent
+                sx, sy = sv.to_window(sv.x, sv.y)
+                area = (sx, sy, sx + sv.width, sy + sv.height)
+            except Exception:
+                pass
             for w in self.ids.lista_container.children:
                 try:
                     x, y = w.to_window(w.x, w.y)
@@ -265,7 +271,7 @@ class TelaRegistro(Screen):
             # o Yoru guarda o turno: as pecas viram um cartao, ele embainha e carimba
             try:
                 from cenas import kirito_vitoria
-                Clock.schedule_once(lambda dt: kirito_vitoria(self, linhas), 0.35)
+                Clock.schedule_once(lambda dt: kirito_vitoria(self, linhas, area), 0.35)
             except Exception as e:
                 print(f"[registro] vitoria: {e}")
 

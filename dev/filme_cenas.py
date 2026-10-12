@@ -46,10 +46,18 @@ for i, d in enumerate(range(15, 25)):
     memorias.append({'data': f'{d:02d}/09/2026  17:{10 + i:02d}', 'total': sum(int(x[1]) for x in itens),
                      'xp': sum(x[2] for x in itens), 'itens': itens, 'ts': 1790000000 + i})
 registros = [['Camisa polo', '180', 540], ['Calca jeans', '95', 380], ['Vestido longo', '60', 240]]
+if CENA == 'varre':
+    # casos extremos: VARRE="turnos,itens do ultimo turno,pecas no registro"
+    _nm, _ni, _nr = [int(v) for v in os.environ.get('VARRE', '1,0,1').split(',')]
+    memorias = [{'data': f'{1 + i % 28:02d}/{1 + (i // 28) % 12:02d}/2026  17:00', 'total': 100, 'xp': 300,
+                 'itens': [['Camisa polo', '100', 300]], 'ts': 1790000000 + i} for i in range(_nm)]
+    if memorias:
+        memorias[-1]['itens'] = [[nomes[j % len(nomes)] + ' %d' % j, '10', 30] for j in range(_ni)]
+    registros = [[nomes[j % len(nomes)] + ' %d' % j, '10', 30] for j in range(_nr)]
 dados = {
     'memorias': memorias, 'total_geral': sum(m['total'] for m in memorias), 'meta_geral': 10000,
     'total_xp': sum(m['xp'] for m in memorias) + sum(r[2] for r in registros),
-    'registros': registros, 'streak': 10, 'melhor_dia': max(m['total'] for m in memorias),
+    'registros': registros, 'streak': 10, 'melhor_dia': max([m['total'] for m in memorias] or [0]),
     'ultima_data': '24/09/2026',
     'periodos_ganhos': [
         {'tipo': 'semanal', 'data_inicio': '01/09/2026', 'data_fim': '07/09/2026',
@@ -60,7 +68,7 @@ dados = {
 }
 with open(os.path.join(pasta_app, 'dados.json'), 'w', encoding='utf-8') as f:
     json.dump(dados, f, ensure_ascii=False)
-if CENA in ('app', 'telas', 'zap'):
+if CENA in ('app', 'telas', 'zap', 'varre'):
     with open(os.path.join(pasta_app, '.tf_session'), 'w') as f:
         f.write(str(time.time()))
 
@@ -456,12 +464,33 @@ def roteiro_zap():
     Roteiro(passos).rodar()
 
 
+def roteiro_varre():
+    """Casos extremos das cenas novas (fotos): guardar o turno, a carta do
+    WhatsApp e o WIPE com muita ou pouca coisa na tela."""
+    def ir(nome):
+        return lambda: app().mudar_tela(nome)
+
+    def fotos(nome, n, cada=0.45):
+        return [(cada, lambda i=i: foto('%s-%d' % (nome, i))) for i in range(n)]
+    passos = [(0.3, ir('registro')), (1.8, soltar_foco), (0.3, lambda: foto('registro')),
+              (0.3, lambda: tela().finalizar_dia()),
+              (0.8, lambda: (fase('guardar'), apertar('SALVAR TURNO')))] + fotos('guardar', 12)
+    passos += [(0.6, ir('memorias')), (1.8, lambda: foto('memorias')),
+               (0.3, lambda: tela().abrir_detalhes_memoria(app().memorias[-2] if len(app().memorias) > 1
+                                                           else app().memorias[-1])),
+               (0.8, lambda: (fase('carta'), apertar('WHATSAPP')))] + fotos('carta', 9)
+    passos += [(1.2, fechar_popups), (0.6, fechar_popups), (0.6, lambda: tela().confirmar_wipe()),
+               (0.8, lambda: (fase('wipe'), apertar('FORMATAR')))] + fotos('wipe', 16) + \
+              [(2.0, lambda: foto('depois-do-wipe')), (0.4, fim)]
+    Roteiro(passos).rodar()
+
+
 def esperar_menu(dt):
     if app().root.ids.sm.current != 'menu':
         Clock.schedule_once(esperar_menu, 0.05)
         return
     fase('menu')
-    Clock.schedule_once(lambda dt: {'telas': roteiro_telas, 'zap': roteiro_zap}.get(CENA, roteiro_app)(), 1.0)
+    Clock.schedule_once(lambda dt: {'telas': roteiro_telas, 'zap': roteiro_zap, 'varre': roteiro_varre}.get(CENA, roteiro_app)(), 1.0)
 
 
 def roteiro_pin():
