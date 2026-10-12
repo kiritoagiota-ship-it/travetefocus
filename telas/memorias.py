@@ -468,13 +468,14 @@ class TelaMemorias(Screen):
 
         def _whatsapp(*_):
             tatil.confirmar()
-            # o Yoru joga um pergaminho de luz para fora da tela; o WhatsApp
-            # abre quando o pergaminho sai
+            # as linhas do turno viram uma carta na mao do Yoru; ele corta e ela
+            # sai voando - o WhatsApp abre quando ele sai de cena
             try:
-                from cenas import kirito_pergaminho
-                kirito_pergaminho(btn_zap, _enviar)
+                from cenas import kirito_carta
+                kirito_carta(btn_zap, _enviar,
+                             linhas=[w for w in items_box.children if w is not titulo][::-1])
             except Exception as e:
-                print(f"[whatsapp] pergaminho: {e}")
+                print(f"[whatsapp] carta: {e}")
                 _enviar()
 
         _bind_teclado(inp_data, pop)
@@ -597,7 +598,9 @@ class TelaMemorias(Screen):
                 sv = self.ids.memorias_container.parent
                 x0, y0 = sv.to_window(sv.x, sv.y)
                 area = (x0, y0, x0 + sv.width, y0 + sv.height)
-                kirito_wipe(itens, _apagar_tudo, grafico=self.ids.grafico_barras, area_lista=area)
+                kirito_wipe(itens, _apagar_tudo, grafico=self.ids.grafico_barras, area_lista=area,
+                            extras=[b for b in self.ids.filtros_container.children
+                                    if getattr(b, 'text', '') != "TODOS"])   # os meses somem junto
             except Exception as e:
                 print(f"[memorias] wipe animado: {e}")
                 _apagar_tudo()
@@ -610,6 +613,8 @@ class TelaMemorias(Screen):
             app.streak = 0
             app.ultima_data = ""
             app.salvar_dados()
+            self.filtro_mes = "TODOS"
+            self._atualizar_filtros()
             self.atualizar_lista()
             self._atualizar_grafico()
             # o grafico foi fatiado no golpe final: volta vazio, acendendo

@@ -3557,6 +3557,7 @@ class KiritoPixel(Widget):
         self._pose = self._base           # pose desenhada (com fisica)
         self._ult_chave = None
         self._desenho = None              # clipe do Bankai tocando (None = boneco montado)
+        self.escala_clipe = 1.0           # tamanho do desenho dos clipes (2 = cada ponto vira 2x2)
         self._clipe_t = 0.0
         self._clipe_loop = True
         self._clipe_fim = None
@@ -3685,10 +3686,14 @@ class KiritoPixel(Widget):
             x = TW - 1 - x
         return (x + 0.5) * te, (y + 0.5) * te
 
+    def te_clipe(self):
+        """Tamanho na tela de um ponto do desenho dos clipes (Bankai, reiatsu)."""
+        return self.ps / float(R) * self.escala_clipe
+
     def _local_desenho(self, sx, sy):
         """Pixel (sx, sy) da tela do clipe (y para baixo) -> px locais."""
         cab = clipes_dados()
-        te = self.ps / float(R)
+        te = self.te_clipe()
         ax, ay = self.ancora_local()
         qx, qy = cab['quadril']
         dx = (sx - qx) * te
@@ -3744,7 +3749,7 @@ class KiritoPixel(Widget):
     def extensao(self, p=None):
         if p is None and self._desenho is not None:
             cab = clipes_dados()
-            te = self.ps / float(R)
+            te = self.te_clipe()
             qx, qy = cab['quadril']
             x0, y0, w, h = quadro_clipe(self._desenho, self._quadro_atual())[1]
             esq, dir_ = (qx - x0) * te, (x0 + w - qx) * te
@@ -3883,7 +3888,7 @@ class KiritoPixel(Widget):
         if chave == self._ult_chave and not forcar:
             return
         self._ult_chave = chave
-        te = self.ps / float(R)
+        te = self.te_clipe()
         tex, (cx0, cy0, w, h), _, _ = quadro_clipe(self._desenho, f)
         # canto de baixo/esquerda do quadro (a tela do clipe tem y para baixo)
         xa, y0 = self._local_desenho(cx0, cy0 + h)

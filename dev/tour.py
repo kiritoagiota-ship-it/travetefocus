@@ -390,7 +390,7 @@ def tour():
         (1.5, lambda: ir('memorias')),
         (1.5, lambda: rajada('memorias', 1.2, 0.1)),
         # (o aviso de copiado so abre depois que o Yoru joga o pergaminho e sai)
-        (1.6, mem_detalhe), (1.0, mem_zap), (3.6, lambda: foto('whatsapp-aviso')),
+        (1.6, mem_detalhe), (1.0, mem_zap), (5.0, lambda: foto('whatsapp-aviso')),
         (0.6, lambda: apertar('OK')), (0.8, mem_fecha),
         (1.0, lambda: ir('progresso')),
         (1.2, lambda: rajada('progresso', 2.6, 0.1)),

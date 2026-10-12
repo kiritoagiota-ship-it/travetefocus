@@ -297,7 +297,7 @@ def roteiro_app():
     # finalizar turno (vitoria)
     passos += [(0.4, soltar_foco), (0.2, lambda: tela().finalizar_dia()),
                (0.8, lambda: (fase('vitoria'), apertar('SALVAR TURNO'))),
-               (4.5, lambda: fase('fim vitoria'))]
+               (5.8, lambda: fase('fim vitoria'))]
 
     # subir de nivel (Progresso)
     def _prepara_nivel():
@@ -327,7 +327,7 @@ def roteiro_app():
     # WhatsApp (pergaminho)
     passos += [(0.3, ir('memorias')), (1.8, lambda: tela().abrir_detalhes_memoria(app().memorias[-1])),
                (0.8, lambda: (fase('pergaminho'), apertar('WHATSAPP'))),
-               (3.0, lambda: (fase('fim pergaminho'), fechar_popups()))]
+               (4.4, lambda: (fase('fim pergaminho'), fechar_popups()))]
     # apagar o dia (estocada)
     passos += [(0.8, lambda: tela().abrir_detalhes_memoria(app().memorias[-1])),
                (0.8, lambda: apertar('APAGAR')),

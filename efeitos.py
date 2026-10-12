@@ -1026,6 +1026,19 @@ _CACO_LUZ = (200, 255, 255)        # borda de cima/esquerda (onde bate a luz)
 _CACO_SOMBRA = (30, 130, 185)      # borda de baixo/direita
 _CACO_CLARO = (235, 255, 255)
 _CACO_CRISTAL = ((70, 200, 255), (150, 235, 255))
+# paletas dos cacos: 'vidro' (itens da tela: cristal ciano) e 'brasa' (o chefe
+# da abertura: pedra escura com a borda em brasa, que vira cinza quente)
+_CACO_PALETAS = {
+    'vidro': {'luz': _CACO_LUZ, 'sombra': _CACO_SOMBRA, 'claro': _CACO_CLARO, 'cristal': _CACO_CRISTAL,
+              'veu': (3, 4, 10, 50, 64), 'reflexo': (45, 60, 60), 'estalo': (255, 255, 255),
+              'talho': (0.55, 1.0, 1.0),
+              'luzes': ((0.7, 1.0, 1.0, 1), (1.0, 1.0, 1.0, 1), (0.78, 0.6, 1.0, 1))},
+    'brasa': {'luz': (255, 196, 96), 'sombra': (150, 40, 16), 'claro': (255, 226, 150),
+              'cristal': ((214, 84, 30), (255, 150, 60)),
+              'veu': (1, 1, 0, 0, 0), 'reflexo': (40, 18, 6), 'estalo': (255, 236, 200),
+              'talho': (1.0, 0.62, 0.22),
+              'luzes': ((1.0, 0.72, 0.3, 1), (1.0, 0.92, 0.7, 1), (1.0, 0.42, 0.14, 1))},
+}
 _CACO_MAX_CELULAS = 4000          # itens grandes ganham blocos maiores (o custo fica igual)
 _CANTOS = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
 
@@ -1111,7 +1124,7 @@ def _cacos_em_blocos(nc, nr, cel, n_alvo=24):
     return dono, len(sementes)
 
 
-def _texturas_caco(g, d, dono, cel, nc, nr):
+def _texturas_caco(g, d, dono, cel, nc, nr, pal=None):
     """As 4 caras de um caco: foto (contorno ciano de 1 bloco), branco (o
     estalo), cristal e cristal ralado em xadrez (desfazendo)."""
     i0 = min(c % nc for c in g)
@@ -1119,6 +1132,10 @@ def _texturas_caco(g, d, dono, cel, nc, nr):
     j0 = min(c // nc for c in g)
     j1 = max(c // nc for c in g)
     w, h = i1 - i0 + 1, j1 - j0 + 1
+    pal = pal or _CACO_PALETAS['vidro']
+    vn, vd, vr, vg, vb = pal['veu']
+    rf = pal['reflexo']
+    estalo = bytes(pal['estalo']) + bytes((255,))
     foto, bran, cris, ralo = (bytearray(w * h * 4) for _ in range(4))
     for c in g:
         i, j = c % nc, c // nc
@@ -1132,15 +1149,15 @@ def _texturas_caco(g, d, dono, cel, nc, nr):
         if dentro:
             r, gg, bb = cel[c]
             # a foto com um veu ciano (vidro) e o reflexo um pouco mais claro
-            cf = (r * 3 // 4 + 10, gg * 3 // 4 + 50, bb * 3 // 4 + 64)
+            cf = (r * vn // vd + vr, gg * vn // vd + vg, bb * vn // vd + vb)
             if reflexo:
-                cf = (min(255, cf[0] + 45), min(255, cf[1] + 60), min(255, cf[2] + 60))
-            cc = _CACO_CRISTAL[1] if reflexo else _CACO_CRISTAL[0]
+                cf = (min(255, cf[0] + rf[0]), min(255, cf[1] + rf[1]), min(255, cf[2] + rf[2]))
+            cc = pal['cristal'][1] if reflexo else pal['cristal'][0]
         else:
-            cf = _CACO_LUZ if (not cima or not esq_) else _CACO_SOMBRA
-            cc = _CACO_CLARO
+            cf = pal['luz'] if (not cima or not esq_) else pal['sombra']
+            cc = pal['claro']
         foto[o:o + 4] = bytes((cf[0], cf[1], cf[2], 255))
-        bran[o:o + 4] = b'\xff\xff\xff\xff'
+        bran[o:o + 4] = estalo
         cris[o:o + 4] = bytes((cc[0], cc[1], cc[2], 255))
         if (i + j) % 2:
             ralo[o:o + 4] = bytes((cc[0], cc[1], cc[2], 255))
@@ -1149,7 +1166,7 @@ def _texturas_caco(g, d, dono, cel, nc, nr):
 
 
 def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14, px=None, abaixo_de=None,
-                        racha=None, ponto=None, adiar=False, max_celulas=None, n_cacos=24):
+                        racha=None, ponto=None, adiar=False, max_celulas=None, n_cacos=24, paleta=None):
     """
     Estilhacos no estilo SAO, em pixel art: a foto do item vira blocos de
     `px` px de tela e se parte em cacos feitos desses blocos (contorno ciano
@@ -1167,6 +1184,7 @@ def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14, px=N
     a funcao que solta a explosao; assim a conta pode ser feita num momento
     em que a cena esta congelada, e a explosao sai sem tranco.
     max_celulas / n_cacos: limite de blocos e quantos cacos (itens grandes).
+    paleta: 'vidro' (padrao, cristal ciano) ou 'brasa' (pedra em brasa).
     """
     if tremor and not adiar:
         tremer_tela(tremor)
@@ -1212,13 +1230,14 @@ def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14, px=N
         ux, uy = dirs[0]
         ccx, ccy = ponto if ponto is not None else (gx + gw / 2.0, gy + gh / 2.0)
 
+        pal = _CACO_PALETAS.get(paleta or 'vidro', _CACO_PALETAS['vidro'])
         cacos = []
         talho, brilho_talho = [], []
         with camada.canvas:
             for d, g in enumerate(grupos):
                 if not g:
                     continue
-                texs, i0, j0, w, h = _texturas_caco(g, d, dono, cel, nc, nr)
+                texs, i0, j0, w, h = _texturas_caco(g, d, dono, cel, nc, nr, pal)
                 cor = Color(1, 1, 1, 1)
                 ret = Rectangle(texture=texs[0], pos=(gx + i0 * b, gy + j0 * b), size=(w * b, h * b))
                 mx, my = gx + (i0 + w / 2.0) * b, gy + (j0 + h / 2.0) * b
@@ -1260,7 +1279,7 @@ def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14, px=N
                         vistos.add((ci, cj))
                         for sg in (-1, 1):
                             brilhos.add((ci + sg * ox, cj + sg * oy))
-                c_brilho = Color(0.55, 1.0, 1.0, 0)
+                c_brilho = Color(pal['talho'][0], pal['talho'][1], pal['talho'][2], 0)
                 for ci, cj in brilhos - vistos:
                     brilho_talho.append(Rectangle(pos=(gx + ci * b, gy + cj * b), size=(b, b)))
                 c_talho = Color(1, 1, 1, 0)
@@ -1269,7 +1288,7 @@ def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14, px=N
             # faiscas quadradas (os cacos viram luz no fim)
             luzes = []
             for _ in range(min(90, len(cacos) * 3)):
-                c = Color(*random.choice(((0.7, 1.0, 1.0, 1), (1.0, 1.0, 1.0, 1), (0.78, 0.6, 1.0, 1))))
+                c = Color(*random.choice(pal['luzes']))
                 luzes.append([c, Rectangle(size=(0, 0)), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         def _poe(k):
             """Enquadra o caco na grade de blocos, girado de 90 em 90."""

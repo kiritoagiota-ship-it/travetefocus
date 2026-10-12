@@ -34,8 +34,9 @@ ANIMACAO QUADRO A QUADRO (relogio simulado: 60 quadros/s exatos, a foto nao atra
   filme.py          CENA=abertura|rapida SEG=22 CADA=2 TOUR_PY=dev/filme.py
                     bash dev/tour.sh 720 1560 SAIDA 1.75  -> fNNNNN.png + filme.json
   filme_cenas.py    TODAS as aparicoes do Yoru no app de verdade (dados de exemplo):
-                    CENA=app (entrada rapida, +XP, apagar peca, finalizar, nivel,
-                    meta, apagar periodo, WhatsApp, apagar turno, WIPE) ou CENA=pin
+                    CENA=app (entrada rapida, +XP, apagar peca, finalizar = guardar o
+                    turno, nivel, meta, apagar periodo, WhatsApp = a carta, apagar
+                    turno, WIPE = um golpe por item) ou CENA=pin
                     CENA=app CADA=3 TOUR_PY=dev/filme_cenas.py bash dev/tour.sh 720 1560 SAIDA 1.75
                     -> fNNNNNN.png + filme.json (fases com o quadro de cada cena)
                     CENA=telas CADA=0: foto de cada tela e aviso (tela_NN-nome.png);
