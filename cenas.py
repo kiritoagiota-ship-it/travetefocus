@@ -3008,6 +3008,72 @@ def _projetil_sangue(camada, de, para, dur, te, on_chega=None, pequeno=False):
         chegou()
 
 
+def _racha_chao(camada, x, chao, te, larg=320, n=7, atras=None):
+    """O chao racha em brasa em volta de um impacto e fica aceso um tempo."""
+    try:
+        u = te * 2
+        rach = _rachaduras(x, chao - 34 * te, x - larg * te / 2.0, chao - 70 * te, larg * te, 70 * te, u, n=n,
+                           semente=int(x) % 97 + 3)
+        w = _PixelsBrasa(rach, u, cresce=0.14, fica=1.7, some=0.7, grossura=1)
+        i = camada.children.index(atras) + 1 if atras is not None and atras in camada.children else 0
+        camada.add_widget(w, index=i)
+    except Exception as e:
+        print(f"[cena] racha: {e}")
+
+
+def _talho_x(camada, x, y, te, tam=26, cls=None):
+    """Um X de luz no ponto do acerto (dois riscos curtos que crescem e somem)."""
+    try:
+        u = te * 2
+        d = tam * te
+        linhas = [_reta_pixels(x - d, y - d * 0.6, x + d, y + d * 0.6, u), _reta_pixels(x - d, y + d * 0.6, x + d, y - d * 0.6, u)]
+        camada.add_widget((cls or _PixelsLuz)(linhas, u, cresce=0.05, fica=0.08, some=0.12, grossura=1))
+    except Exception as e:
+        print(f"[cena] talho: {e}")
+
+
+def _brasas_para_letras(camada, alvos, origem, dur, on_chega, on_fim=None):
+    """As brasas do chefe viram a frase: de pontos espalhados dentro de
+    `origem` (x0, y0, x1, y1) sai uma brasa para cada letra (alvos = [(i, x,
+    y)]), em arco, uma depois da outra; on_chega(i) quando cada uma chega."""
+    rnd = random.Random(7)
+    x0, y0, x1, y1 = origem
+    n = max(1, len(alvos))
+    voo = dur * 0.55
+    passo = (dur - voo) / n
+    pts = [(rnd.uniform(x0, x1), rnd.uniform(y0, y1), rnd.uniform(-1, 1)) for _ in alvos]
+    chegou = [False] * n
+
+    def forma(t, p, u):
+        for k, (i, ax, ay) in enumerate(alvos):
+            tl = t - k * passo
+            if tl < 0:
+                continue
+            if tl >= voo:
+                if not chegou[k]:
+                    chegou[k] = True
+                    on_chega(i)
+                continue
+            f = tl / voo
+            sx, sy, lado = pts[k]
+            for j, nome in enumerate(('luz', 'clara', 'cor', 'cor', 'brilho')):   # a ponta e a cauda
+                fj = max(0.0, f - j * 0.06)
+                e = fj * fj * (3 - 2 * fj)
+                x = sx + (ax - sx) * e + math.sin(math.pi * fj) * lado * u * 26
+                y = sy + (ay - sy) * e + math.sin(math.pi * fj) * u * 34
+                g = u * (3 if j < 2 else 2)
+                p.setdefault(nome, []).append((math.floor(x / u) * u, math.floor(y / u) * u, g, g))
+
+    def _fim():
+        for k, (i, _x, _y) in enumerate(alvos):
+            if not chegou[k]:
+                chegou[k] = True
+                on_chega(i)
+        if on_fim:
+            on_fim()
+    camada.add_widget(_EfeitoPixel(_cores_efeito((1.0, 0.3, 0.16)), dur + 0.05, forma, on_fim=_fim))
+
+
 def _sombra_chao(camada, x, y, r0, r1, dur, u):
     """A sombra do chefe crescendo no chao enquanto ele cai do ceu (elipse
     achatada em xadrez, que escurece no fim)."""
@@ -3307,6 +3373,34 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         cine = _FaixasCinema(W, H)                          # as faixas pretas de cinema
         camada.add_widget(cine)
         VIDA = {1: 0.88, 2: 0.76, 3: 0.58, 4: 0.53, 5: 0.48, 6: 0.43, 7: 0.38, 8: 0.22, 9: 0.06}
+        brasas = K.Faiscas(n_max=110)                       # o fogo do chefe e as cinzas do chao (atras do Yoru)
+        camada.add_widget(brasas, index=camada.children.index(boss))
+        SANGUE = (1.0, 0.2, 0.12)
+
+        def _vida_chefe(dt):
+            try:
+                if estado.get('chefe_morto'):
+                    return False
+                if cen.f > 0.9:                             # cinzas subindo das fendas do chao
+                    brasas.estourar(random.uniform(0, W), chao - random.uniform(4, 150) * te,
+                                    random.choice((BRASA, SANGUE)), n=1, forca=dp(14), tam=te * 2,
+                                    gravidade=-dp(random.uniform(40, 110)))
+                if boss.opacity > 0 and boss._pontos is not None:
+                    mx_, my_ = boss.mao()
+                    px_, py_ = boss.ponta()
+                    for _ in range(2):                      # o fio do montante solta fogo
+                        f = random.uniform(0.15, 1.0)
+                        brasas.estourar(mx_ + (px_ - mx_) * f, my_ + (py_ - my_) * f,
+                                        random.choice((BRASA, SANGUE, (1.0, 0.8, 0.5))), n=1, forca=dp(34),
+                                        tam=te * 2, gravidade=-dp(190))
+                    ox_, oy_ = boss.ponto('olho')            # a chama do olho
+                    brasas.estourar(ox_ + random.uniform(0, 5) * te, oy_ + random.uniform(0, 4) * te,
+                                    random.choice((SANGUE, (1.0, 0.75, 0.45))), n=1, forca=dp(10), tam=te * 2,
+                                    gravidade=-dp(150))
+            except Exception as e:
+                print(f"[cena] vida do chefe: {e}")
+            return True
+        ag.cada(0.05, _vida_chefe)
         # o BANKAI e desenhado maior que o Yoru normal (cada ponto do desenho da
         # referencia vira 2x2): da para ver cabelo, casaco e espada. Os pes
         # continuam no mesmo chao (a ancora sobe a diferenca).
@@ -3376,6 +3470,13 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                 _som('corte')
                 _brilho_tela(camada, 0.10, 0.1)
             _estrela(camada, x, y, ps, BRANCO, raios=4 if leve else (7 if forte else 5))
+            _talho_x(camada, x, y, te, 16 if leve else (34 if forte else 24), _PixelsRoxo if cor == ROXO else None)
+            if not leve:                                     # a lava espirra da ferida, para o lado do Yoru
+                lado = -1 if kk.ancora()[0] < x else 1
+                for _ in range(10 if forte else 6):
+                    brasas.estourar(x + lado * random.uniform(0, 30) * te, y + random.uniform(-14, 14) * te,
+                                    random.choice((SANGUE, BRASA)), n=1, forca=dp(60), tam=te * 3,
+                                    gravidade=dp(520))
             faiscas.estourar(x, y, BRASA, n=8 if leve else (24 if forte else 14), forca=dp(220), tam=ps)
             faiscas.estourar(x, y, cor, n=5 if leve else 8, forca=dp(150), tam=ps)
             _tremer(5 if leve else (16 if forte else 8))
@@ -3383,6 +3484,22 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             kk.empurrar(capa=14, cabelo=12)
             if reage:
                 boss.tocar('apanha', on_fim=boss_idle)
+
+        def _vida_yoru(dt):
+            try:
+                if kk.opacity <= 0 or estado.get('chefe_morto'):
+                    return True
+                ax_, ay_ = kk.ancora()
+                ant = estado.get('yoru_ant', (ax_, ay_))
+                estado['yoru_ant'] = (ax_, ay_)
+                if math.hypot(ax_ - ant[0], ay_ - ant[1]) > te * 10:      # so quando ele esta voando
+                    tx_, ty_ = kk.ponta_espada(1)
+                    faiscas.estourar(tx_, ty_, ROXO if kk._desenho is not None else CIANO, n=2, forca=dp(40),
+                                     tam=te * 2, gravidade=dp(60))
+            except Exception as e:
+                print(f"[cena] vida do yoru: {e}")
+            return True
+        ag.cada(0.04, _vida_yoru)
 
         def soco_camera(foco, zoom=1.1, volta=0.35):
             """A camera da um tranco para perto do golpe e volta."""
@@ -3484,6 +3601,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                     camada.add_widget(CorteMeiaLua(centro=(mx_, my_), raio=te * 250, ang_ini=300, ang_fim=165,
                                                    espessura=te * 60, achat=1.0, cor=BRASA,
                                                    dur_cheio=4 / 30.0, dur_decai=6 / 30.0))
+                    _racha_chao(camada, frente - 130 * te, chao, te, larg=300, n=6, atras=boss)
                     for k_ in range(5):
                         poeira(frente - (40 + 50 * k_) * te, chao, n=4)
                     faiscas.estourar(frente - 120 * te, chao, BRASA, n=20, forca=dp(240), tam=ps)
@@ -3715,6 +3833,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             for k_ in range(-3, 6):
                 poeira(bxl + k_ * 45 * te, chao, n=6)
             faiscas.estourar(bxl, chao, BRASA, n=44, forca=dp(360), tam=ps, gravidade=dp(300))
+            _racha_chao(camada, bxl, chao, te, larg=460, n=11, atras=boss)
             cen.tranco()
             soco_camera((bxl, chao + 60 * te), 1.1, 0.5)
             # o chao joga o Yoru para cima um instante
@@ -3802,6 +3921,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             _tremer(22)
             cen.tranco()
             _brilho_tela(camada, 0.2, 0.2, (1.0, 0.3, 0.2), atras=boss)
+            _racha_chao(camada, cx_, chao, te, larg=520, n=12, atras=boss)
             for r1, esp_, d_ in ((430, 9, 0.5), (330, 5, 0.42), (230, 3, 0.34)):
                 _anel(camada, (cx_, cy_), te * 60, te * r1, d_, BRASA, esp=dp(esp_), achat=0.22, grao=3)
             _linhas_velocidade(camada, 0.35, BRASA, y0=chao + 60 * te, y1=chao + 190 * te, n=16, sentido=1)
@@ -4321,7 +4441,28 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             tv = estado.get('trevas')
             if tv is not None:
                 tv.cortar(cy)
-            cortar('cus', 4, dur=0.18)               # a luz roxa atravessa a tela na altura da frase
+            golpear('cus', dur=0.18)                 # a luz roxa atravessa a tela na altura da frase
+            if titulo.parent is camada:              # a frase vai nascer POR CIMA do chefe
+                camada.remove_widget(titulo)
+                camada.add_widget(titulo)
+            # talhos atrasados (classico de anime): ele ja passou... e os cortes
+            # vao aparecendo no corpo do chefe, um depois do outro
+            cx0, cy0, cx1, cy1 = boss.corpo()
+            rnd_t = random.Random(4)
+            for n_ in range(6):
+                def _talho(n_=n_):
+                    a = math.radians(rnd_t.choice((-38, -20, 16, 34, 62, -64)))
+                    mx_ = rnd_t.uniform(cx0, cx1)
+                    my_ = rnd_t.uniform(cy0 + (cy1 - cy0) * 0.2, cy1 - (cy1 - cy0) * 0.12)
+                    L = rnd_t.uniform(120, 200) * te
+                    u2 = te * 2
+                    linha = _reta_pixels(mx_ - math.cos(a) * L, my_ - math.sin(a) * L,
+                                         mx_ + math.cos(a) * L, my_ + math.sin(a) * L, u2)
+                    camada.add_widget(_PixelsRoxo([linha], u2, cresce=0.05, fica=0.5, some=0.1, grossura=1))
+                    faiscas.estourar(mx_, my_, random.choice((ROXO, BRANCO)), n=5, forca=dp(170), tam=te * 2)
+                    _som('corte' if n_ % 2 else 'corte2')
+                    _tremer(5)
+                ag.depois(0.16 + 0.07 * n_, _talho)
             # ... e ele vai junto: num passo so atravessa o chefe e para do outro
             # lado, de costas para ele
             ax0, ay0 = kk.ancora()
@@ -4347,8 +4488,8 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             ag.depois(0.1, lambda: _quadro_impacto(camada, kk, (bx, cy)))
             _som('sacar_iai')
             cam[0].ir(1.0, dur=0.1)
-            ag.depois(0.12, lambda: kk.pausar(0.55))
-            ag.depois(0.7, _abre)
+            ag.depois(0.12, lambda: kk.pausar(0.75))
+            ag.depois(0.9, _abre)
 
         def _abre():
             # a escuridao se abre no corte: a frase aparece gravada dentro dele
@@ -4356,11 +4497,25 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             if tv is not None:
                 tv.abrir(0.6)
             _, cy = titulo.x_do_trecho(0, len(texto))
-            for i0, i1 in _TRECHOS:
-                titulo.garantir(i0, i1)
-            for li, letra in enumerate(texto):
-                if letra.strip():
-                    ag.depois(0.015 * li, lambda li=li: titulo.gravar(li, li + 1))
+            # A FRASE NASCE DO CHEFE: de dentro do corpo que se parte sai uma brasa
+            # para cada letra; onde ela chega a letra acende em brasa (branco ->
+            # brasa -> o ciano do app). As letras do meio, mais perto dele, primeiro.
+            estado['chefe_morto'] = True
+            alvos = [(li, ox_t + (titulo._larg[li] + titulo._larg[li + 1]) / 2.0, cy)
+                     for li, letra in enumerate(texto) if letra.strip()]
+            alvos.sort(key=lambda a_: abs(a_[1] - bx))
+
+            def _acende(li):
+                lx_ = ox_t + (titulo._larg[li] + titulo._larg[li + 1]) / 2.0
+                titulo.revelar(li, li + 1, dur=0.5, cor=BRASA)
+                _estrela(camada, lx_, cy, ps * 0.7, BRASA, raios=4, dur=0.14)
+                faiscas.estourar(lx_, cy, BRASA, n=4, forca=dp(120), tam=te * 2, gravidade=dp(200))
+                if li % 3 == 0:
+                    _som('cristal')
+            cb = boss.corpo()
+            _brasas_para_letras(camada, alvos, (cb[0], cb[1] + (cb[3] - cb[1]) * 0.15, cb[2], cb[3] - (cb[3] - cb[1]) * 0.1),
+                                0.95, _acende)
+            ag.depois(1.25, lambda: [titulo.garantir(i0, i1) for i0, i1 in _TRECHOS])   # nenhuma letra fica para tras
             for j in range(9):
                 xj = area[0] + (area[2] - area[0]) * (j + 0.5) / 9.0
                 faiscas.estourar(xj, cy, random.choice((ROXO, BRANCO, (0.85, 0.72, 1.0))), n=5,
@@ -4383,9 +4538,8 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             ag.depois(0.3, _para)
 
         def _para():
-            # para de costas para a frase: a lamina passa do ponto, o corpo
-            # vai junto e volta com uma molinha... e o mundo segura a respiracao
-            ag.depois(0.65, _separa)
+            # de costas para a frase que acende letra por letra... e o mundo segura a respiracao
+            ag.depois(1.05, _separa)
 
         def _separa():
             # a espada evoluida se divide de novo nas duas e ele desce para
@@ -5256,6 +5410,16 @@ def _rachaduras(cx, cy, rx, ry, rw, rh, te, n=9, semente=5):
         if c:
             caminhos.append(c)
     return caminhos
+
+
+class _PixelsBrasa(_PixelsLuz):
+    """Riscos e rachaduras em BRASA (o chao que racha, os talhos no chefe)."""
+    CORES = (('halo', (0.55, 0.06, 0.08, 0.7)), ('meio', (1.0, 0.25, 0.14, 1.0)), ('luz', (1.0, 0.85, 0.6, 1.0)))
+
+
+class _PixelsRoxo(_PixelsLuz):
+    """Os talhos do Bankai."""
+    CORES = (('halo', (0.45, 0.2, 0.9, 0.6)), ('meio', (0.8, 0.62, 1.0, 1.0)), ('luz', (1.0, 1.0, 1.0, 1.0)))
 
 
 def _quadro_impacto(camada, k, centro=None):
