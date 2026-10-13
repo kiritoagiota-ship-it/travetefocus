@@ -164,9 +164,28 @@ def _mover(k, de, para, dur, altura=0.0, rot=None, fantasmas=3,
     if ease is None:
         ease = 'linear' if linear else ('out' if altura >= 0 else 'in')
 
+    # vida: nas arrancadas o corpo estica no sentido do movimento; chegando
+    # de uma queda ele amassa e volta (so no Yoru; o giro em bola nao estica)
+    vivo = hasattr(k, 'amassar')
+    ddx, ddy = para[0] - de[0], para[1] - de[1]
+    longe = math.hypot(ddx, ddy) > getattr(k, 'ps', 6) * 9
+    estica = vivo and rot is None and longe and dur <= 0.32
+    if estica:
+        if abs(ddx) >= abs(ddy):
+            k.escala_x, k.escala_y = 1.12, 0.93
+        else:
+            k.escala_x, k.escala_y = 0.93, 1.12
+
     def _acabar():
         if not feito[0]:
             feito[0] = True
+            if vivo:
+                if estica:
+                    k.escala_x = k.escala_y = 1.0
+                if longe and (ease == 'in' or altura > 0 or ddy < -getattr(k, 'ps', 6) * 6):
+                    k.amassar(-0.13)                     # pousou: amassa e volta
+                elif estica:
+                    k.amassar(0.06, quadros=3)           # freou: da uma esticadinha de volta
             if on_fim:
                 on_fim()
 

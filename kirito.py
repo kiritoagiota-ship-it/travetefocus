@@ -3479,6 +3479,30 @@ class KiritoPixel(Widget):
         self._quadro(0)
         self._ev = Clock.schedule_interval(self._quadro, 1 / FPS)
 
+    def amassar(self, v, quadros=5):
+        """Amassa (v < 0) ou estica (v > 0) o corpo por alguns quadros e volta
+        em degraus, passando um pouco do ponto: pouso, arrancada, impacto."""
+        try:
+            ev = getattr(self, '_ev_amassa', None)
+            if ev is not None:
+                ev.cancel()
+            passos = [1.0, 0.7, 0.3, -0.25, 0.0] if quadros >= 5 else [1.0, 0.4, 0.0]
+            i = [0]
+
+            def _p(dt):
+                f = passos[min(i[0], len(passos) - 1)]
+                self.escala_y = 1.0 + v * f
+                self.escala_x = 1.0 - v * f * 0.6
+                i[0] += 1
+                if i[0] >= len(passos):
+                    self.escala_x = self.escala_y = 1.0
+                    self._ev_amassa = None
+                    return False
+            _p(0)
+            self._ev_amassa = Clock.schedule_interval(_p, 2 / 60.)
+        except Exception as e:
+            print(f"[kirito] amassar: {e}")
+
     def pausar(self, seg):
         """Hit-stop: congela a animacao (e a fisica) por `seg` no instante do
         impacto - o golpe parece mais pesado."""

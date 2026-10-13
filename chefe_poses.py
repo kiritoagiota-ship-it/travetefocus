@@ -216,6 +216,7 @@ def _respira(q, tc, forca=1.0):
     q['c'] = q.get('c', 0.0) + forca * 1.6 * math.sin(w - 0.5)
     q['b'] = q.get('b', 0.0) + forca * 1.4 * math.sin(w - 1.2)
     q['a'] = q.get('a', 0.0) + forca * 1.6 * math.sin(w - 1.8)
+    q['sq'] = q.get('sq', 0.0) + forca * 0.012 * math.sin(w)        # o corpo inteiro cresce um fio ao respirar
     return q
 
 
@@ -227,6 +228,15 @@ def clipes():
     """{nome: (funcao t -> (pose, t_pano, vento), duracao_s, loop)}"""
     CL = {}
     V0 = dict(onda=5.0, per=P_IDLE, sobe=0.0, x=0.0, fogo=1.0)
+    janela = [None]
+
+    def degrau(t, por_s):
+        """Como o degrau de fora, mas dentro da janela rapida do movimento
+        (o golpe em si) cada quadro e um desenho novo."""
+        j = janela[0]
+        if j is not None and j[0] <= t <= j[1]:
+            por_s = 30
+        return math.floor(t * por_s + 1e-6) / float(por_s)
 
     def idle(t):
         tc = degrau(t, 10)
@@ -237,8 +247,11 @@ def clipes():
 
     # RUGIDO: encolhe (antecipacao), joga a cabeca para tras com a garra
     # aberta, treme segurando e assenta. A capa abre com o sopro.
-    ch_r = [(0.0, dict(PARADO), 'suave'), (0.3, dict(PARADO, dx=-4, dy=3, ag=4, c=16.0, b=12.0, a=10.0), 'in'),
-            (0.47, RUGE, 'out'), (1.25, dict(RUGE, c=-20.0), 'suave'), (1.7, dict(PARADO))]
+    ch_r = [(0.0, dict(PARADO), 'suave'), (0.12, dict(PARADO, c=8.0, dy=1), 'suave'),
+            (0.30, dict(PARADO, dx=-6, dy=5, ag=6, c=22.0, b=18.0, a=14.0, sq=-0.07), 'in'),     # encolhe
+            (0.40, dict(RUGE, dx=6, dy=-7, c=-36.0, b=-54.0, sq=0.08), 'out'),                  # explode (passa do ponto)
+            (0.47, dict(RUGE, sq=0.04), 'suave'), (1.25, dict(RUGE, c=-20.0, sq=0.02), 'suave'),
+            (1.45, dict(PARADO, dx=-2, dy=3, c=10.0, b=10.0, sq=-0.04), 'suave'), (1.7, dict(PARADO))]
     D_RUG = 1.7
 
     def rugido(t):
@@ -256,10 +269,17 @@ def clipes():
 
     # GOLPE: arranca o montante do chao, ergue por cima da cabeca (segura um
     # instante), desce de uma vez na frente (rastro) e crava; depois volta.
-    ch_g = [(0.0, dict(REP), 'in'), (0.12, dict(REP, dx=-2, dy=2, ag=2, bt=-8.0, e=-4.0), 'suave'),
-            (0.52, ERGUIDO, 'out'), (0.66, dict(ERGUIDO, bt=154.0, e=34.0, dy=-3), 'in'),
-            (0.73, dict(REP, dx=-3, dy=0, c=4.0, bt=70.0, at=4.0, e=6.0, b=6.0), 'linear'),
-            (0.80, CRAVADO, 'out'), (1.15, dict(CRAVADO, dx=-6, dy=2), 'suave'), (1.75, dict(REP))]
+    ch_g = [(0.0, dict(REP), 'suave'), (0.08, dict(REP, c=8.0, dy=1), 'suave'),
+            (0.16, dict(REP, dx=-3, dy=3, ag=4, giro=4.0, bt=-12.0, e=-6.0, sq=-0.05), 'suave'),   # afunda antes de erguer
+            (0.48, dict(ERGUIDO, giro=-8.0, bt=157.0, dy=-4, sq=0.05), 'out'),                  # ergue passando do ponto
+            (0.56, dict(ERGUIDO, giro=-6.0, sq=0.02), 'suave'),
+            (0.66, dict(ERGUIDO, bt=159.0, e=36.0, dy=-4, giro=-9.0, sq=0.04), 'in'),            # estica mais um pouco
+            (0.70, dict(REP, hx=-6, giro=4.0, c=-6.0, bt=110.0, at=10.0, e=14.0, le=0.2), 'linear'),
+            (0.75, dict(REP, hx=-12, dx=-3, giro=12.0, c=6.0, bt=30.0, at=6.0, e=40.0, le=0.26, sq=0.03), 'linear'),
+            (0.80, dict(CRAVADO, giro=10.0, ag=18, sq=-0.09, le=0.05), 'out'),                  # crava: o corpo amassa
+            (0.92, dict(CRAVADO, giro=6.0, ag=12, sq=0.02), 'suave'),
+            (1.15, dict(CRAVADO, dx=-6, dy=2, giro=4.0), 'suave'),
+            (1.45, dict(REP, dx=-2, ag=4, bt=-10.0, e=10.0, c=6.0), 'suave'), (1.75, dict(REP))]
     D_GOLPE = 1.75
 
     def golpe(t):
@@ -277,8 +297,13 @@ def clipes():
     CL['golpe'] = (golpe, D_GOLPE, False)
 
     # GARRA: arma o braco da frente para tras e rasga na frente
-    ch_u = [(0.0, dict(PARADO), 'suave'), (0.34, GARRA_ARMA, 'out'), (0.44, dict(GARRA_ARMA, b=-84.0), 'in'),
-            (0.54, GARRA_CORTA, 'out'), (0.8, dict(GARRA_CORTA, b=58.0), 'suave'), (1.2, dict(PARADO))]
+    ch_u = [(0.0, dict(PARADO), 'suave'), (0.08, dict(PARADO, c=8.0), 'suave'),
+            (0.30, dict(GARRA_ARMA, dx=7, b=-90.0, a=-42.0, c=-10.0, sq=-0.04), 'out'),         # arma passando do ponto
+            (0.36, dict(GARRA_ARMA), 'suave'), (0.44, dict(GARRA_ARMA, b=-86.0, dx=5, sq=-0.03), 'in'),
+            (0.49, dict(GARRA_CORTA, dx=-4, b=10.0, a=-30.0, c=2.0), 'linear'),
+            (0.54, dict(GARRA_CORTA, dx=-15, b=114.0, a=6.0, sq=0.04), 'out'),                  # rasga e passa do ponto
+            (0.66, dict(GARRA_CORTA, b=96.0, a=-10.0), 'suave'), (0.8, dict(GARRA_CORTA, b=58.0), 'suave'),
+            (1.0, dict(PARADO, dx=-3, b=14.0, c=4.0), 'suave'), (1.2, dict(PARADO))]
     D_GARRA = 1.2
 
     def garra(t):
@@ -293,7 +318,9 @@ def clipes():
     CL['garra'] = (garra, D_GARRA, False)
 
     # APANHA: o tronco vai para tras, a cabeca estala, volta
-    ch_a = [(0.0, dict(PARADO), 'out'), (0.07, APANHA, 'suave'), (0.36, dict(PARADO))]
+    ch_a = [(0.0, dict(PARADO), 'out'), (0.05, dict(APANHA, dx=9, c=-24.0, b=-22.0, sq=-0.05), 'suave'),
+            (0.12, dict(APANHA, sq=0.02), 'suave'), (0.26, dict(PARADO, dx=-2, c=6.0, sq=-0.02), 'suave'),
+            (0.36, dict(PARADO))]
     D_AP = 0.4
 
     def apanha(t):
@@ -304,8 +331,11 @@ def clipes():
     CL['apanha'] = (apanha, D_AP, False)
 
     # CAMBALEIA: perde a forca, cai de joelho apoiado no montante
-    ch_c = [(0.0, dict(PARADO), 'out'), (0.12, dict(APANHA, dx=8, c=-22.0), 'suave'),
-            (0.5, dict(PARADO, dx=-2, dy=2, ag=4, c=8.0), 'in'), (0.8, AJOELHADO, 'mola'), (1.1, dict(AJOELHADO))]
+    ch_c = [(0.0, dict(PARADO), 'out'), (0.1, dict(APANHA, dx=10, c=-26.0, sq=-0.05), 'suave'),
+            (0.3, dict(APANHA, dx=4, c=-8.0, dy=2), 'suave'), (0.5, dict(PARADO, dx=-3, dy=3, ag=6, c=10.0), 'suave'),
+            (0.62, dict(PARADO, dx=3, ag=10, c=-4.0), 'in'),                                  # balanca, tenta ficar em pe
+            (0.8, dict(AJOELHADO, ag=70, sq=-0.07), 'out'), (0.9, dict(AJOELHADO, ag=60, sq=0.02), 'suave'),
+            (1.1, dict(AJOELHADO))]
     D_CAMB = 1.1
 
     def cambaleia(t):
@@ -324,8 +354,10 @@ def clipes():
     CL['ajoelhado'] = (ajoelhado, P_IDLE, True)
 
     # CARREGA: levanta de vez, ergue o montante com tudo aceso e segura tremendo
-    ch_k = [(0.0, dict(AJOELHADO), 'in'), (0.3, dict(REP, dx=-3, dy=2, ag=3, c=10.0, bt=-10.0, e=-6.0), 'suave'),
-            (0.85, ERGUIDO, 'out'), (1.0, dict(ERGUIDO, bt=152.0, e=33.0))]
+    ch_k = [(0.0, dict(AJOELHADO), 'in'), (0.12, dict(AJOELHADO, ag=68, sq=-0.06), 'suave'),
+            (0.3, dict(REP, dx=-3, dy=2, ag=3, c=10.0, bt=-10.0, e=-6.0, sq=0.04), 'suave'),
+            (0.8, dict(ERGUIDO, bt=160.0, dy=-5, giro=-8.0, sq=0.06), 'out'), (0.9, dict(ERGUIDO, bt=150.0, sq=0.02), 'suave'),
+            (1.0, dict(ERGUIDO, bt=152.0, e=33.0))]
     D_CARR = 1.0
 
     def carrega(t):
@@ -349,8 +381,13 @@ def clipes():
 
     # INVESTIDA: recolhe o montante apontado, segura um instante e estoca
     # (o app faz ele atravessar a tela nesse momento); freia e volta
-    ch_i = [(0.0, dict(REP), 'suave'), (0.34, INV_ARMA, 'out'), (0.5, dict(INV_ARMA, hx=16, ag=14), 'in'),
-            (0.58, INV_FIM, 'out'), (1.0, dict(INV_FIM, hx=-40, giro=17.0), 'suave'), (1.45, dict(REP))]
+    ch_i = [(0.0, dict(REP), 'suave'), (0.08, dict(REP, c=8.0), 'suave'),
+            (0.30, dict(INV_ARMA, hx=18, ag=16, giro=-12.0, sq=-0.06), 'out'),                  # recolhe passando do ponto
+            (0.38, dict(INV_ARMA), 'suave'), (0.5, dict(INV_ARMA, hx=17, ag=15, giro=-11.0, sq=-0.05), 'in'),
+            (0.54, dict(INV_FIM, hx=-20, giro=10.0, bt=30.0, at=-40.0, le=0.25), 'linear'),
+            (0.58, dict(INV_FIM, hx=-50, giro=24.0, le=0.3, sq=0.04), 'out'),                   # a estocada: lamina esticada
+            (0.72, dict(INV_FIM, hx=-44, giro=19.0, le=0.05), 'suave'), (1.0, dict(INV_FIM, hx=-40, giro=17.0), 'suave'),
+            (1.25, dict(REP, hx=-12, giro=6.0, bt=20.0, at=-20.0, e=30.0), 'suave'), (1.45, dict(REP))]
     D_INV = 1.45
 
     def investida(t):
@@ -398,7 +435,8 @@ def clipes():
     # SALTO: agacha fundo (salto_prep), sobe encolhido (salto_ar, em loop: o app
     # leva ele pelo ceu), desce esticando (salto_desce, em loop) e crava no
     # chao (pouso)
-    ch_sp = [(0.0, dict(REP), 'in'), (0.3, SALTO_PREP, 'out'), (0.42, dict(SALTO_PREP, ag=48))]
+    ch_sp = [(0.0, dict(REP), 'out'), (0.08, dict(REP, dy=-2, sq=0.03), 'in'),
+             (0.3, dict(SALTO_PREP, ag=52, sq=-0.09), 'out'), (0.42, dict(SALTO_PREP, ag=46, sq=-0.06))]
 
     def salto_prep(t):
         tc = degrau(t, 15)
@@ -409,21 +447,22 @@ def clipes():
 
     def salto_ar(t):
         tc = degrau(t, 15)
-        q = dict(SALTO_AR, brilho=2)
+        q = dict(SALTO_AR, brilho=2, sq=0.08)                 # esticado subindo
         q['e'] = SALTO_AR['e'] + 2.0 * math.sin(tc * 2 * math.pi / 0.4)
         return q, tc, dict(V0, onda=9.0, per=0.4, sobe=-0.22, x=-4.0, fogo=1.6)
     CL['salto_ar'] = (salto_ar, 0.4, True)
 
     def salto_desce(t):
         tc = degrau(t, 15)
-        q = dict(SALTO_DESCE, brilho=2)
+        q = dict(SALTO_DESCE, brilho=2, sq=0.07)
         q['e'] = SALTO_DESCE['e'] + 2.0 * math.sin(tc * 2 * math.pi / 0.4)
         return q, tc, dict(V0, onda=10.0, per=0.4, sobe=0.30, x=2.0, fogo=1.8)
     CL['salto_desce'] = (salto_desce, 0.4, True)
 
-    ch_po = [(0.0, dict(SALTO_DESCE, ar=False, ptx=0.0, pty=0.0, pfx=0.0, pfy=0.0, ag=10), 'linear'),
-             (0.07, dict(CRAVADO, ag=40, giro=14.0), 'out'), (0.5, dict(CRAVADO, ag=30, giro=10.0), 'suave'),
-             (1.15, dict(REP))]
+    ch_po = [(0.0, dict(SALTO_DESCE, ar=False, ptx=0.0, pty=0.0, pfx=0.0, pfy=0.0, ag=10, sq=0.08), 'linear'),
+             (0.07, dict(CRAVADO, ag=54, giro=18.0, sq=-0.15), 'out'),                         # desaba: amassa de verdade
+             (0.2, dict(CRAVADO, ag=34, giro=10.0, sq=0.04), 'suave'), (0.5, dict(CRAVADO, ag=30, giro=10.0), 'suave'),
+             (0.85, dict(REP, ag=8, giro=4.0, bt=-12.0, e=14.0, c=8.0), 'suave'), (1.15, dict(REP))]
     D_POUSO = 1.15
 
     def pouso(t):
@@ -441,8 +480,12 @@ def clipes():
     CL['pouso'] = (pouso, D_POUSO, False)
 
     # APONTA: nivela o montante para a frente, o fio acende e ele dispara (coice)
-    ch_ap = [(0.0, dict(REP), 'suave'), (0.32, APONTA, 'out'), (0.62, dict(APONTA, hx=2), 'in'),
-             (0.68, dict(APONTA, hx=14, giro=-4.0, c=6.0), 'out'), (1.0, dict(APONTA), 'suave'), (1.4, dict(REP))]
+    ch_ap = [(0.0, dict(REP), 'suave'), (0.1, dict(REP, c=8.0), 'suave'),
+             (0.28, dict(APONTA, hx=8, giro=8.0, bt=84.0, sq=0.03), 'out'), (0.36, dict(APONTA), 'suave'),
+             (0.62, dict(APONTA, hx=2, giro=2.0, sq=-0.04), 'in'),                             # junta a forca
+             (0.68, dict(APONTA, hx=18, giro=-7.0, c=10.0, le=-0.12, sq=0.05), 'out'),          # o coice do disparo
+             (0.82, dict(APONTA, hx=8, giro=-1.0), 'suave'), (1.0, dict(APONTA), 'suave'),
+             (1.2, dict(REP, hx=2, bt=30.0, at=-30.0, e=40.0), 'suave'), (1.4, dict(REP))]
     D_APO = 1.4
 
     def aponta(t):
@@ -456,7 +499,10 @@ def clipes():
     CL['aponta'] = (aponta, D_APO, False)
 
     # DEFESA: atravessa o montante na frente do corpo e aguenta
-    ch_d = [(0.0, dict(REP), 'out'), (0.16, DEFESA, 'suave'), (0.75, dict(DEFESA, hx=8), 'suave'), (1.05, dict(REP))]
+    ch_d = [(0.0, dict(REP), 'out'), (0.1, dict(DEFESA, hx=10, giro=-10.0, sq=-0.04), 'suave'), (0.16, dict(DEFESA), 'out'),
+            (0.3, dict(DEFESA, hx=15, giro=-13.0, c=12.0, sq=-0.06), 'suave'),                  # aguenta a pancada
+            (0.42, dict(DEFESA, hx=4, giro=-3.0, sq=0.03), 'suave'), (0.75, dict(DEFESA, hx=8), 'suave'),
+            (1.05, dict(REP))]
     D_DEF = 1.05
 
     def defesa(t):
@@ -467,10 +513,13 @@ def clipes():
 
     # CORTE GIRATORIO: recolhe o montante atras, gira o corpo e a lamina da a
     # volta inteira (o app vira ele de lado no meio do giro e solta o anel)
-    ch_gi = [(0.0, dict(REP), 'suave'), (0.34, dict(VARRE_ARMA, giro=-16.0, bt=-70.0), 'out'),
-             (0.5, dict(VARRE_ARMA, giro=-18.0, bt=-76.0), 'in'), (0.62, VARRE_FIM, 'linear'),
-             (0.74, dict(ERGUIDO, giro=-10.0, bt=170.0), 'out'), (1.0, dict(VARRE_FIM, bt=40.0, giro=8.0), 'suave'),
-             (1.5, dict(REP))]
+    ch_gi = [(0.0, dict(REP), 'suave'), (0.08, dict(REP, c=8.0), 'suave'),
+             (0.32, dict(VARRE_ARMA, giro=-19.0, bt=-76.0, hx=14, sq=-0.06), 'out'), (0.4, dict(VARRE_ARMA, giro=-16.0, bt=-70.0), 'suave'),
+             (0.5, dict(VARRE_ARMA, giro=-18.0, bt=-76.0, sq=-0.05), 'in'),
+             (0.56, dict(VARRE_FIM, hx=-10, giro=4.0, bt=6.0, le=0.24), 'linear'),
+             (0.62, dict(VARRE_FIM, le=0.2, sq=0.05), 'linear'),
+             (0.74, dict(ERGUIDO, giro=-10.0, bt=170.0, le=0.1), 'out'), (1.0, dict(VARRE_FIM, bt=40.0, giro=8.0), 'suave'),
+             (1.25, dict(REP, hx=-6, giro=3.0, bt=14.0, c=4.0), 'suave'), (1.5, dict(REP))]
     D_GIR = 1.5
 
     def giratorio(t):
@@ -483,4 +532,18 @@ def clipes():
         vx = -20.0 * math.exp(-max(0.0, tc - 0.6) / 0.35) if tc >= 0.5 else 8.0 * min(1.0, tc / 0.4)
         return q, tc - D_GIR, dict(V0, onda=11.0, x=vx)
     CL['giratorio'] = (giratorio, D_GIR, False)
+
+    RAPIDO = {'rugido': (0.28, 0.5), 'golpe': (0.62, 0.95), 'garra': (0.42, 0.68), 'apanha': (0.0, 0.14),
+              'cambaleia': (0.6, 0.92), 'carrega': (0.0, 0.14), 'investida': (0.48, 0.74), 'salto_prep': (0.0, 0.42),
+              'pouso': (0.0, 0.24), 'aponta': (0.6, 0.84), 'defesa': (0.0, 0.44), 'giratorio': (0.48, 0.8)}
+    for nome, jan in RAPIDO.items():
+        fn, dur, loop = CL[nome]
+
+        def _com_janela(t, fn=fn, jan=jan):
+            janela[0] = jan
+            try:
+                return fn(t)
+            finally:
+                janela[0] = None
+        CL[nome] = (_com_janela, dur, loop)
     return CL
