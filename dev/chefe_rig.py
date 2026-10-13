@@ -1,5 +1,6 @@
-"""O CHEFE animado PECA POR PECA (como o Bankai): as pecas desenhadas em
-chefe_arte.py viram um boneco articulado.
+"""O CHEFE animado PECA POR PECA (como o Bankai): as pecas recortadas do
+MODELO FINAL do usuario (chefe_ref.py) viram um boneco articulado. (O
+chefe_arte.py e o chefe antigo, desenhado sem referencia: ficou so de historico.)
   capa e tabardo - cortados em TIRAS (cada pixel vai para a tira cuja espinha
                    esta mais perto); a tira dobra com o vento e cada pixel so
                    anda em passos inteiros;
@@ -25,7 +26,7 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import chefe_arte as A                                                  # noqa: E402
+import chefe_ref as A                                                   # noqa: E402
 from bankai_rig import rot, mov, aplica, desenha_peca, Mecha, _reamostra, _dist_seg, trilha, degrau   # noqa: E402
 from reiatsu import Ruido                                               # noqa: E402
 
@@ -34,22 +35,23 @@ SAIDA_TESTE = os.path.join('C:' + os.sep, 'Users', 'kirit', 'travetefocus', 'fer
 FPS = 30
 CW, CH = A.CW, A.CH
 P = A.P
-ANCORA = (176.0, float(A.CHAO))              # pes no chao: vai na ancora do widget
+ANCORA = A.PES                               # pes no chao (px do modelo): vai na ancora do widget
 P_IDLE = 2.4
+ESC = 1.4                                    # o chefe novo e 1,4x o antigo: os passos em pixel das poses crescem junto
 
-# tiras da capa (da raiz, nos ombros, ate a barra) e do tabardo
+# tiras da capa (da raiz, nos ombros, ate a barra) e do tabardo - em px do MODELO
 TIRAS_CAPA = [
-    [(158, 108), (156, 170), (158, 230), (162, 284)],
-    [(178, 104), (182, 170), (190, 232), (198, 292)],
-    [(200, 100), (210, 160), (222, 226), (234, 298)],
-    [(218, 98), (238, 150), (256, 216), (268, 302)],
-    [(230, 98), (260, 140), (284, 202), (298, 302)],
-    [(238, 102), (272, 138), (302, 200), (316, 302)],
+    [(330, 400), (285, 700), (262, 1000), (245, 1260)],
+    [(480, 400), (470, 750), (485, 1000), (525, 1160)],
+    [(700, 420), (760, 760), (800, 1050), (830, 1280)],
+    [(880, 430), (930, 700), (962, 1000), (985, 1280)],
+    [(950, 440), (1040, 650), (1082, 950), (1092, 1280)],
+    [(985, 470), (1120, 600), (1160, 900), (1172, 1280)],
 ]
 TIRAS_TAB = [
-    [(172, 210), (170, 250), (168, 284)],
-    [(184, 210), (184, 250), (186, 290)],
-    [(196, 210), (198, 250), (202, 282)],
+    [(490, 660), (480, 860), (470, 1045)],
+    [(540, 660), (540, 880), (545, 1062)],
+    [(600, 660), (612, 860), (642, 1045)],
 ]
 G = [A.G0, A.G1, A.G2, A.G3, A.G4]
 
@@ -91,8 +93,8 @@ class Chefe:
         self.n2 = Ruido(6, 3, 5, 72.0, CW, CH)
         rnd = np.random.default_rng(4)
         # faiscas: (x no desenho, y de onde nasce, quanto sobe, fase, balanco, tamanho)
-        self.faiscas = [(rnd.uniform(70, 300), rnd.uniform(120, 310), rnd.uniform(60, 140), rnd.uniform(0, 1),
-                         rnd.uniform(0, 6.28), int(rnd.integers(1, 3))) for _ in range(18)]
+        self.faiscas = [(rnd.uniform(40, 1150), rnd.uniform(420, 1280), rnd.uniform(200, 460), rnd.uniform(0, 1),
+                         rnd.uniform(0, 6.28), int(rnd.integers(1, 3))) for _ in range(22)]
         u, n, L = A._u_lamina()
         self.L_lam = L
         self.ang_lam = math.degrees(math.atan2(u[1], u[0]))
@@ -111,11 +113,11 @@ class Chefe:
         -> (indices, garra, ponta)"""
         pc = self.pc
         img = np.zeros((CH, CW), np.int32)
-        hx, ag = int(round(q.get('hx', 0))), int(round(q.get('ag', 0)))
-        dx, dy = int(round(q.get('dx', 0))), int(round(q.get('dy', 0)))
+        hx, ag = int(round(q.get('hx', 0) * ESC)), int(round(q.get('ag', 0) * ESC))
+        dx, dy = int(round(q.get('dx', 0) * ESC)), int(round(q.get('dy', 0) * ESC))
         H = mov(hx, ag)                                       # quadril
         T = mov(hx + dx, ag + dy)                             # tronco
-        o = int(round(q.get('o', 0)))                         # a ombreira chega atrasada
+        o = int(round(q.get('o', 0) * ESC))                   # a ombreira chega atrasada
         Mcab = T @ rot(P(*A.PESCOCO), q.get('c', 0.0))
         Mb = T @ mov(0, o) @ rot(P(*A.OMBRO), q.get('b', 0.0))
         Ma = Mb @ rot(P(*A.COTOVELO), q.get('a', 0.0))
@@ -158,13 +160,14 @@ class Chefe:
         peca('ombreira', T @ mov(0, o))
         ponta = aplica(Me, P(*A.PONTA))
         mao_esp = aplica(Mat, P(*A.MAO_T))
-        garra = aplica(Ma, P(A.MAO[0] - 2, A.MAO[1] + 34))
+        garra = aplica(Ma, P(*A.GARRA))
         olho = aplica(Mcab, P(*A.OLHO))
         # rastro do golpe (so onde esta vazio)
         if q.get('rastro') is not None:
             self._rastro(img, mao_esp, self.ang_lam + q['rastro'][0], self.ang_lam + q['rastro'][1], self.L_lam)
         if q.get('unhas') is not None:
             self._unhas(img, aplica(Mb, P(*A.OMBRO)), garra, q['unhas'])
+        img[int(P(0, A.PES[1])[1]) + 3:, :] = 0               # nada passa para baixo do chao
         img = A.aro(img.astype(np.uint8)).astype(np.int32)
         nivel = int(q.get('brilho', 1))
         if nivel != 1:
@@ -208,8 +211,8 @@ class Chefe:
         r = np.hypot(self.xs - cx, self.ys - cy)
         fr = np.clip((ang - lo) / max(1e-6, hi - lo), 0, 1)
         k = fr if a1 > a0 else 1 - fr                        # 1 = onde a garra esta agora
-        for i, dr in enumerate((-14, -5, 4, 13)):
-            esp = 1.2 + 2.2 * k
+        for i, dr in enumerate((-20, -7, 6, 18)):
+            esp = 1.6 + 3.0 * k
             m = (ang >= lo) & (ang <= hi) & (np.abs(r - (raio + dr)) < esp)      # por cima do corpo
             img[m & (k > 0.55)] = A.R2
             img[m & (k <= 0.55) & (k > 0.2)] = A.R1
@@ -252,7 +255,7 @@ class Chefe:
             f = (t / P_IDLE + fase) % 1.0
             if f > 0.9:
                 continue
-            x, y = P(x0 + 4 * math.sin(bal + f * 9.0), y0 - sobe * f)
+            x, y = P(x0 + 13 * math.sin(bal + f * 9.0), y0 - sobe * f)
             x, y = int(round(x)) + ox, int(round(y)) + oy
             cor = G[3] if f < 0.3 else (G[2] if f < 0.65 else G[1])
             if 0 <= y < CH - 1 and 0 <= x < CW - 1:
@@ -459,7 +462,7 @@ def escrever(che, saida):
     blocos = []
     cab = {'paleta': che.pal, 'tela': [CW, CH], 'quadril': list(P(*ANCORA)), 'fps': FPS,
            'olho': list(P(*A.OLHO)), 'nucleo': list(P(*A.NUCLEO)), 'cabeca': list(P(*A.CABECA)),
-           'corpo': [P(100, 0)[0], P(250, 0)[0], P(0, 56)[1], P(0, A.CHAO)[1]], 'clipes': {}}
+           'corpo': [P(350, 0)[0], P(800, 0)[0], P(0, 90)[1], P(0, A.PES[1])[1]], 'clipes': {}}
     pos = 0
     ja = {}
     for nome, (quadros, loop) in saida.items():
@@ -496,7 +499,7 @@ def _caixa(saida, ordem):
             ys, xs = np.nonzero(idx)
             x0, x1 = min(x0, xs.min()), max(x1, xs.max())
             y0, y1 = min(y0, ys.min()), max(y1, ys.max())
-    return x0 - 6, y0 - 6, x1 + 7, y1 + 7
+    return max(0, x0 - 6), max(0, y0 - 6), min(CW, x1 + 7), min(CH, y1 + 7)
 
 
 def gif(saida, ordem, caminho, z=2):
