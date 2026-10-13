@@ -435,4 +435,23 @@ def clipes():
         q = _pose(ch_d, tc)
         return q, tc - D_DEF, dict(V0, x=4.0)
     CL['defesa'] = (defesa, D_DEF, False)
+
+    # CORTE GIRATORIO: recolhe o montante atras, gira o corpo e a lamina da a
+    # volta inteira (o app vira ele de lado no meio do giro e solta o anel)
+    ch_gi = [(0.0, dict(REP), 'suave'), (0.34, dict(VARRE_ARMA, giro=-16.0, bt=-70.0), 'out'),
+             (0.5, dict(VARRE_ARMA, giro=-18.0, bt=-76.0), 'in'), (0.62, VARRE_FIM, 'linear'),
+             (0.74, dict(ERGUIDO, giro=-10.0, bt=170.0), 'out'), (1.0, dict(VARRE_FIM, bt=40.0, giro=8.0), 'suave'),
+             (1.5, dict(REP))]
+    D_GIR = 1.5
+
+    def giratorio(t):
+        tc = degrau(t, 15)
+        q = _pose(ch_gi, tc)
+        if 0.5 < tc <= 0.8:
+            ant = _pose(ch_gi, tc - 2 / 30.0)
+            q['rastro'] = (ant['bt'] + ant['at'] + ant['e'], q['bt'] + q['at'] + q['e'])
+        q['brilho'] = 2 if 0.3 <= tc <= 1.0 else 1
+        vx = -20.0 * math.exp(-max(0.0, tc - 0.6) / 0.35) if tc >= 0.5 else 8.0 * min(1.0, tc / 0.4)
+        return q, tc - D_GIR, dict(V0, onda=11.0, x=vx)
+    CL['giratorio'] = (giratorio, D_GIR, False)
     return CL

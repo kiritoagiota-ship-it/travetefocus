@@ -3501,8 +3501,42 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                 poeira(bx_, by_ - kk.extensao()[1], n=8)
                 kk.empurrar(lift=-8, capa=-6)
                 kk.tocar(K.sequencia([(2, _com(agacha, estica=-1), 'out'), (3, pronto, 'out'), (1, pronto)]))
-                ag.depois(0.2, _projetil)
+                ag.depois(0.22, _aparado)
             _mover(kk, kk.ancora(), K0, 0.36, altura=te * 30, fantasmas=1, on_fim=_chegou)
+
+        # ── 3b) DEFESA: o Yoru emenda um avanco... e o chefe atravessa o
+        #    montante na frente do corpo: a lamina bate e ele e jogado de volta ──
+        def _aparado():
+            boss.tocar('defesa', on_fim=boss_idle)
+            perto = (frente - 64 * te, y_luta + 150 * te)       # salta: a lamina dele encontra o montante atravessado
+            kk.tocar(K.sequencia([(2, pronto, 'segura'), (1, K.smear(corta_tra, pronto['a1']), 'segura'),
+                                  (6, corta_tra, 'segura'), (1, corta_tra)]))
+            _som('sacar_iai')
+            _gemido()
+
+            def _bateu():
+                mx_, my_ = boss.mao()
+                px_, py_ = mx_ - 8 * te, my_ + 34 * te
+                kk.impacto(forte=True)
+                kk.pausar(0.1)
+                boss.pausar(0.1)
+                _som('golpe_final')
+                _som('koiguchi')
+                _tremer(14)
+                _estrela(camada, px_, py_, ps * 2, BRANCO, raios=8, dur=0.2)
+                _anel(camada, (px_, py_), te * 6, te * 70, 0.25, BRANCO, esp=dp(2))
+                faiscas.estourar(px_, py_, BRANCO, n=22, forca=dp(300), tam=ps)
+                faiscas.estourar(px_, py_, BRASA, n=16, forca=dp(240), tam=ps)
+                soco_camera((px_, py_), 1.1, 0.3)
+
+                def _volta():
+                    kk.tocar(K.sequencia([(3, _com(guarda2, pernas='recua', estica=-1), 'segura'),
+                                          (5, _com(pronto, pernas='recua'), 'out'), (1, pronto)]))
+                    _som('desliza')
+                    _mover(kk, kk.ancora(), K0, 0.34, altura=te * 40, fantasmas=2,
+                           on_fim=lambda: (poeira(K0[0], chao, n=8), _som('pouso'), ag.depois(0.25, _projetil)))
+                ag.depois(0.14, _volta)
+            _mover(kk, kk.ancora(), perto, 0.14, altura=te * 30, fantasmas=3, cor_fantasma=CIANO, on_fim=_bateu)
 
         # ── 4) PROJETIL: ele nivela o montante e dispara um raio de sangue; o
         #    Yoru corta o raio ao meio num iai e ja emenda: sobe cortando o
@@ -3719,7 +3753,42 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                                                        ang_ini=130, ang_fim=-50, espessura=te * 8, achat=1.0,
                                                        cor=BRASA, dur_cheio=3 / 30.0, dur_decai=5 / 30.0))
                     faiscas.estourar(gx_, gy_, BRASA, n=14, forca=dp(200), tam=ps)
-            boss.tocar('garra', on_quadro=_q, on_fim=_investe)
+            boss.tocar('garra', on_quadro=_q, on_fim=_gira)
+
+        # ── 6b) CORTE GIRATORIO: a lamina da a volta inteira em volta dele (um
+        #    anel de fogo varre a tela); o Yoru salta por cima do anel ──
+        def _gira():
+            def _q(i):
+                if i == 12:
+                    # salta reto para cima, num mortal, e cai no mesmo lugar
+                    p_pulo = _com(P['pulo'], olhos='s')
+                    kk.tocar(_voo_seq(K.esticado(p_pulo), K.bola(p_pulo), guarda2, 0.62))
+                    _som('pulo')
+                    a0 = kk.ancora()
+                    _mover(kk, a0, a0, 0.62, altura=te * 300, rot=(0, -360), fantasmas=2,
+                           rot_janela=(0.2, 0.8),
+                           on_fim=lambda: (setattr(kk, 'rotacao', 0), kk.mostrar(guarda2), _som('pouso'),
+                                           poeira(a0[0], chao, n=8)))
+                elif i == 16:
+                    boss.espelhar = not boss.espelhar            # de costas: a lamina passa por tras
+                    _fogo_em_volta()
+                elif i == 20:
+                    boss.espelhar = not boss.espelhar
+            boss.tocar('giratorio', on_quadro=_q, on_fim=_investe)
+
+        def _fogo_em_volta():
+            cx_, cy_ = boss.ax, chao + 120 * te
+            _som('getsuga')
+            _som('corte2')
+            _tremer(22)
+            cen.tranco()
+            _brilho_tela(camada, 0.2, 0.2, (1.0, 0.3, 0.2), atras=boss)
+            for r1, esp_, d_ in ((430, 9, 0.5), (330, 5, 0.42), (230, 3, 0.34)):
+                _anel(camada, (cx_, cy_), te * 60, te * r1, d_, BRASA, esp=dp(esp_), achat=0.22, grao=3)
+            _linhas_velocidade(camada, 0.35, BRASA, y0=chao + 60 * te, y1=chao + 190 * te, n=16, sentido=1)
+            for k_ in range(-4, 7):
+                poeira(cx_ + k_ * 50 * te, chao, n=4)
+            faiscas.estourar(cx_, cy_, BRASA, n=40, forca=dp(380), tam=ps)
 
         def _foge_garra():
             ax, ay = kk.ancora()
@@ -4475,10 +4544,12 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
 
 
 def cena_entrada_rapida(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
-    """Entrada rapida (a senha ainda esta valendo): o Yoru mergulha de um
-    canto de cima girando, desliza cortando rente a frase - a luz da katana
-    grava TRAVETE FOCUS inteiro de uma vez -, freia do outro lado, embainha
-    e um balao de anime diz 'Bem-vindo!'. Uns 3 s."""
+    """Entrada rapida (a senha ainda esta valendo), em cena de anime: as
+    faixas de cinema fecham, o Yoru despenca do alto num risco de luz, a
+    camera aproxima... um instante parado com a mao no cabo (brilho no fio)
+    e ele atravessa a frase num iai - quadro de impacto, a luz da katana
+    grava TRAVETE FOCUS de ponta a ponta -, freia do outro lado, salta para
+    cima da frase, embainha e um balao diz 'Bem-vindo!'. Uns 4 s."""
     fim = _Uma(on_fim)
     camada = Widget(size_hint=(None, None), size=tela.size, pos=(0, 0))
     ag = _Agenda()
@@ -4486,6 +4557,9 @@ def cena_entrada_rapida(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
 
     def encerrar():
         ag.parar()
+        rest = getattr(camada, '_restaurar', None)
+        if rest is not None:
+            rest()
         fim()
 
     try:
@@ -4508,7 +4582,12 @@ def cena_entrada_rapida(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         camada.add_widget(K.RastroLamina(kk, faiscas))
         camada.add_widget(kk)
         camada.add_widget(faiscas)
-        _precarregar_sons(['pulo', 'sacar_iai', 'corte', 'embainhar', 'pouso', 'titulo', 'fala_tou'])
+        cine = _FaixasCinema(W, H)
+        camada.add_widget(cine)
+        cam = _Camera(tela)
+        camada._restaurar = cam.soltar
+        _precarregar_sons(['pulo', 'sacar_iai', 'corte', 'embainhar', 'pouso', 'titulo', 'fala_tou', 'koiguchi',
+                           'golpe_final'])
         P = K.POSE_A
         th = titulo.th
         ox_t, oy_t = titulo._origem()
@@ -4547,13 +4626,39 @@ def cena_entrada_rapida(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                                   (1, _com(pronto, estica=1))]))
             _som('pulo')
             kk.empurrar(capa=-10, cabelo=-8, lift=10)
-            _mover(kk, ini, A0, 0.42, rot=(0, -720), fantasmas=4, ease='in', on_fim=_corta,
+            cine.entrar()
+            _linhas_velocidade(camada, 0.42, CIANO, vertical=True, x0=0, x1=A0[0] + 60 * te, n=12)
+            _mover(kk, ini, A0, 0.42, rot=(0, -720), fantasmas=4, ease='in', on_fim=_pousa0,
                    rot_janela=(0.12, 0.85))
         ag.depois(0.05, _mergulha)
 
-        def _corta():
-            # sai do giro direto no iai: desliza de ponta a ponta da frase
+        def _pousa0():
+            # pousa agachado, a mao no cabo: a camera aproxima, um brilho corre no fio... silencio
             kk.rotacao = 0
+            ax, ay = kk.ancora()
+            _som('pouso')
+            _tremer(6)
+            faiscas.estourar(ax, ay - kk.extensao()[1], POEIRA, n=10, forca=dp(110), tam=max(2, ps * 0.8),
+                             gravidade=dp(300))
+            _anel(camada, (ax, ay - kk.extensao()[1] + te * 2), te * 4, te * 60, 0.3, CIANO, esp=dp(2), achat=0.3)
+            kk.tocar(K.sequencia([(2, _com(pronto, estica=-1), 'segura'), (4, pronto, 'out'), (1, pronto)]))
+            kk.empurrar(lift=-10, capa=-8)
+            cam.ir(1.22, foco=(ax + th * 0.6, ay + th * 0.4), dur=0.3)
+
+            def _brilho():
+                hx, hy = kk.ponto_mao(1)
+                _estrela(camada, hx, hy, ps * 1.2, BRANCO, raios=4, dur=0.16)
+                _som('koiguchi')
+            ag.depois(0.26, _brilho)
+            ag.depois(0.5, _corta)
+
+        def _corta():
+            # o iai: desliza de ponta a ponta da frase
+            kk.rotacao = 0
+            cam.ir(1.0, dur=0.12)
+            _quadro_impacto(camada, kk, (ox_t + titulo.tw / 2.0, cy))
+            _linhas_velocidade(camada, 0.3, BRANCO, y0=cy - th * 2.2, y1=cy + th * 2.2, n=16, sentido=1)
+            _tremer(14)
             chaves = [(1, pronto, 'segura'), (1, K.misturar(pronto, corta, 0.5, 0.5), 'segura'),
                       (5, corta, 'out'), (4, segue, 'mola'), (1, segue)]
             kk.tocar(K.sequencia(chaves))
@@ -4591,10 +4696,18 @@ def cena_entrada_rapida(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         def _freia():
             # freia do outro lado (o sobretudo passa do ponto) e ja salta
             _som('corte')
-            _tremer(8)
+            _som('golpe_final')
+            _tremer(12)
             kk.impacto()
             kk.pausar(0.05)
             kk.empurrar(capa=-18, cabelo=-14)
+            cine.sair()
+            for sent, cor_ in ((1, CIANO), (-1, AZUL)):          # a frase estala: duas meias-luas cruzadas
+                camada.add_widget(CorteMeiaLua(centro=(ox_t + titulo.tw / 2.0, cy), raio=titulo.tw * 0.6,
+                                               ang_ini=160 if sent > 0 else 20, ang_fim=-45 if sent > 0 else 225,
+                                               espessura=th * 1.1, achat=0.34, rotacao=12 * sent, cor=cor_,
+                                               dur_cheio=4 / 30.0, dur_decai=7 / 30.0, por_s=15))
+            faiscas.estourar(ox_t + titulo.tw / 2.0, cy, CIANO, n=30, forca=dp(300), tam=ps)
             p_pulo = _com(P['pulo'], olhos='s')
             ax, ay = kk.ancora()
             kk.tocar(K.sequencia([(3, K.esticado(p_pulo), 'out'), (4, K.encolhido(p_pulo), 'suave'),
@@ -4629,7 +4742,7 @@ def cena_entrada_rapida(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         def _seguranca():
             titulo.completo()
             encerrar()
-        ag.depois(8.0, _seguranca)
+        ag.depois(9.5, _seguranca)
     except Exception as e:
         print(f"[cena] entrada rapida falhou, seguindo sem ela: {e}")
         encerrar()
