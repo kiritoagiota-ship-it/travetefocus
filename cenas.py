@@ -125,22 +125,6 @@ def _voo(k, sobe, topo, desce, cortes=(0.22, 0.72)):
     return _f
 
 
-def _giro(k, a, b, fim, trocas=4):
-    """on_passo para um giro no ar: alterna as duas poses de laminas abertas
-    (parece uma roda de espadas girando) e abre na pose `fim` no final."""
-    atual = [None]
-
-    def _f(u):
-        if u >= 0.8:
-            p = fim
-        else:
-            p = a if int(u / 0.8 * trocas) % 2 == 0 else b
-        if p is not atual[0]:
-            atual[0] = p
-            k.mostrar(p)
-    return _f
-
-
 class _Uma:
     """Chama `fn` uma unica vez (protege on_fim de cenas)."""
 
@@ -269,15 +253,6 @@ def _dentro_girado(k, x, y, area, m=0.0):
     lo, hi = y0 + m - min(ys), y1 - m - max(ys)
     y = (lo + hi) / 2.0 if lo > hi else min(hi, max(lo, y))
     return x, y
-
-
-def _raio(k, poses):
-    """Maior distancia da ancora ate um canto das poses (para giros)."""
-    r = 0.0
-    for p in poses:
-        esq, baixo, dir_, cima = k.extensao(p)
-        r = max(r, math.hypot(max(esq, dir_), max(baixo, cima)))
-    return r
 
 
 def _arco(y_de, y_para, altura, teto):
@@ -594,66 +569,7 @@ def _anel(camada, centro, r0, r1, dur, cor=CIANO, esp=None, achat=1.0, grao=1):
         print(f"[cena] anel: {e}")
 
 
-def _risco_luz(camada, x0, x1, y, dur, cor=CIANO, espessura=None):
-    """Risco reto de luz em pixels que cresce de x0 ate x1 em `dur` e
-    depois afina e some."""
-    esp = espessura or dp(3)
-
-    def forma(t, p, u):
-        k = min(1.0, t / dur)
-        xa = x0 + (x1 - x0) * k
-        some = max(0.0, (t - dur) / 0.55)
-        g = max(1, int(round(esp / u * (1 - some))))
-        lo, hi = min(x0, xa), max(x0, xa)
-        gy = math.floor(y / u) * u
-        w = math.floor(hi / u) * u - math.floor(lo / u) * u + u
-        xl = math.floor(lo / u) * u
-        p.setdefault('brilho', []).append((xl, gy - (g + 1) * u, w, (2 * g + 3) * u))
-        p.setdefault('luz', []).append((xl, gy - (g // 2) * u, w, g * u))
-    camada.add_widget(_EfeitoPixel(_cores_efeito(cor, 0.45), dur + 0.55, forma))
-
-
-def _clarao_boneco(k, dur=0.3, de=1.0):
-    """O boneco fica branco e volta a cor (fusao das espadas)."""
-    t = [0.0]
-
-    def _p(dt):
-        try:
-            t[0] += dt
-            k.clarao = de * max(0.0, 1 - t[0] / dur)
-            return t[0] < dur
-        except Exception:
-            return False
-    Clock.schedule_interval(_p, 1 / 60.)
-
-
 _TEX_COLUNA = None
-
-
-def _textura_coluna():
-    """Coluna de luz: forte embaixo, somindo para cima e para os lados."""
-    global _TEX_COLUNA
-    if _TEX_COLUNA is None:
-        w, h = 16, 64
-        buf = bytearray(w * h * 4)
-        for y in range(h):
-            fy = (1 - y / (h - 1.0)) ** 1.4
-            for x in range(w):
-                fx = max(0.0, 1 - abs(x - (w - 1) / 2.0) / (w / 2.0)) ** 1.3
-                i = (y * w + x) * 4
-                buf[i] = buf[i + 1] = buf[i + 2] = 255
-                a = fx * fy
-                buf[i + 3] = 255 if a > 0.6 else (150 if a > 0.3 else (60 if a > 0.1 else 0))
-        dados = bytes(buf)
-        tex = Texture.create(size=(w, h), colorfmt='rgba')
-        tex.mag_filter = 'nearest'
-        tex.min_filter = 'nearest'
-        tex.wrap = 'clamp_to_edge'
-        tex.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte')
-        tex.add_reload_observer(
-            lambda t: t.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte'))
-        _TEX_COLUNA = tex
-    return _TEX_COLUNA
 
 
 _TEX_BRILHO = None
@@ -1704,55 +1620,6 @@ def _topo_cabeca(k):
         return ax, ay + k.ps * 14
 
 
-def _pixels_balao(tipo, bw, bh, cauda, lado):
-    """Balao em celulas: corpo bw x bh em cima de uma cauda de `cauda`
-    celulas cuja ponta fica embaixo, do lado -lado (perto de quem fala).
-    Devolve (bytes RGBA, largura, altura, coluna da ponta, centro do corpo)."""
-    margem = 3
-    W, H = bw + 2 * margem, bh + cauda + margem + 1
-    cx, cy = W / 2.0, cauda + bh / 2.0
-    rx, ry = bw / 2.0, bh / 2.0
-    xt = int(round(cx - lado * bw * 0.36))                 # ponta da cauda
-    xb = cx - lado * bw * 0.16                             # meio da base da cauda
-    larg_base = max(3.0, bw * 0.13)
-    pontas = 13 if tipo == 'grito' else 0
-
-    def dentro(x, y):
-        dx, dy = (x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry
-        if pontas:
-            ang = math.atan2(dy, dx)
-            fr = (ang / (2 * math.pi) * pontas) % 1.0
-            tri = 1 - 2 * abs(fr - 0.5)
-            if math.hypot(dx, dy) <= 0.74 + 0.36 * tri ** 1.6:
-                return True
-        elif dx ** 4 + dy ** 4 <= 1.0:
-            return True
-        # cauda: triangulo da base (encostada no corpo) ate a ponta
-        yb = cauda + ry * (0.35 if pontas else 0.2)
-        if 0 <= y + 0.5 <= yb:
-            u = (y + 0.5) / yb                             # 0 na ponta, 1 na base
-            meio = xt + (xb - xt) * u
-            return abs(x + 0.5 - meio) <= larg_base * u * 0.5 + 0.3
-        return False
-    cheio = [[dentro(x, y) for x in range(W)] for y in range(H)]
-    PRETO, BRANCO, SOMBRA = (8, 8, 18, 255), (250, 250, 255, 255), (196, 204, 226, 255)
-    buf = bytearray(W * H * 4)
-    for y in range(H):
-        for x in range(W):
-            if cheio[y][x]:
-                borda_dir = x + 1 >= W or not cheio[y][x + 1]
-                borda_baixo = y - 1 < 0 or not cheio[y - 1][x]
-                c = SOMBRA if (borda_dir or borda_baixo) else BRANCO
-            elif any(0 <= x + a < W and 0 <= y + b < H and cheio[y + b][x + a]
-                     for a, b in ((1, 0), (-1, 0), (0, 1), (0, -1))):
-                c = PRETO
-            else:
-                continue
-            i = (y * W + x) * 4
-            buf[i:i + 4] = bytes(c)
-    return bytes(buf), W, H, xt, (cx, cy)
-
-
 class BalaoFala(Widget):
     """Balao de fala de manga (texto, sem voz) preso na cabeca do boneco `k`.
     tipo 'fala' = balao oval branco com contorno preto grosso e rabinho curvo
@@ -1944,136 +1811,6 @@ def balao(camada, texto, k, tipo='fala', dur=1.4, **kw):
 #  pontilhado. Os quadros sao desenhados antes da hora, aos poucos.
 # ═══════════════════════════════════════════════════════════════════
 _COR_NUVEM = ((250, 236, 255), (205, 160, 255), (140, 70, 230), (72, 24, 128), (22, 8, 40))
-
-
-def _desenho_nuvem(raio_px, u, n=12, semente=7):
-    """Gerador: vai desenhando os `n` quadros da nuvem (celulas de u px);
-    no fim entrega [(bytes RGBA, lado)]."""
-    rnd = random.Random(semente)
-    R = raio_px / float(u)
-    lado = int(R * 3.4) + 4
-    c = lado / 2.0
-    bolhas = []
-    for i in range(24):
-        ang = rnd.uniform(0, 2 * math.pi)
-        if i < 10:                                   # bolhas grandes no meio
-            dist, rb = R * (0.1 + 0.4 * rnd.random()), R * rnd.uniform(0.36, 0.55)
-        else:                                        # bolhinhas na borda (fumaca)
-            dist, rb = R * (0.55 + 0.35 * rnd.random()), R * rnd.uniform(0.16, 0.3)
-        bolhas.append((math.cos(ang), math.sin(ang), dist, rb, rnd.uniform(0.2, 1.0)))
-    bolhas.sort(key=lambda b: -b[1] * b[2])          # as de baixo primeiro (as de cima na frente)
-    quadros = []
-    for f in range(n):
-        uu = f / float(n - 1)
-        cresce = max(0.18, 1 - (1 - min(1.0, uu / 0.22)) ** 2)
-        clareia = 0.3 * (1 - min(1.0, uu / 0.3))       # o estouro nasce claro
-        abre = max(0.0, (uu - 0.38) / 0.62)
-        buraco = R * 1.35 * abre ** 1.1                  # abre do meio para fora
-        # cada bolha fica na frente das anteriores (fumaca de anime): guarda a
-        # bolha de cima de cada celula e onde a celula fica dentro dela
-        topo = [0.0] * (lado * lado)            # 1 - distancia^2 na bolha de cima (0 = vazio)
-        luz = [0.0] * (lado * lado)             # luz vindo de cima/esquerda na bolha de cima
-        for (cx_, cy_, dist, rb, sobe) in bolhas:
-            d2 = dist * (0.35 + 0.65 * cresce) * (1 + 0.55 * abre)
-            bx, by = c + cx_ * d2, c + cy_ * d2 + sobe * abre * R * 0.35
-            r = rb * cresce * (1 + 0.25 * abre)
-            if r < 1:
-                continue
-            x0, x1 = max(0, int(bx - r)), min(lado, int(bx + r) + 1)
-            y0, y1 = max(0, int(by - r)), min(lado, int(by + r) + 1)
-            for y in range(y0, y1):
-                dy = (y + 0.5 - by) / r
-                lin = y * lado
-                for x in range(x0, x1):
-                    dx = (x + 0.5 - bx) / r
-                    v = 1.0 - (dx * dx + dy * dy)
-                    if v > 0:
-                        topo[lin + x] = v
-                        luz[lin + x] = (dy - dx) * 0.5
-        buf = bytearray(lado * lado * 4)
-        for y in range(lado):
-            lin = y * lado
-            for x in range(lado):
-                v = topo[lin + x]
-                if v <= 0:
-                    continue
-                if buraco > 0 and math.hypot(x + 0.5 - c, y + 0.5 - c) < buraco:
-                    continue
-                if abre > 0 and ((x * 7 + y * 13) % 11) / 11.0 < abre * 0.9:
-                    continue                             # se desfazendo em pontilhado
-                fora = (x == 0 or x == lado - 1 or y == 0 or y == lado - 1 or
-                        topo[lin + x - 1] <= 0 or topo[lin + x + 1] <= 0 or
-                        topo[lin + x - lado] <= 0 or topo[lin + x + lado] <= 0)
-                if fora:
-                    nv = 0                               # brilho na borda de fora
-                elif v < 0.13:
-                    nv = 1 if luz[lin + x] > 0 else 2    # contorno da bolha da frente
-                else:
-                    q = (luz[lin + x] * 0.55 + v * 0.25 + (y - c) / lado * 0.5 - clareia
-                         + _BAYER[y & 1][x & 1] * 2)
-                    nv = 1 if q > 0.42 else (2 if q > 0.18 else (3 if q > -0.1 else 4))
-                cor = _COR_NUVEM[nv]
-                i = (lin + x) * 4
-                buf[i:i + 4] = bytes((cor[0], cor[1], cor[2], 255))
-            if y % 12 == 11:
-                yield None
-        quadros.append((bytes(buf), lado))
-    yield quadros
-
-
-class NuvemReiatsu(Widget):
-    """Toca a nuvem (quadros prontos) centrada em `centro` por `dur`.
-    on_coberto: quando a nuvem cobre tudo (hora de trocar a forma dele);
-    on_fim: quando acaba."""
-
-    def __init__(self, quadros, u, centro, dur=1.3, on_coberto=None, on_fim=None, **kwargs):
-        kwargs.setdefault('size_hint', (None, None))
-        kwargs.setdefault('size', (0, 0))
-        super().__init__(**kwargs)
-        self.texs = []
-        for dados, lado in quadros:
-            tex = Texture.create(size=(lado, lado), colorfmt='rgba')
-            tex.mag_filter = tex.min_filter = 'nearest'
-            tex.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte')
-            tex.add_reload_observer(lambda t_, d=dados: t_.blit_buffer(d, colorfmt='rgba', bufferfmt='ubyte'))
-            self.texs.append((tex, lado * u))
-        self.centro, self.dur = centro, dur
-        self._coberto = _Uma(on_coberto)
-        self._fim = _Uma(on_fim)
-        self.t = 0.0
-        with self.canvas:
-            Color(1, 1, 1, 1)
-            self._r = Rectangle(size=(0, 0))
-        self._ev = Clock.schedule_interval(self._tick, 1 / 30.)
-        self._tick(0)
-
-    def _tick(self, dt):
-        try:
-            self.t += dt
-            k = self.t / self.dur
-            if k >= 1:
-                return self.parar()
-            i = min(len(self.texs) - 1, int(k * len(self.texs)))
-            tex, tam = self.texs[i]
-            self._r.texture = tex
-            self._r.size = (tam, tam)
-            self._r.pos = (self.centro[0] - tam / 2.0, self.centro[1] - tam / 2.0)
-            if k >= 0.32:
-                self._coberto()
-            return True
-        except Exception as e:
-            print(f"[nuvem] {e}")
-            return self.parar()
-
-    def parar(self):
-        if self._ev is not None:
-            self._ev.cancel()
-            self._ev = None
-        self._coberto()
-        if self.parent:
-            self.parent.remove_widget(self)
-        self._fim()
-        return False
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2821,24 +2558,6 @@ class _AnelEnergia(Widget):
             if h == 0:
                 pts.setdefault('o', []).append((k * u, yb + 2 * u, u, u))
         self._lote.desenhar(pts)
-
-
-def _pendurado_idle(base, base_b, piscar=True):
-    """Pernas balancando devagar: vao e voltam passando por um quadro do
-    meio (solto, nao duro), com uma piscada."""
-    meio = dict(base, pernas='solto_meio')
-    quadros = []
-    for f in range(64):
-        if 18 <= f < 22 or 34 <= f < 38:
-            q = dict(meio)
-        elif 22 <= f < 34:
-            q = dict(base_b)
-        else:
-            q = dict(base)
-        if piscar and f in (50, 51):
-            q['olhos'] = 'f'
-        quadros.append(q)
-    return quadros
 
 
 BRASA = (1.0, 0.42, 0.14)        # o fogo do chefe
@@ -6781,9 +6500,37 @@ def kirito_wipe(widgets, on_fim=None, grafico=None, area_lista=None, extras=None
                    ('sb3_a', 'sb3_b', 1, (175, 0), 0.0), ('sb4_a', 'sb4_b', 2, (185, -5), 0.0)]
         n_vis = len(vis)
 
+        def _angulo(j):
+            talho = padroes[j % 4][4]
+            return talho if j % 2 == 0 else 180 - talho
+
+        # a conta pesada dos cacos (foto de cada item em blocos) e feita ANTES,
+        # um item por quadro, enquanto ele saca as espadas: na hora do golpe os
+        # cacos so soltam, sem tranco
+        prontos = {}
+        fila = [(w, _angulo(j)) for j, (w, _x, _y, _ww, _hh) in enumerate(vis)]
+        if grafico is not None:
+            fila.append((grafico, -25.0))
+
+        def _prepara(dt):
+            if not fila or camada[0] is None or camada[0].parent is None:
+                return False
+            w, ang = fila.pop(0)
+            try:
+                from efeitos import explodir_estilhacos
+                prontos[w] = explodir_estilhacos(w, lambda: None, corte=ang, tremor=0, px=_PX[0] * 2,
+                                                 abaixo_de=cam, adiar=True)
+            except Exception as e:
+                print(f"[wipe] preparar: {e}")
+            return True
+        Clock.schedule_interval(_prepara, 4 / 60.)
+
         def _desintegra(w, ang):
             from efeitos import explodir_estilhacos
             try:
+                solta = prontos.pop(w, None)
+                if solta is not None:
+                    return solta()
                 explodir_estilhacos(w, lambda: None, corte=ang, tremor=0, px=_PX[0] * 2, abaixo_de=cam)
             except Exception as e:
                 print(f"[wipe] item: {e}")

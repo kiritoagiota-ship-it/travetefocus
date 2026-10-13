@@ -970,56 +970,6 @@ class FundoAnimado(FloatLayout):
 #  EXPLOSÃO SAO — coordenadas globais (Window space)
 # ═══════════════════════════════════════════════════════════
 
-class CacoSAO(Widget):
-    angulo = NumericProperty(0)
-    escala = NumericProperty(1.0)
-
-    def __init__(self, gx, gy, max_w, max_h, **kwargs):
-        """
-        gx, gy  — coordenada global (Window space) de origem
-        max_w/h — dimensões do widget explodido
-        """
-        super().__init__(**kwargs)
-        self.size_hint = (None, None)
-        self.size = (random.randint(14, 28), random.randint(14, 28))
-        # posição inicial: dentro da bbox global do widget
-        self.pos = (gx + random.randint(0, int(max_w)),
-                    gy + random.randint(0, int(max_h)))
-        with self.canvas.before:
-            PushMatrix()
-            self._rot = Rotate(angle=self.angulo, origin=self.center)
-            self._scl = Scale(self.escala, origin=self.center)
-            Color(0, 0.8, 1, 1)
-            self._tri = Triangle(points=[
-                self.x, self.y,
-                self.x + self.width, self.y,
-                self.x + self.width / 2, self.y + self.height
-            ])
-        with self.canvas.after:
-            PopMatrix()
-        self.bind(pos=self._upd, angulo=self._upd, escala=self._upd)
-
-    def _upd(self, *_):
-        self._rot.angle  = self.angulo
-        self._scl.xyz    = (self.escala, self.escala, 1)
-        self._tri.points = [
-            self.x, self.y,
-            self.x + self.width, self.y,
-            self.x + self.width / 2, self.y + self.height
-        ]
-
-
-class PoeiraDigital(Widget):
-    def __init__(self, gx, gy, max_w, max_h, **kwargs):
-        super().__init__(**kwargs)
-        self.size_hint = (None, None)
-        self.size = (4, 4)
-        self.pos  = (gx + random.randint(0, int(max_w)),
-                     gy + random.randint(0, int(max_h)))
-        with self.canvas:
-            Color(0, 1, 1, 1)
-            self._rect = Rectangle(pos=self.pos, size=self.size)
-        self.bind(pos=lambda i, v: setattr(i._rect, 'pos', v))
 
 
 _CACO_LUZ = (200, 255, 255)        # borda de cima/esquerda (onde bate a luz)

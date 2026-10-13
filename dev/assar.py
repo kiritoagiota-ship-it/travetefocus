@@ -29,6 +29,13 @@ def gravar():
         rodadas.append(('senha %d' % (i + 1),
                         [bash, os.path.join(AQUI, 'tour.sh'), '720', '1560', os.path.join(SCR, 'gr_pin%d' % i), '1.75'],
                         dict(CENA='pin', CADA='0', TOUR_PY=os.path.join(AQUI, 'filme_cenas.py'))))
+    # as cenas curtas dentro do app de verdade (o lugar e o tamanho mudam os desenhos pedidos)
+    rodadas.append(('cenas no app', [bash, os.path.join(AQUI, 'tour.sh'), '720', '1560', os.path.join(SCR, 'gr_app'), '1.75'],
+                    dict(CENA='app', CADA='0', TOUR_PY=os.path.join(AQUI, 'filme_cenas.py'))))
+    for i, v in enumerate(('1,0,1', '40,30,14')):
+        rodadas.append(('casos extremos %d' % (i + 1),
+                        [bash, os.path.join(AQUI, 'tour.sh'), '720', '1560', os.path.join(SCR, 'gr_varre%d' % i), '1.75'],
+                        dict(CENA='varre', VARRE=v, CADA='0', TOUR_PY=os.path.join(AQUI, 'filme_cenas.py'))))
     cenas = 'iai,estocada,x,carimbo,vitoria,pergaminho,nivel,meta'
     for i in range(3):
         rodadas.append(('cenas curtas %d' % (i + 1),
