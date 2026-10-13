@@ -70,7 +70,7 @@ def assar():
         idx = bytearray(w * h)
         for (x, y), c in px.items():
             idx[(y - Y0) * w + (x - X0)] = K._COD[c]
-        return bytes(idx), (X0, Y0, w, h)
+        return K.estilizar(bytes(idx), w, h), (X0, Y0, w, h)      # ja com o acabamento (luz/sombra/grao)
 
     itens, caixas, blobs = {}, {}, []
     pos = [0]

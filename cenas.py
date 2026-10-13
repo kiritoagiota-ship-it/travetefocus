@@ -2982,7 +2982,7 @@ def _projetil_sangue(camada, de, para, dur, te, on_chega=None, pequeno=False):
         dx, dy = para[0] - de[0], para[1] - de[1]
         d = math.hypot(dx, dy) or 1.0
         ux, uy = dx / d, dy / d
-        b = te * (3 if pequeno else 5)
+        b = te * (4 if pequeno else 8)
         n = 7 if pequeno else 12
 
         def forma(t, p, u):
@@ -3127,6 +3127,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
 
     def encerrar():
         ag.parar()
+        K.definir_ambiente('')
         if cam[0] is not None:
             cam[0].soltar()
         try:
@@ -3194,6 +3195,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         # sombra, envolto em chamas roxas e azuis, com o cabelo comprido
         M = {n: _com(P[n], mugetsu=True) for n in ('fund_alto', 'evo_alto', 'evo_carga',
                                                     'evo_corte', 'evo_fim')}
+        K.definir_ambiente('brasa')                        # na luta ele reflete a lua e a brasa do chefe
         kk.precarregar([P[n] for n in P] + list(M.values()))
         _precarregar_sons(_SONS_TITULO)
         ox_t, oy_t = titulo._origem()
@@ -3383,7 +3385,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                     return False
                 if cen.f > 0.9:                             # cinzas subindo das fendas do chao
                     brasas.estourar(random.uniform(0, W), chao - random.uniform(4, 150) * te,
-                                    random.choice((BRASA, SANGUE)), n=1, forca=dp(14), tam=te * 2,
+                                    random.choice((BRASA, SANGUE)), n=1, forca=dp(14), tam=te * random.choice((2, 3, 4)),
                                     gravidade=-dp(random.uniform(40, 110)))
                 if boss.opacity > 0 and boss._pontos is not None:
                     mx_, my_ = boss.mao()
@@ -3391,12 +3393,12 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                     for _ in range(2):                      # o fio do montante solta fogo
                         f = random.uniform(0.15, 1.0)
                         brasas.estourar(mx_ + (px_ - mx_) * f, my_ + (py_ - my_) * f,
-                                        random.choice((BRASA, SANGUE, (1.0, 0.8, 0.5))), n=1, forca=dp(34),
-                                        tam=te * 2, gravidade=-dp(190))
+                                        random.choice((BRASA, SANGUE, (1.0, 0.6, 0.25))), n=1, forca=dp(40),
+                                        tam=te * random.choice((2, 3, 3, 4)), gravidade=-dp(210))
                     ox_, oy_ = boss.ponto('olho')            # a chama do olho
                     brasas.estourar(ox_ + random.uniform(0, 5) * te, oy_ + random.uniform(0, 4) * te,
-                                    random.choice((SANGUE, (1.0, 0.75, 0.45))), n=1, forca=dp(10), tam=te * 2,
-                                    gravidade=-dp(150))
+                                    random.choice((SANGUE, BRASA)), n=1, forca=dp(12), tam=te * 3,
+                                    gravidade=-dp(170))
             except Exception as e:
                 print(f"[cena] vida do chefe: {e}")
             return True
@@ -3503,8 +3505,11 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
 
         def soco_camera(foco, zoom=1.1, volta=0.35):
             """A camera da um tranco para perto do golpe e volta."""
-            cam[0].ir(zoom, foco=foco, dur=0.07)
-            ag.depois(0.12, lambda: cam[0].ir(1.0, dur=volta))
+            cam[0].ir(1.0 + (zoom - 1.0) * 2.4, foco=foco, dur=0.07)
+            ag.depois(0.16, lambda: cam[0].ir(1.0, dur=volta))
+
+        def cam_em(zoom, foco=None, dur=0.4):
+            cam[0].ir(zoom, foco=foco, dur=dur)
 
         def mover_chefe(de, para, dur, ease='linear', on_fim=None):
             """Leva os pes do chefe de `de` ate `para` (em passos de pixel, 30 por segundo)."""
@@ -3582,6 +3587,8 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             kk.tocar(K.sequencia(_de_agora(kk, 1) + [(2, _com(agacha, estica=-1), 'segura'),
                                                       (4, agacha, 'out'), (4, pronto, 'suave'),
                                                       (1, pronto)]))
+            cam_em(1.55, foco=(ax + 40 * te, ay + 60 * te), dur=0.35)      # a camera vai ate ele
+            ag.depois(0.95, lambda: cam_em(1.0, dur=0.3))
             # close de anime: o olho dele, com a mao no cabo
             ag.depois(0.1, lambda: _som('fala_ikuzo'))
             ag.depois(0.12, lambda: close_rosto(camada, 'normal', dur=0.7, y_rel=0.84,
@@ -3680,6 +3687,8 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         #    peito (golpe 2), saca a azul no alto e mergulha no nucleo (golpe 3) ──
         def _projetil():
             cine.entrar()
+            cam_em(1.25, foco=((K0[0] + bx) / 2.0, chao + 170 * te), dur=0.5)   # os dois no quadro, de perto
+            ag.depois(0.95, lambda: cam_em(1.0, dur=0.25))
 
             def _q(i):
                 if i == 12:
@@ -3846,7 +3855,10 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                   ('sb3_a', 'sb3_b', 1, (175, 0)), ('sb4_a', 'sb4_b', 2, (185, -5))]
 
         def _rajada(j):
+            if j == 0:
+                cam_em(1.45, foco=(bxl + 110 * te, chao + 150 * te), dur=0.2)   # a rajada de perto
             if j >= len(RAJADA):
+                cam_em(1.0, dur=0.3)
                 kk.tocar(K.sequencia(_de_agora(kk, 2, 'out') + [(3, guarda2, 'out'), (1, guarda2)]))
                 return _garra()
             a, c_, qual, arc = RAJADA[j]
@@ -3999,6 +4011,8 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         # ── 8) o chefe cai de joelho, apoiado no montante... e se levanta em
         #    FURIA: ergue o montante, tudo aceso, e o sopro joga o Yoru longe ──
         def _virada():
+            ag.depois(0.5, lambda: cam_em(1.3, foco=(bx - 40 * te, chao + 170 * te), dur=0.6))   # ele caido, de perto
+            ag.depois(1.7, lambda: cam_em(1.0, dur=0.25))
             boss.espelhar = False                           # vira para o Yoru (o claro do golpe esconde a troca)
             boss.tocar('cambaleia', on_fim=lambda: boss.tocar('ajoelhado', loop=True))
             cine.sair()
@@ -4160,7 +4174,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                 return True
             ag.cada(0.05, _sobe)
             _tremer(4)
-            ag.depois(1.0, _kai)
+            ag.depois(0.75, _kai)
 
         def _kai():
             # "KAI!!" - grito, quadro de impacto e o ESTOURO de luz
@@ -4362,7 +4376,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                             on_meio=lambda: acerta(9, boss.ponto('cabeca'), forte=True, cor=ROXO))
             _gemido(forte=True)
             _bk('corte', loop=False, on_quadro=_q, on_fim=lambda: _bk('fim', loop=False, on_fim=_bk_idle))
-            ag.depois(0.85, _lua)
+            ag.depois(0.6, _lua)
 
         def _lua():
             # a lua negra sobe atras dele e o fogo ruge (ele continua flutuando)
@@ -4404,12 +4418,8 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             # MUGETSU: a escuridao sai dele e engole a tela inteira (a frase e
             # o infinito somem); so os olhos, o fogo e a espada brilham
             ax, ay = kk.ancora()
-            tv = _Trevas(2 * ps / float(K.R))
-            i = camada.children.index(titulo) if titulo in camada.children else len(camada.children)
-            camada.add_widget(tv, index=i)
-            estado['trevas'] = tv
-            tv.crescer(ax, ay + alt * 0.3, dur=0.75)
-            cine.entrar()
+            cine.entrar()                                    # (a lua e o castelo ficam: o corte acontece no mundo dele)
+            _brilho_tela(camada, 0.3, 0.3, (0.5, 0.3, 0.9), atras=boss)
             _som('trevas')
             aura.alvo = 1.0
             cam[0].ir(1.12, foco=(ax, ay + alt * 0.3), dur=1.4)
@@ -4539,7 +4549,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
 
         def _para():
             # de costas para a frase que acende letra por letra... e o mundo segura a respiracao
-            ag.depois(1.05, _separa)
+            ag.depois(0.7, _separa)
 
         def _separa():
             # a espada evoluida se divide de novo nas duas e ele desce para
@@ -4547,6 +4557,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             hx2, hy2 = kk.ponto_mao(1)
             aura.alvo = 0.0
             chamas.alvo = 0.0
+            K.definir_ambiente('')                           # o mundo do chefe acabou: ele volta para a luz do app
             dupla = _com(P['dupla'], olhos='s')
             dupla_m = None
             # a lamina se divide nas duas: estalo nas maos
@@ -4700,8 +4711,8 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                      on_fim=lambda: kk.idle(base=fim_p))
             kk.empurrar(capa=-10, cabelo=-8, lift=4)
             aura.alvo = 0.0
-            ag.depois(0.35, lambda: balao(camada, 'Bem-vindo!', kk, dur=1.25))
-            ag.depois(1.6, encerrar)
+            ag.depois(0.25, lambda: balao(camada, 'Bem-vindo!', kk, dur=1.0))
+            ag.depois(1.25, encerrar)
 
         # rede de seguranca: a cena nunca prende o app
         def _seguranca():
@@ -4924,6 +4935,7 @@ def cena_entrada_rapida(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
 
 def limpar_cena(camada):
     try:
+        K.definir_ambiente('')
         ag = getattr(camada, '_agenda', None)
         if ag is not None:
             ag.parar()

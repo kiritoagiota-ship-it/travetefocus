@@ -362,8 +362,13 @@ def _construir():
         cheio = cv2.inpaint(fonte, furo, 5, cv2.INPAINT_TELEA)
         cand = np.arange(N_FIXAS, n_pal)
         ys, xs = np.nonzero(falta)
-        escuro = (cheio[ys, xs].astype(float) * 0.82)
-        ci = cand[_mais_perto(escuro, pal_rgb[cand])]
+        if nome == 'capa':
+            escuro = (cheio[ys, xs].astype(float) * 0.82)
+            ci = cand[_mais_perto(escuro, pal_rgb[cand])]
+        else:
+            # armadura escondida: chapa escura lisa com um xadrez de 2 tons (limpo, sem borrao)
+            dois = cand[_mais_perto(np.array([(22.0, 19.0, 34.0), (34.0, 30.0, 50.0)]), pal_rgb[cand])]
+            ci = np.where(((xs // 3 + ys // 3) % 2) == 0, dois[0], dois[1])
         e = np.zeros((h, w), int)
         e[ys, xs] = ci
         escond[nome] = e

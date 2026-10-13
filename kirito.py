@@ -2308,7 +2308,91 @@ _TAB = [bytearray(256) for _ in range(4)]
 for _c, _i in _COD.items():
     for _k in range(4):
         _TAB[_k][_i] = _RGBA[_c][_k]
-_TAB = [bytes(t) for t in _TAB]
+# ── LUZ DO AMBIENTE (o Yoru no mesmo mundo do chefe): na roupa, no cabelo, no
+# couro e no aco, os pixels da BORDA DE FORA sao marcados - os de cima/esquerda
+# (numero da cor + _OFF_LUZ) e os de baixo/direita (+ _OFF_SOMBRA). Em cada
+# ambiente esses pixels tem uma cor:
+#   ''      (o app): a borda de cima ganha um fio de luz fria; a de baixo fica igual;
+#   'brasa' (a luta): em cima a luz da lua, mais forte; embaixo a BRASA do chao
+#           e do chefe refletida (e o contorno do lado da sombra fica em brasa).
+# Nada de textura por dentro: o desenho continua limpo.
+_OFF_LUZ, _OFF_SOMBRA = 80, 160
+_MATERIAIS = 'HhCcAqPBMJI247pbKgWuDd&'
+_LUZ_FRIA = (0.60, 0.70, 0.98)
+_BRASA_REFLEXO = (0.92, 0.20, 0.12)
+_TABS = {}
+for _zz_amb in ('', 'brasa'):
+    _zz_t = [bytearray(t) for t in _TAB]
+    for _zz_c in _MATERIAIS:
+        _zz_i = _COD[_zz_c]
+        _zz_r, _zz_g, _zz_b, _zz_a = _PALETA[_zz_c]
+        _zz_kl = 0.20 if _zz_amb == '' else 0.40
+        _zz_luz = tuple(v + (l - v) * _zz_kl for v, l in zip((_zz_r, _zz_g, _zz_b), _LUZ_FRIA))
+        _zz_som = (_zz_r, _zz_g, _zz_b) if _zz_amb == '' else tuple(v + (l - v) * 0.62 for v, l in zip((_zz_r, _zz_g, _zz_b), _BRASA_REFLEXO))
+        for _zz_k in range(3):
+            _zz_t[_zz_k][_zz_i + _OFF_LUZ] = int(round(_zz_luz[_zz_k] * 255))
+            _zz_t[_zz_k][_zz_i + _OFF_SOMBRA] = int(round(_zz_som[_zz_k] * 255))
+        _zz_t[3][_zz_i + _OFF_LUZ] = _zz_t[3][_zz_i + _OFF_SOMBRA] = int(round(_zz_a * 255))
+    if _zz_amb == 'brasa':                         # o contorno do lado da sombra reflete o fogo
+        for _zz_k, _zz_v in enumerate((255, 74, 40)):
+            _zz_t[_zz_k][_COD['0']] = _zz_v
+    _TABS[_zz_amb] = [bytes(t) for t in _zz_t]
+_AMBIENTE = ['']
+
+
+def definir_ambiente(nome=''):
+    """Troca a luz do ambiente ('' = o app; 'brasa' = a luta contra o chefe).
+    Os desenhos ja montados sao esquecidos (serao refeitos com a luz nova)."""
+    global _TAB
+    nome = nome if nome in _TABS else ''
+    if nome == _AMBIENTE[0]:
+        return
+    _AMBIENTE[0] = nome
+    _TAB = _TABS[nome]
+    for cache in (_CACHE, _TEX, _TEX_MAPA):
+        try:
+            cache.clear()
+        except Exception:
+            pass
+    for nome_c in ('_TEXC', '_CACHE_CAMADAS', '_TEX_CAMADAS', '_CACHE_PARTES'):
+        c = globals().get(nome_c)
+        if hasattr(c, 'clear'):
+            c.clear()
+
+
+_E_MATERIAL = bytearray(256)
+for _c in _MATERIAIS:
+    _E_MATERIAL[_COD[_c]] = 1
+_E_MATERIAL = bytes(_E_MATERIAL)
+
+
+def estilizar(idx, w, h):
+    """Da o acabamento a uma imagem de indices (linha 0 = embaixo): devolve
+    os indices com os tons de luz/sombra. Feito no PC ao assar os desenhos (e
+    aqui mesmo nos poucos desenhos montados na hora)."""
+    mat = _E_MATERIAL
+    out = bytearray(idx)
+    n = w * h
+    for i in range(n):
+        c = idx[i]
+        if not mat[c]:
+            continue
+        x = i % w
+        y = i // w
+        cima = idx[i + w] if y < h - 1 else 0
+        baixo = idx[i - w] if y > 0 else 0
+        esq = idx[i - 1] if x > 0 else 0
+        dire = idx[i + 1] if x < w - 1 else 0
+        luz = not mat[cima] or not mat[esq]
+        som = not mat[baixo] or not mat[dire]
+        if luz and not som:
+            out[i] = c + _OFF_LUZ
+        elif som and not luz:
+            out[i] = c + _OFF_SOMBRA
+    return bytes(out)
+
+
+_TAB = _TABS['']
 _TC_NORMAL = (0, 0, 1, 0, 1, 1, 0, 1)
 _TC_ESPELHO = (1, 0, 0, 0, 0, 1, 1, 1)
 _BRANCO_SE = bytes([0] + [255] * 255)     # alpha > 0 -> 255 (silhueta branca)
@@ -2352,6 +2436,7 @@ def _gerar_imagem(p):
         cod = _COD
         for x, y, c in dentro:
             idx[(y - Y0) * w + (x - X0)] = cod[c]
+        idx = estilizar(idx, w, h)
         buf = bytearray(w * h * 4)
         buf[0::4] = idx.translate(_TAB[0])
         buf[1::4] = idx.translate(_TAB[1])
@@ -2387,6 +2472,7 @@ def _rasteriza(px):
     cod = _COD
     for (x, y), c in px.items():
         idx[(y - Y0) * w + (x - X0)] = cod[c]
+    idx = estilizar(idx, w, h)
     buf = bytearray(w * h * 4)
     buf[0::4] = idx.translate(_TAB[0])
     buf[1::4] = idx.translate(_TAB[1])

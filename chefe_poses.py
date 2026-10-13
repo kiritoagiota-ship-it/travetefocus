@@ -177,7 +177,10 @@ CRAVADO = dict(REP, dx=-8, dy=4, ag=12, c=16.0, bt=-40.0, at=10.0, e=61.0, b=22.
 # garra armada atras e garra passando na frente
 GARRA_ARMA = dict(REP, dx=4, dy=-1, c=-6.0, b=-78.0, a=-34.0, planta=True)
 GARRA_CORTA = dict(REP, dx=-12, dy=2, hx=-4, ag=4, c=10.0, b=100.0, a=-8.0, planta=True)
-AJOELHADO = dict(REP, hx=-8, ag=62, giro=16.0, c=26.0, b=12.0, a=22.0, pfx=26.0, brilho=0, planta=True)
+# de joelho de verdade: o quadril desce, as duas pernas dobram (a de tras vai para o chao), o tronco
+# cai para a frente e ele se apoia no montante, que inclina
+AJOELHADO = dict(REP, hx=-10, ag=92, giro=22.0, c=30.0, b=24.0, a=34.0, pfx=36.0, ptx=-30.0,
+                 bt=10.0, at=-14.0, e=-6.0, brilho=0)
 RUGE = dict(REP, dx=4, dy=-4, c=-26.0, b=-42.0, a=-92.0, brilho=2, planta=True)
 APANHA = dict(REP, dx=6, dy=-1, c=-16.0, b=-14.0, a=-10.0, brilho=0, planta=True)
 NUM = ('dx', 'dy', 'hx', 'ag', 'o', 'c', 'b', 'a', 'bt', 'at', 'e', 'giro', 'ptx', 'pty', 'pfx', 'pfy', 'sq', 'le')
@@ -341,7 +344,7 @@ def clipes():
     def cambaleia(t):
         tc = degrau(t, 15)
         q = _pose(ch_c, tc)
-        q['planta'] = True
+        q['planta'] = tc < 0.55                              # depois disso ele se apoia no montante (a mao vai junto)
         q['brilho'] = 0 if tc > 0.3 else 1
         return q, tc - D_CAMB, dict(V0, x=6.0 * math.exp(-tc / 0.3), fogo=0.55)
     CL['cambaleia'] = (cambaleia, D_CAMB, False)
