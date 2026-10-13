@@ -83,6 +83,12 @@ def mul(m, n):
             m[3] * n[0] + m[4] * n[3], m[3] * n[1] + m[4] * n[4], m[3] * n[2] + m[4] * n[5] + m[5])
 
 
+def esc(pivo, sx, sy):
+    """Estica/achata em volta de um ponto."""
+    px, py = pivo
+    return (float(sx), 0.0, px - sx * px, 0.0, float(sy), py - sy * py)
+
+
 def aplica(m, p):
     return (m[0] * p[0] + m[1] * p[1] + m[2], m[3] * p[0] + m[4] * p[1] + m[5])
 
@@ -126,6 +132,8 @@ def matrizes(q, pts):
     Mbt = mul(F, rot(pts['OMBRO_T'], g('bt', 0.0)))
     Mat = mul(Mbt, rot(pts['COTOVELO_T'], g('at', 0.0)))
     Me = mul(Mat, rot(pts['MAO_T'], g('e', 0.0)))
+    if g('le'):                                  # lamina esticada (quadro de borrao do golpe)
+        Me = mul(Me, esc(pts['MAO_T'], 1.0 - 0.25 * g('le'), 1.0 + g('le')))
     ar = (hx, ag) if g('ar') else (0, 0)
     Mct, Mnt = _perna(pts['ANCA_T'], pts['JOELHO_T'], pts['TORNOZELO_T'], (hx, ag),
                       (ar[0] + g('ptx', 0) * ESC, ar[1] + g('pty', 0) * ESC))
@@ -135,6 +143,11 @@ def matrizes(q, pts):
          'coxa_tras': Mct, 'canela_tras': Mnt, 'coxa_frente': Mcf, 'canela_frente': Mnf,
          'tabardo': H, 'tronco': T, 'saiote': H, 'cabeca': Mcab, 'braco': Mb, 'antebraco': Ma,
          'ombreira': To}
+    sq = g('sq', 0.0)
+    if sq:                                       # o corpo inteiro amassa/estica em volta dos pes
+        S = esc(pts['PES'], 1.0 - 0.6 * sq, 1.0 + sq)
+        M = {k: mul(S, v) for k, v in M.items()}
+        Me, Ma, Mcab, Mat, Mb, T = M['espada'], M['antebraco'], M['cabeca'], M['antebraco_tras'], M['braco'], M['tronco']
     pontos = {'ponta': aplica(Me, pts['PONTA']), 'garra': aplica(Ma, pts['GARRA']),
               'olho': aplica(Mcab, pts['OLHO']), 'mao': aplica(Mat, pts['MAO_T']),
               'ombro': aplica(Mb, pts['OMBRO']), 'nucleo': aplica(T, pts['NUCLEO']),
@@ -155,7 +168,7 @@ def modo_capa(vento):
 #  POSES E CLIPES
 # ═════════════════════════════════════════════════════════════════════
 REP = dict(dx=0, dy=0, hx=0, ag=0, o=0, c=0.0, b=0.0, a=0.0, bt=0.0, at=0.0, e=0.0, brilho=1,
-           giro=0.0, ptx=0.0, pty=0.0, pfx=0.0, pfy=0.0)
+           giro=0.0, ptx=0.0, pty=0.0, pfx=0.0, pfy=0.0, sq=0.0, le=0.0)
 PARADO = dict(REP, planta=True)
 # montante erguido atras da cabeca, pronto para descer
 ERGUIDO = dict(REP, dx=3, dy=-2, c=-10.0, bt=148.0, at=24.0, e=30.0, b=-18.0, a=-12.0)
@@ -167,7 +180,7 @@ GARRA_CORTA = dict(REP, dx=-12, dy=2, hx=-4, ag=4, c=10.0, b=100.0, a=-8.0, plan
 AJOELHADO = dict(REP, hx=-8, ag=62, giro=16.0, c=26.0, b=12.0, a=22.0, pfx=26.0, brilho=0, planta=True)
 RUGE = dict(REP, dx=4, dy=-4, c=-26.0, b=-42.0, a=-92.0, brilho=2, planta=True)
 APANHA = dict(REP, dx=6, dy=-1, c=-16.0, b=-14.0, a=-10.0, brilho=0, planta=True)
-NUM = ('dx', 'dy', 'hx', 'ag', 'o', 'c', 'b', 'a', 'bt', 'at', 'e', 'giro', 'ptx', 'pty', 'pfx', 'pfy')
+NUM = ('dx', 'dy', 'hx', 'ag', 'o', 'c', 'b', 'a', 'bt', 'at', 'e', 'giro', 'ptx', 'pty', 'pfx', 'pfy', 'sq', 'le')
 # ── os golpes da folha do usuario ──
 # investida: recolhe o montante na altura do quadril e estoca reto para a frente
 INV_ARMA = dict(REP, hx=12, ag=12, giro=-8.0, c=6.0, bt=-34.0, at=24.0, e=97.0, b=-22.0, a=-20.0)
@@ -351,13 +364,29 @@ def clipes():
     CL['investida'] = (investida, D_INV, False)
 
     # VARRIDA: o montante vem de tras, raspa o chao e sobe na frente (rastro largo)
-    ch_v = [(0.0, dict(REP), 'suave'), (0.36, VARRE_ARMA, 'out'), (0.5, dict(VARRE_ARMA, bt=-68.0, giro=-14.0), 'in'),
-            (0.66, VARRE_FIM, 'out'), (1.0, dict(VARRE_FIM, bt=56.0), 'suave'), (1.5, dict(REP))]
+    # (quadro a quadro: olha o alvo, puxa o peso para tras passando do ponto,
+    # segura tremendo, o quadril sai primeiro, o braco chicoteia com a lamina
+    # esticada, passa do ponto, o peso assenta em dois tempos e ele se recompoe)
+    ch_v = [(0.0, dict(REP), 'suave'),
+            (0.10, dict(REP, c=10.0, dy=1, b=-6.0), 'suave'),                       # baixa a cabeca: mirou
+            (0.30, dict(VARRE_ARMA, hx=14, ag=10, giro=-17.0, bt=-72.0, sq=-0.05, c=14.0, b=-40.0), 'out'),
+            (0.38, dict(VARRE_ARMA, sq=-0.03), 'suave'),                            # assenta na preparacao
+            (0.50, dict(VARRE_ARMA, hx=12, ag=9, giro=-15.0, bt=-70.0, sq=-0.04), 'in'),
+            (0.54, dict(VARRE_ARMA, hx=-4, ag=14, giro=-2.0, bt=-52.0, at=-24.0, c=-4.0, sq=-0.06), 'linear'),  # o quadril vai
+            (0.58, dict(VARRE_FIM, hx=-18, giro=8.0, bt=10.0, at=-34.0, e=30.0, le=0.22, sq=0.03), 'linear'),   # borrao
+            (0.62, dict(VARRE_FIM, hx=-28, giro=19.0, bt=74.0, e=92.0, le=0.12, sq=0.05, c=-14.0), 'out'),      # passou do ponto
+            (0.74, dict(VARRE_FIM, hx=-25, giro=15.0, bt=64.0, sq=-0.03), 'suave'),                           # assenta 1
+            (0.90, dict(VARRE_FIM, hx=-23, giro=13.0, bt=58.0, c=-4.0), 'suave'),                             # assenta 2
+            (1.15, dict(VARRE_FIM, hx=-12, ag=8, giro=7.0, bt=40.0, at=-24.0, e=50.0), 'suave'),
+            (1.5, dict(REP))]
     D_VAR = 1.5
 
     def varrida(t):
-        tc = degrau(t, 15)
+        tc = degrau(t, 30 if 0.48 <= t <= 0.8 else 15)          # o golpe em si: um desenho por quadro
         q = _pose(ch_v, tc)
+        if 0.38 <= tc < 0.5:                                    # segura a forca: treme
+            q['dx'] += (1, 0, -1, 0)[int(tc * 30) % 4]
+            q['e'] += 1.5 * math.sin(tc * 60)
         if 0.5 < tc <= 0.72:
             ant = _pose(ch_v, tc - 2 / 30.0)
             q['rastro'] = (ant['bt'] + ant['at'] + ant['e'], q['bt'] + q['at'] + q['e'])

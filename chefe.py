@@ -167,6 +167,10 @@ class ChefePixel(Widget):
         self.loop = True
         self.inclina_capa = 0.0             # graus a mais na capa (a cena usa nas arrancadas)
         self.cor_clarao = COR_CLARAO        # a tinta da silhueta do quadro de impacto
+        # vida propria: molas que atrasam a capa, a cabeca e o braco conforme o corpo anda
+        self._mola = {'capa': [0.0, 0.0], 'cab': [0.0, 0.0], 'braco': [0.0, 0.0]}
+        self._x_ant = None
+        self._rastro_esp = []               # onde a lamina estava nos ultimos desenhos (imagens-fantasma)
         self._fim = None
         self._cb = None
         self._ult = -1
@@ -185,11 +189,21 @@ class ChefePixel(Widget):
         self._fbo.texture.mag_filter = 'nearest'
         self._fbo.texture.min_filter = 'nearest'
         self._inst = {}
+        self._fant = []
         with self._fbo:
             ClearColor(0, 0, 0, 0)
             ClearBuffers()
             self._cor_fbo = Color(1, 1, 1, 1)
             for nome in cab['ordem']:
+                if nome == 'espada':            # atras da lamina: as imagens-fantasma dela (rastro do golpe)
+                    for rgb in ((0.42, 0.07, 0.09), (0.78, 0.2, 0.16)):     # a propria lamina, tingida de brasa
+                        cf = Color(rgb[0], rgb[1], rgb[2], 0)
+                        PushMatrix()
+                        mf = MatrixInstruction()
+                        rf = Rectangle(pos=(0, 0), size=(0, 0))
+                        PopMatrix()
+                        self._fant.append((cf, mf, rf))
+                    self._cor_fbo2 = Color(1, 1, 1, 1)
                 PushMatrix()
                 mi = MatrixInstruction()
                 r = Rectangle(pos=(0, 0), size=(0, 0))
@@ -368,15 +382,18 @@ class ChefePixel(Widget):
             nivel = 's' if claro else int(q.get('brilho', 1))
             chave = (tuple(sorted((k, round(v, 2) if isinstance(v, float) else v) for k, v in q.items()
                                   if not isinstance(v, tuple))), modo, i_capa, i_tab, nivel,
-                     round(self.inclina_capa, 1), tuple(self.cor_clarao) if claro else None)
+                     round(self.inclina_capa, 1), tuple(self.cor_clarao) if claro else None, self._ult)
             if chave == self._chave and not forcar:
                 return
             self._chave = chave
+            q = self._vivo(q)
             M, pontos = CP.matrizes(q, _DADOS['pts'])
             self._pontos = pontos
             self._no_ar = bool(q.get('ar'))
-            if self.inclina_capa:
-                M['capa'] = CP.mul(M['capa'], CP.rot(tuple(cab['raiz_capa']), self.inclina_capa))
+            inc = self.inclina_capa + self._mola['capa'][0]
+            if abs(inc) > 0.4:
+                M['capa'] = CP.mul(M['capa'], CP.rot(tuple(cab['raiz_capa']), round(inc)))
+                M['tabardo'] = CP.mul(M['tabardo'], CP.rot(tuple(cab['raiz_tab']), round(inc * 0.6)))
             CH_ = self.CH
             x0 = y0 = 10 ** 9
             x1 = y1 = -10 ** 9
@@ -402,6 +419,8 @@ class ChefePixel(Widget):
                     X, Y = a * px + b * py + tx, c * px + d * py + ty
                     x0, x1, y0, y1 = min(x0, X), max(x1, X), min(y0, Y), max(y1, Y)
             self._cor_fbo.rgb = tuple(self.cor_clarao) if claro else (1, 1, 1)
+            self._cor_fbo2.rgb = self._cor_fbo.rgb
+            self._fantasmas(M['espada'], claro)
             chao = cab['pes'][1] + 3
             self._caixa = (max(0, int(x0) - 1), max(0, int(y0) - 1), min(self.CW, int(x1) + 2),
                            min(self.CH if self._no_ar else chao, int(y1) + 2))
@@ -409,6 +428,63 @@ class ChefePixel(Widget):
             self._posicionar()
         except Exception as e:
             print(f"[chefe] desenhar: {e}")
+
+    def _vivo(self, q):
+        """Atraso e balanco (uma vez por desenho): a capa e o tabardo ficam
+        para tras quando o corpo arranca e passam do ponto quando ele para; a
+        cabeca e o braco da garra chegam um instante depois do tronco."""
+        try:
+            x = (-self.ax if self.espelhar else self.ax) / self.te + (q.get('hx', 0) + q.get('dx', 0)) * CP.ESC \
+                - q.get('giro', 0.0) * 2.2
+            if self._x_ant is None or abs(x - self._x_ant) > 400:
+                self._x_ant = x
+            v = x - self._x_ant                          # pontos por desenho (para a esquerda = negativo)
+            self._x_ant = x
+            for nome, ganho, rig, amort, lim in (('capa', 0.55, 0.20, 0.72, 26.0), ('cab', -0.22, 0.34, 0.6, 9.0),
+                                                 ('braco', 0.5, 0.26, 0.7, 20.0)):
+                m = self._mola[nome]
+                alvo = max(-lim, min(lim, v * ganho))
+                m[1] = (m[1] + (alvo - m[0]) * rig) * amort
+                m[0] = max(-lim, min(lim, m[0] + m[1]))
+            q = dict(q)
+            q['c'] = q.get('c', 0.0) + round(self._mola['cab'][0])
+            q['a'] = q.get('a', 0.0) + round(self._mola['braco'][0])
+            q['b'] = q.get('b', 0.0) + round(self._mola['braco'][0] * 0.5)
+        except Exception as e:
+            print(f"[chefe] vivo: {e}")
+        return q
+
+    def _fantasmas(self, Me, claro):
+        """Imagens-fantasma da lamina: quando ela gira depressa, os dois ou
+        tres desenhos anteriores ficam atras dela em tons de brasa (o rastro
+        do golpe, desenhado com a propria lamina)."""
+        try:
+            import math
+            ang = math.degrees(math.atan2(Me[3], Me[0]))
+            hist = self._rastro_esp
+            rapido = bool(hist) and abs((ang - hist[-1][0] + 180) % 360 - 180) > 13.0
+            if not rapido:
+                del hist[:]                              # so nos quadros em que a lamina voa
+            tex, (bx, by, bw, bh) = textura('espada', None, 2)
+            usados = hist[-2:]
+            for i, (cf, mf, rf) in enumerate(self._fant):
+                j = i - (2 - len(usados))
+                if j < 0 or claro:
+                    cf.a = 0
+                    rf.size = (0, 0)
+                    continue
+                a, b, tx, c, d, ty = usados[j][1]
+                m = Matrix()
+                m.set(flat=[a, -c, 0, 0, -b, d, 0, 0, 0, 0, 1, 0, tx + b * self.CH, self.CH * (1 - d) - ty, 0, 1])
+                mf.matrix = m
+                rf.texture = tex
+                rf.pos = (bx, self.CH - by - bh)
+                rf.size = (bw, bh)
+                cf.a = 1
+            hist.append((ang, tuple(Me)))
+            del hist[:-3]
+        except Exception as e:
+            print(f"[chefe] rastro: {e}")
 
     def _posicionar(self):
         """Poe na tela o pedaco da telinha onde esta o desenho."""

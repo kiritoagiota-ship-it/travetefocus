@@ -44,7 +44,7 @@ class T(App):
             dur = self.b.duracao(nome)
             passos.append((t, lambda n=nome: self.b.tocar(n, loop=True)))
             for k in range(N):
-                passos.append((t + dur * (k + 0.5) / N, lambda n=nome, k=k: self.foto('%s_%d' % (n, k))))
+                passos.append((t + dur * (k + 0.5) / N, lambda n=nome, k=k: self.foto('%s_%03d' % (n, k))))
             t += dur + 0.1
         for quando, fn in passos:
             Clock.schedule_once(lambda dt, fn=fn: fn(), quando)
