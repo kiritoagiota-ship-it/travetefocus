@@ -26,6 +26,7 @@ Cenas com o Kirito pixel art (kirito.py) + cortes em meia-lua (espadachim.py):
 Tudo tolerante a falha: se algo der errado, on_fim ainda e chamado (a
 historia do app nunca trava por causa de uma animacao).
 """
+import os
 import math
 import random
 import time
@@ -2656,11 +2657,11 @@ def _surgir_chefe(boss, camada, dur, on_fim=None, cor=BRASA):
     brasa escura que ganha cor em 3 degraus, com uma barra de luz na emenda
     (nada de transparencia)."""
     fim = _Uma(on_fim)
-    antes = tuple(boss._cor_cl.rgb)
+    antes = tuple(boss.cor_clarao)
 
     def _pronto():
         boss.recortar()
-        boss._cor_cl.rgb = antes
+        boss.cor_clarao = antes
         boss.clarao = 0.0
         boss.opacity = 1
         fim()
@@ -2669,7 +2670,7 @@ def _surgir_chefe(boss, camada, dur, on_fim=None, cor=BRASA):
         base, topo = boss.y - 2 * te, boss.top + 2 * te
         cx, larg = boss.center_x, boss.width * 0.86
         n = max(6, int(round(dur * 30)))
-        boss._cor_cl.rgb = (0.40, 0.05, 0.04)
+        boss.cor_clarao = (0.40, 0.05, 0.04)
         boss.opacity = 1
         boss.clarao = 1.0
         boss.recortar(None, base)
@@ -2723,6 +2724,290 @@ def _surgir_chefe(boss, camada, dur, on_fim=None, cor=BRASA):
     except Exception as e:
         print(f"[cena] chefe surge ignorado: {e}")
         _pronto()
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  A LUTA EM "CENA DE ANIME": cenario, faixas de cinema, linhas de
+#  velocidade, close do chefe, raio de sangue, sombra no chao
+# ═══════════════════════════════════════════════════════════════════
+class _CenarioChefe(Widget):
+    """O cenario da luta (chefe/cenario_*.png, feitos em dev/cenario_chefe.py
+    a partir do desenho do usuario): ceu com a lua em eclipse, o castelo ao
+    longe e o chao rachado em brasa. O horizonte fica na linha `chao`.
+    abrir(): aparece a partir do horizonte (o ceu sobe, o chao desce);
+    fechar(): some do mesmo jeito; tranco(): um solavanco (impactos grandes)."""
+
+    def __init__(self, W, H, chao, **kwargs):
+        kwargs.setdefault('size_hint', (None, None))
+        kwargs.setdefault('size', (0, 0))
+        super().__init__(**kwargs)
+        self.W, self.H, self.chao = W, H, float(chao)
+        self.f, self.alvo, self.vel = 0.0, 0.0, 1.0
+        self._tr = 0
+        self._passo = -1
+        self._tex = {}
+        try:
+            from kivy.core.image import Image as CoreImage
+            pasta = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'chefe')
+            for n in ('ceu', 'longe', 'chao'):
+                t = CoreImage(os.path.join(pasta, 'cenario_%s.png' % n)).texture
+                t.mag_filter = t.min_filter = 'nearest'
+                self._tex[n] = t
+        except Exception as e:
+            print(f"[cenario] {e}")
+        self.u = W / 180.0                                   # as imagens tem 200 pontos de largura: sobra 10 de cada lado
+        with self.canvas:
+            self._c_topo = Color(7 / 255.0, 4 / 255.0, 9 / 255.0, 1)
+            self._r_topo = Rectangle(pos=(0, 0), size=(0, 0))
+            self._c_base = Color(4 / 255.0, 2 / 255.0, 5 / 255.0, 1)
+            self._r_base = Rectangle(pos=(0, 0), size=(0, 0))
+            Color(1, 1, 1, 1)
+            self._r = {n: Rectangle(pos=(0, 0), size=(0, 0), texture=self._tex.get(n)) for n in ('ceu', 'longe', 'chao')}
+        self._ev = Clock.schedule_interval(self._tique, 1 / 60.)
+
+    def abrir(self, dur=0.7):
+        self.alvo, self.vel = 1.0, 1.0 / max(0.05, dur)
+
+    def fechar(self, dur=0.5):
+        self.alvo, self.vel = 0.0, 1.0 / max(0.05, dur)
+
+    def tranco(self):
+        self._tr = 8
+
+    def _tique(self, dt):
+        try:
+            if self.parent is None:
+                return self.parar()
+            if self.f != self.alvo:
+                d = self.vel * dt
+                self.f = min(self.alvo, self.f + d) if self.alvo > self.f else max(self.alvo, self.f - d)
+            dy = 0
+            if self._tr > 0:
+                self._tr -= 1
+                dy = (self._tr % 2 * 2 - 1) * int(self.u) * (1 if self._tr > 3 else 0.5)
+            passo = (int(self.f * 24), dy)
+            if passo == self._passo:
+                return True
+            self._passo = passo
+            f = int(self.f * 24) / 24.0
+            u, W, H, ch = self.u, self.W, self.H, self.chao + dy
+            if f <= 0 or not self._tex:
+                for r in list(self._r.values()) + [self._r_topo, self._r_base]:
+                    r.size = (0, 0)
+                return True
+            x0 = -10 * u
+            # ceu: da linha do horizonte para cima, ate a fracao f
+            tc, hc = self._tex['ceu'], self._tex['ceu'].height * u
+            vis = min(hc, (H - ch)) * f
+            self._r['ceu'].pos = (x0, ch)
+            self._r['ceu'].size = (tc.width * u, vis)
+            fr = vis / hc
+            self._r['ceu'].tex_coords = (0, 1, 1, 1, 1, 1 - fr, 0, 1 - fr)
+            if f >= 1 and ch + hc < H:
+                self._r_topo.pos, self._r_topo.size = (0, ch + hc), (W, H - ch - hc)
+            else:
+                self._r_topo.size = (0, 0)
+            tl, hl = self._tex['longe'], self._tex['longe'].height * u
+            visl = min(hl, vis)
+            frl = visl / hl
+            self._r['longe'].pos = (x0, ch)
+            self._r['longe'].size = (tl.width * u, visl)
+            self._r['longe'].tex_coords = (0, 1, 1, 1, 1, 1 - frl, 0, 1 - frl)
+            # chao: do horizonte para baixo
+            tg, hg = self._tex['chao'], self._tex['chao'].height * u
+            visg = min(hg, ch) * f
+            frg = visg / hg
+            self._r['chao'].pos = (x0, ch - visg)
+            self._r['chao'].size = (tg.width * u, visg)
+            self._r['chao'].tex_coords = (0, frg, 1, frg, 1, 0, 0, 0)
+            if f >= 1 and ch - hg > 0:
+                self._r_base.pos, self._r_base.size = (0, 0), (W, ch - hg)
+            else:
+                self._r_base.size = (0, 0)
+            return True
+        except Exception as e:
+            print(f"[cenario] {e}")
+            return self.parar()
+
+    def parar(self):
+        if self._ev is not None:
+            self._ev.cancel()
+            self._ev = None
+        return False
+
+
+class _FaixasCinema(Widget):
+    """As duas faixas pretas de cinema (em cima e embaixo): entram e saem em
+    degraus nos momentos fortes."""
+
+    def __init__(self, W, H, **kwargs):
+        kwargs.setdefault('size_hint', (None, None))
+        kwargs.setdefault('size', (0, 0))
+        super().__init__(**kwargs)
+        self.W, self.H = W, H
+        self.alt = H * 0.085
+        self.f, self.alvo = 0.0, 0.0
+        with self.canvas:
+            Color(0, 0, 0, 1)
+            self._a = Rectangle(pos=(0, 0), size=(0, 0))
+            self._b = Rectangle(pos=(0, 0), size=(0, 0))
+        self._ev = Clock.schedule_interval(self._tique, 1 / 30.)
+
+    def entrar(self):
+        self.alvo = 1.0
+
+    def sair(self):
+        self.alvo = 0.0
+
+    def _tique(self, dt):
+        if self.parent is None:
+            self._ev.cancel()
+            return False
+        if self.f == self.alvo:
+            return True
+        self.f = min(1.0, self.f + 0.25) if self.alvo > self.f else max(0.0, self.f - 0.25)
+        h = round(self.alt * self.f)
+        self._a.pos, self._a.size = (-self.W, -self.H * 0.2), (self.W * 3, h + self.H * 0.2)
+        self._b.pos, self._b.size = (-self.W, self.H - h), (self.W * 3, h + self.H * 0.2)
+        return True
+
+
+def _linhas_velocidade(camada, dur, cor=BRANCO, vertical=False, x0=None, x1=None, y0=None, y1=None, n=20,
+                       sentido=-1):
+    """Riscos de velocidade em pixel correndo pela tela (arrancadas e quedas).
+    sentido: -1 = para a esquerda / para baixo; 1 = para a direita / para cima."""
+    try:
+        W, H = camada.size
+        rnd = random.Random(int(dur * 1000) + n)
+        a0, a1 = ((x0 if x0 is not None else 0), (x1 if x1 is not None else W)) if vertical \
+            else ((y0 if y0 is not None else 0), (y1 if y1 is not None else H))
+        L = H if vertical else W
+        riscos = [(rnd.uniform(a0, a1), rnd.uniform(0, 1), rnd.uniform(0.12, 0.34) * L, rnd.uniform(1.6, 3.0),
+                   rnd.choice((1, 1, 2))) for _ in range(n)]
+
+        def forma(t, p, u):
+            k = t / dur
+            if k > 0.75 and int(t * 30) % 2:                  # some piscando
+                return
+            for a, fase, comp, vel, g in riscos:
+                s = (fase + t * vel) % 1.3
+                pos = (1.15 - s) * L if sentido < 0 else (s - 0.15) * L
+                e = g * u * 2
+                if vertical:
+                    p.setdefault('clara' if g == 1 else 'luz', []).append(
+                        (math.floor(a / u) * u, math.floor(pos / u) * u, e, math.floor(comp / u) * u))
+                else:
+                    p.setdefault('clara' if g == 1 else 'luz', []).append(
+                        (math.floor(pos / u) * u, math.floor(a / u) * u, math.floor(comp / u) * u, e))
+        camada.add_widget(_EfeitoPixel(_cores_efeito(cor), dur, forma))
+    except Exception as e:
+        print(f"[cena] linhas: {e}")
+
+
+def _close_chefe(camada, boss, dur=0.75, y_rel=0.6, on_fim=None):
+    """Close de anime do chefe: uma faixa atravessa a tela mostrando o elmo
+    dele ampliado (os olhos e os dentes acesos), com riscos de velocidade."""
+    fim = _Uma(on_fim)
+    try:
+        W, H = camada.size
+        hb = round(H * 0.15)
+        y = round(H * y_rel - hb / 2.0)
+        z = 3.0
+        w = Widget(size_hint=(None, None), size=(0, 0))
+        fbo_tex = boss._fbo.texture
+        ox, oy = boss._pontos['olho'] if boss._pontos else (0, 0)
+        # a regiao da telinha do chefe em volta do olho (y da telinha para baixo)
+        rw, rh = W / z, hb / z
+        cx, cy = ox + rw * 0.08, oy + rh * 0.12
+        u0, u1 = (cx - rw / 2.0) / boss.CW, (cx + rw / 2.0) / boss.CW
+        v0, v1 = (boss.CH - (cy + rh / 2.0)) / boss.CH, (boss.CH - (cy - rh / 2.0)) / boss.CH
+        borda = max(2.0, round(_PX[0] * 3))
+        with w.canvas:
+            Color(0.02, 0.0, 0.01, 1)
+            fundo = Rectangle(pos=(0, y), size=(W, hb))
+            Color(1, 1, 1, 1)
+            img = Rectangle(pos=(0, y), size=(W, hb), texture=fbo_tex, tex_coords=(u0, v0, u1, v0, u1, v1, u0, v1))
+            Color(1.0, 0.2, 0.14, 1)
+            b1 = Rectangle(pos=(0, y + hb), size=(W, borda))
+            b2 = Rectangle(pos=(0, y - borda), size=(W, borda))
+        camada.add_widget(w)
+        _som('koiguchi')
+        t = [0.0]
+
+        def _p(dt):
+            t[0] += dt
+            # entra deslizando da direita em 3 degraus e sai para a esquerda
+            d = int(t[0] * 30)
+            fora = int((dur - t[0]) * 30)
+            dx = (W * (0.66, 0.3, 0.1)[d] if d < 3 else 0) - (W * (0.1, 0.3, 0.66)[2 - fora] if 0 <= fora < 3 else 0)
+            for r in (fundo, img, b1, b2):
+                r.pos = (dx, r.pos[1])
+            if t[0] >= dur:
+                if w.parent:
+                    w.parent.remove_widget(w)
+                fim()
+                return False
+            return True
+        Clock.schedule_interval(_p, 1 / 60.)
+        _linhas_velocidade(camada, dur, (1.0, 0.3, 0.2), y0=y, y1=y + hb, n=10)
+    except Exception as e:
+        print(f"[cena] close do chefe: {e}")
+        fim()
+
+
+def _projetil_sangue(camada, de, para, dur, te, on_chega=None, pequeno=False):
+    """O raio de sangue do montante: uma lanca de luz vermelha com o miolo
+    claro e um rastro em degraus, de `de` ate `para`."""
+    chegou = _Uma(lambda: on_chega(para[0], para[1]) if on_chega else None)
+    try:
+        dx, dy = para[0] - de[0], para[1] - de[1]
+        d = math.hypot(dx, dy) or 1.0
+        ux, uy = dx / d, dy / d
+        b = te * (3 if pequeno else 5)
+        n = 7 if pequeno else 12
+
+        def forma(t, p, u):
+            k = min(1.0, t / dur)
+            if k >= 1.0:
+                chegou()
+                return
+            hx, hy = de[0] + dx * k, de[1] + dy * k
+            for j in range(n):
+                x, y = hx - ux * j * b * 1.1, hy - uy * j * b * 1.1
+                if (x - de[0]) * ux + (y - de[1]) * uy < 0:
+                    break
+                g = max(1, (4 if pequeno else 6) - j // 2)          # afina para tras
+                nome = 'luz' if j < 2 else ('clara' if j < 5 else 'cor')
+                lado = g * b / 3.0
+                for s in (-1, 0, 1) if g > 2 else (0,):
+                    p.setdefault(nome if s == 0 else 'cor', []).append(
+                        (math.floor((x - uy * s * lado) / u) * u, math.floor((y + ux * s * lado) / u) * u,
+                         max(u, math.floor(lado / u) * u), max(u, math.floor(lado / u) * u)))
+        camada.add_widget(_EfeitoPixel(_cores_efeito((1.0, 0.16, 0.12)), dur + 0.04, forma, on_fim=chegou))
+    except Exception as e:
+        print(f"[cena] projetil: {e}")
+        chegou()
+
+
+def _sombra_chao(camada, x, y, r0, r1, dur, u):
+    """A sombra do chefe crescendo no chao enquanto ele cai do ceu (elipse
+    achatada em xadrez, que escurece no fim)."""
+    try:
+        def forma(t, p, uu):
+            k = min(1.0, t / dur)
+            r = r0 + (r1 - r0) * k * k
+            ry = max(u, r * 0.16)
+            cheia = k > 0.7
+            gx0, gx1 = int((x - r) / u), int((x + r) / u)
+            for gy in range(int((y - ry) / u), int((y + ry) / u) + 1):
+                yy = (gy + 0.5) * u - y
+                for gx in range(gx0, gx1 + 1):
+                    xx = (gx + 0.5) * u - x
+                    if (xx / r) ** 2 + (yy / ry) ** 2 <= 1.0 and (cheia or (gx + gy) % 2 == 0):
+                        p.setdefault('s', []).append((gx * u, gy * u, u, u))
+        camada.add_widget(_EfeitoPixel((('s', (0.0, 0.0, 0.0, 0.85)),), dur, forma), index=len(camada.children) - 1)
+    except Exception as e:
+        print(f"[cena] sombra: {e}")
 
 
 def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
@@ -2862,8 +3147,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             faiscas.estourar(x, y, POEIRA, n=n, forca=dp(90), tam=max(2, ps * 0.8), gravidade=dp(300))
 
         # ── 1-5. A LUTA CONTRA O CHEFE ───────────────────────────────
-        ag.depois(0.25, lambda: _fundo(tela, reator=0.32, barra=0.2, dur=0.9))
-        kk.espelhar = False                                # o Yoru luta olhando para a direita
+        kk.espelhar = False                                # o Yoru comeca olhando para a direita
         te = ps / float(K.R)
         oficina = OficinaCortes(te * max(1, int(round(2.4 / te))))
         estado['oficina'] = oficina
@@ -2974,27 +3258,36 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         prep_fo = _com(P['agacha'], olhos='s', m1=(3, 2), a1=150.0, m2=(-3, 3), a2=60.0)
         guarda2 = _com(P['dupla'], olhos='s')
 
-        # O CHEFE: do lado direito, virado para o Yoru. O chao da luta fica
-        # ABAIXO da frase (que so aparece no fim): ela passa na cintura dele -
-        # o corte do Bankai, na altura das letras, parte o chefe ao meio.
+        # O CHEFE (o modelo do usuario, 405 pontos de altura): comeca do lado
+        # direito, virado para o Yoru. O chao da luta fica 200 pontos ABAIXO da
+        # frase (que so aparece no fim): ela passa na cintura dele - o corte do
+        # Bankai, na altura das letras, parte o chefe ao meio. Sobra o ceu
+        # inteiro em cima (o salto do chefe usa) e o chao em baixo.
         import chefe as CH
         CH.dados()
+        CH.aquecer(por_quadro=3)
         _, cy_t, _ = silaba(0)
-        chao = max(m + 6 * te, cy_t - 112 * te)
+        chao = max(m + 6 * te, cy_t - 200 * te)
         y_luta = chao + pe
-        bx = min(W - m - 150 * te, max(W * 0.66, W * 0.5 + 70 * te))
+        bx = min(W - m - 215 * te, max(W * 0.66, W * 0.5 + 110 * te))
+        bxl = max(m + 170 * te, W * 0.30)                  # onde ele cai do salto (do lado esquerdo)
         boss = CH.ChefePixel(te=te)
         boss.ancorar(bx, chao)
         boss.opacity = 0
         camada.add_widget(boss, index=camada.children.index(titulo))    # atras do Yoru e dos efeitos
         estado['chefe'] = boss
-        CH.aquecer(['idle', 'rugido', 'golpe'], por_quadro=1)
-        frente = bx - 74 * te                              # onde comeca o corpo dele (do lado do Yoru)
-        barra_c = _BarraChefe('THE ABYSS WARDEN', bx - 26 * te, min(H - m - 12 * te, chao + 352 * te),
-                              min(W * 0.5, 190 * te), te * 2)
+        frente = bx - 58 * te                              # onde comeca o corpo dele (do lado do Yoru)
+        barra_c = _BarraChefe('THE ABYSS WARDEN', W / 2.0, min(H - m - 12 * te, chao + 470 * te),
+                              min(W * 0.62, 260 * te), te * 2)
         camada.add_widget(barra_c)
         estado['barra_chefe'] = barra_c
-        VIDA = {1: 0.86, 2: 0.70, 3: 0.47, 4: 0.30, 5: 0.26, 6: 0.22, 7: 0.18, 8: 0.14, 9: 0.06}
+        # o cenario do desenho dele (lua em eclipse, castelo, chao em brasa) atras de tudo
+        cen = _CenarioChefe(W, H, chao)
+        camada.add_widget(cen, index=len(camada.children))
+        estado['cenario'] = cen
+        cine = _FaixasCinema(W, H)                          # as faixas pretas de cinema
+        camada.add_widget(cine)
+        VIDA = {1: 0.88, 2: 0.76, 3: 0.58, 4: 0.53, 5: 0.48, 6: 0.43, 7: 0.38, 8: 0.22, 9: 0.06}
         # o BANKAI e desenhado maior que o Yoru normal (cada ponto do desenho da
         # referencia vira 2x2): da para ver cabelo, casaco e espada. Os pes
         # continuam no mesmo chao (a ancora sobe a diferenca).
@@ -3004,33 +3297,38 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         def boss_idle():
             boss.tocar('idle', loop=True)
 
+        arma_el = _com(P['arma1'], olhos='s')               # o corte de cima para baixo (no elmo)
+        corta_el = _com(P['corta_desce'], olhos='g')
         # onde o Yoru fica em cada golpe
-        A0 = quadro(max(m + 24 * te, bx - 200 * te), y_luta, [pronto])   # pousa onde o montante vai cair
-        A1 = quadro(frente - 14 * te, y_luta, [corta_tra])               # passou por baixo: colado no chefe
-        B1 = quadro(frente + 2 * te, y_luta + 150 * te, [corta_ve, fim_ve])   # sobe rente ao peito
-        C0 = quadro(frente - 30 * te, y_luta + 208 * te, [saca_az, arma_te])  # no alto, na cara dele
-        C1 = quadro(frente - 4 * te, y_luta, [corta_te])                 # desce rasgando o peito
-        D0 = quadro(frente - 124 * te, y_luta, [prep_fo])                # mortal para tras (foge da garra)
-        Dm = quadro(frente - 84 * te, y_luta + 84 * te, [arma_fo])
-        D1 = quadro(frente - 46 * te, y_luta, [corta_fo])                # o X pega de longe (laminas compridas)
+        A0 = quadro(max(m + 30 * te, bx - 330 * te), y_luta, [pronto])   # onde ele pousa
+        J1 = (frente - 96 * te, y_luta + 300 * te)                       # por cima da varrida
+        J2 = (frente - 62 * te, y_luta + 218 * te)                       # o corte desce no elmo
+        K0 = quadro(frente - 170 * te, y_luta, [pronto])                 # de frente para ele, a distancia
+        A1 = quadro(frente - 22 * te, y_luta, [corta_tra])               # colado no chefe
+        B1 = (frente - 4 * te, y_luta + 250 * te)                        # sobe rente ao peito
+        C0 = (frente - 50 * te, y_luta + 360 * te)                       # no alto, na cara dele
+        C1 = quadro(frente - 14 * te, y_luta, [corta_te])                # desce rasgando o nucleo
+        R0 = quadro(W - m - 70 * te, y_luta, [guarda2])                  # do lado direito (o chefe caiu no esquerdo)
+        Xm = ((bxl + bx) / 2.0 + 20 * te, y_luta + 430 * te)             # por cima da investida
+        X1 = (frente - 30 * te, y_luta + 150 * te)                       # o X desce nas costas dele
         E0 = quadro(max(m + 20 * te, A0[0] - 16 * te), y_luta, [guarda2])  # jogado para tras: daqui o BAN-KAI
-        y_chao = y_luta
-        arco('h1', pronto, corta_tra, A0, A1, 1, th * 1.0)
+        arco('h1', arma_el, corta_el, J1, J2, 1, th * 1.0)
+        arco('dfl', pronto, corta_tra, K0, A1, 1, th * 1.0)
         arco('h2', arma_ve, corta_ve, A1, B1, 1, th * 0.95)
         arco('h3', arma_te, corta_te, C0, C1, 1, th * 0.95)
         arco('h3b', arma_te, corta_te, C0, C1, 2, th * 0.75, 'azul')
-        arco('h4', arma_fo, corta_fo, Dm, D1, 1, th * 0.9)
-        arco('h4b', arma_fo, corta_fo, Dm, D1, 2, th * 0.85, 'azul')
+        arco('h4', arma_fo, corta_fo, Xm, X1, 1, th * 0.9)
+        arco('h4b', arma_fo, corta_fo, Xm, X1, 2, th * 0.85, 'azul')
         # o do Bankai atravessa a frase inteira, de um lado ao outro da tela
         ARCOS['cus'] = (ArcoCorte.pelo_meio((ox_t + titulo.tw / 2.0, cy_t), 0, W * 1.02, -0.05,
                                             th * 1.35), 'mug')
         oficina.pedir('cus', ARCOS['cus'][0], 'mug')
         # o revide do Bankai (do alto, descendo na cabeca do chefe)
-        ARCOS['ctr'] = (ArcoCorte.por_tres((E0[0] + 50 * te, chao + 400 * te), (frente - 70 * te, chao + 370 * te),
-                                           (frente + 34 * te, chao + 210 * te), th * 1.25), 'mug')
+        ARCOS['ctr'] = (ArcoCorte.por_tres((E0[0] + 60 * te, chao + 480 * te), (frente - 90 * te, chao + 470 * te),
+                                           (frente + 14 * te, chao + 330 * te), th * 1.25), 'mug')
         oficina.pedir('ctr', ARCOS['ctr'][0], 'mug')
         kk.precarregar([pronto, agacha, corta_tra, arma_ve, corta_ve, fim_ve, pega_az, saca_az,
-                        arma_te, corta_te, arma_fo, corta_fo, prep_fo, guarda2])
+                        arma_te, corta_te, arma_fo, corta_fo, prep_fo, guarda2, arma_el, corta_el])
 
         # golpes: prepara, segura, a lamina gira em quadros de rastro,
         # acompanha e volta com molinha
@@ -3067,86 +3365,190 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             if reage:
                 boss.tocar('apanha', on_fim=boss_idle)
 
-        # 1) o chefe se ergue do chao em brasa e ruge
+        def soco_camera(foco, zoom=1.1, volta=0.35):
+            """A camera da um tranco para perto do golpe e volta."""
+            cam[0].ir(zoom, foco=foco, dur=0.07)
+            ag.depois(0.12, lambda: cam[0].ir(1.0, dur=volta))
+
+        def mover_chefe(de, para, dur, ease='linear', on_fim=None):
+            """Leva os pes do chefe de `de` ate `para` (em passos de pixel, 30 por segundo)."""
+            t = [0.0]
+            fim_ = _Uma(on_fim)
+
+            def _p(dt):
+                t[0] += dt
+                u = min(1.0, t[0] / max(0.01, dur))
+                e = u * u if ease == 'in' else (1 - (1 - u) ** 2 if ease == 'out' else u)
+                d = math.floor(u * dur * 30) / max(1.0, dur * 30) if u < 1 else 1.0
+                e = d * d if ease == 'in' else (1 - (1 - d) ** 2 if ease == 'out' else d)
+                boss.ancorar(round(de[0] + (para[0] - de[0]) * e), round(de[1] + (para[1] - de[1]) * e))
+                if u >= 1.0:
+                    fim_()
+                    return False
+                return True
+            ag.cada(1 / 60., _p)
+
+        # ── 1) o cenario abre do horizonte, o chefe se ergue do chao e ruge ──
+        def _abre_cena():
+            _fundo(tela, reator=0.0, barra=0.0, dur=0.3)
+            cen.abrir(0.7)
+            cine.entrar()
+        ag.depois(0.15, _abre_cena)
+
         def _chefe_surge():
             boss_idle()
             _som('trevas')
             _tremer(12)
             faiscas.estourar(bx, chao, BRASA, n=22, forca=dp(190), tam=ps, gravidade=-dp(120))
-            _surgir_chefe(boss, camada, 0.6, on_fim=lambda: ag.depois(0.12, _ruge))
-            ag.depois(0.45, barra_c.mostrar)
-        ag.depois(0.35, _chefe_surge)
+            cam[0].ir(1.2, foco=(bx - 30 * te, chao + 300 * te), dur=1.4)       # a camera sobe pelo corpo dele
+            _surgir_chefe(boss, camada, 0.9, on_fim=lambda: ag.depois(0.15, _ruge))
+            ag.depois(0.7, barra_c.mostrar)
+        ag.depois(0.95, _chefe_surge)
 
         def _berro(i):
             if i == 14:                                      # a cabeca foi para tras: o berro
                 ox_, oy_ = boss.ponto('cabeca')
                 _som('rugido')
                 _tremer(26)
-                _anel(camada, (ox_ - 14 * te, oy_ - 6 * te), te * 8, te * 230, 0.55, BRASA, esp=dp(6), grao=3)
-                _brilho_tela(camada, 0.22, 0.3, (1.0, 0.36, 0.2), atras=boss)
-                faiscas.estourar(ox_ - 16 * te, oy_, BRASA, n=26, forca=dp(260), tam=ps)
+                cam[0].ir(1.0, dur=0.3)
+                _anel(camada, (ox_ - 20 * te, oy_ - 8 * te), te * 10, te * 330, 0.55, BRASA, esp=dp(6), grao=3)
+                _brilho_tela(camada, 0.22, 0.3, (1.0, 0.25, 0.16), atras=boss)
+                faiscas.estourar(ox_ - 22 * te, oy_, BRASA, n=26, forca=dp(260), tam=ps)
 
         def _ruge():
             boss.tocar('rugido', on_quadro=_berro, on_fim=boss_idle)
-            ag.depois(1.15, _entra)
+            # close de anime: o elmo dele, os olhos e os dentes acesos
+            ag.depois(0.95, lambda: _close_chefe(camada, boss, dur=0.75, y_rel=0.6))
+            ag.depois(1.8, _entra)
 
-        # 2) o Yoru mergulha do alto num mortal e pousa na frente dele
+        # ── 2) o Yoru despenca do alto da tela e pousa na frente dele ──
         def _entra():
             p_pulo = _com(P['pulo'], olhos='s')
-            ini = (A0[0] - th * 2.0, H + alt * 0.6)
+            ini = (A0[0] - th * 1.2, H + alt * 0.6)
             kk.ancorar(*ini)
             kk.opacity = 1
-            kk.tocar(_voo_seq(K.esticado(p_pulo), K.bola(p_pulo), K.esticado(p_pulo), 0.8))
+            kk.tocar(_voo_seq(K.esticado(p_pulo), K.bola(p_pulo), K.esticado(p_pulo), 0.75))
             _som('pulo')
             kk.empurrar(capa=-8, cabelo=-6, lift=10)
-            _mover(kk, ini, A0, 0.8, rot=(0, -360), fantasmas=4, ease='suave', on_fim=_pousa,
+            _linhas_velocidade(camada, 0.7, CIANO, vertical=True, x0=A0[0] - 90 * te, x1=A0[0] + 90 * te, n=14)
+            _mover(kk, ini, A0, 0.75, rot=(0, -360), fantasmas=4, ease='in', on_fim=_pousa,
                    rot_janela=(0.2, 0.75))
 
         def _pousa():
             kk.rotacao = 0
             _som('pouso')
             ax, ay = kk.ancora()
-            poeira(ax, ay - kk.extensao()[1])
-            _tremer(4)
+            poeira(ax, ay - kk.extensao()[1], n=14)
+            _anel(camada, (ax, chao + te * 2), te * 4, te * 70, 0.3, CIANO, esp=dp(2), achat=0.3)
+            _tremer(8)
+            cine.sair()
             kk.empurrar(lift=-10, capa=-6)
             kk.tocar(K.sequencia(_de_agora(kk, 1) + [(2, _com(agacha, estica=-1), 'segura'),
                                                       (4, agacha, 'out'), (4, pronto, 'suave'),
                                                       (1, pronto)]))
-            CH.aquecer(['apanha', 'garra', 'cambaleia', 'ajoelhado'], por_quadro=1)
-            # close de anime: o olho dele, com a mao no cabo, antes do iai
+            # close de anime: o olho dele, com a mao no cabo
             ag.depois(0.1, lambda: _som('fala_ikuzo'))
-            ag.depois(0.12, lambda: close_rosto(camada, 'normal', dur=0.72, y_rel=0.84,
+            ag.depois(0.12, lambda: close_rosto(camada, 'normal', dur=0.7, y_rel=0.84,
                                                 espelhar=kk.espelhar,
                                                 on_fim=lambda: ag.depois(0.02, _luta1)))
 
-        # 3) o chefe arranca o montante do chao e desce com tudo; no ultimo
-        #    instante o Yoru passa por baixo da lamina num iai (golpe 1)
+        # ── 3) VARRIDA: o montante vem de tras raspando o chao; o Yoru salta
+        #    por cima dela num mortal e desce cortando o elmo (golpe 1) ──
         def _luta1():
             def _q(i):
                 if i == 12:
-                    _iai()
-                elif i == 24:                                # cravou onde o Yoru estava
-                    px_, _py = boss.ponta()
-                    poeira(px_, chao, n=14)
-                    faiscas.estourar(px_, chao, BRASA, n=18, forca=dp(230), tam=ps)
-                    _anel(camada, (px_, chao + te * 2), te * 4, te * 80, 0.35, BRASA, esp=dp(3), achat=0.3)
-                    _som('golpe_final')
-                    _tremer(20)
-            boss.tocar('golpe', on_quadro=_q, on_fim=boss_idle)
+                    _salta_varrida()
+                elif i == 17:                               # a lamina passa raspando o chao
+                    mx_, my_ = boss.mao()
+                    _som('corte2')
+                    _tremer(14)
+                    camada.add_widget(CorteMeiaLua(centro=(mx_, my_), raio=te * 250, ang_ini=300, ang_fim=165,
+                                                   espessura=te * 60, achat=1.0, cor=BRASA,
+                                                   dur_cheio=4 / 30.0, dur_decai=6 / 30.0))
+                    for k_ in range(5):
+                        poeira(frente - (40 + 50 * k_) * te, chao, n=4)
+                    faiscas.estourar(frente - 120 * te, chao, BRASA, n=20, forca=dp(240), tam=ps)
+            boss.tocar('varrida', on_quadro=_q, on_fim=boss_idle)
 
-        def _iai():
-            chaves, i_r = K.golpe(pronto, corta_tra, lamina_recua=False, seg=P['segue1'], **G)
+        def _salta_varrida():
+            p_pulo = _com(P['pulo'], olhos='s')
+            kk.tocar(_voo_seq(K.esticado(p_pulo), K.bola(p_pulo), arma_el, 0.4))
+            _som('pulo')
+            kk.empurrar(capa=-8, lift=10)
+            _mover(kk, kk.ancora(), J1, 0.4, altura=te * 60, rot=(0, -360), fantasmas=3, ease='out',
+                   on_fim=_corta_elmo, rot_janela=(0.15, 0.8))
+
+        def _corta_elmo():
+            kk.rotacao = 0
+            chaves, i_r = K.golpe(arma_el, corta_el, seg=P['segue_desce'], **dict(G, n_arma=1, prende=1, volta=3))
+
+            def _q(i):
+                if i == i_r - GIRO:
+                    _gemido(forte=True)
+                    kk.empurrar(capa=12, lift=6)
+                    _mover(kk, kk.ancora(), J2, 0.14, ease='in', fantasmas=2)
+                    cab_ = boss.ponto('cabeca')
+                    golpear('h1', dur=0.16, on_meio=lambda: (acerta(1, cab_, forte=True), soco_camera(cab_, 1.12)))
+            kk.tocar(K.sequencia(sem_rastro(chaves)), on_quadro=_q, on_fim=_cai_do_elmo)
+
+        def _cai_do_elmo():
+            p_pulo = _com(P['pulo'], olhos='s')
+            kk.tocar(_voo_seq(K.esticado(p_pulo), K.encolhido(p_pulo), pronto, 0.36))
+
+            def _chegou():
+                _som('pouso')
+                bx_, by_ = kk.ancora()
+                poeira(bx_, by_ - kk.extensao()[1], n=8)
+                kk.empurrar(lift=-8, capa=-6)
+                kk.tocar(K.sequencia([(2, _com(agacha, estica=-1), 'out'), (3, pronto, 'out'), (1, pronto)]))
+                ag.depois(0.2, _projetil)
+            _mover(kk, kk.ancora(), K0, 0.36, altura=te * 30, fantasmas=1, on_fim=_chegou)
+
+        # ── 4) PROJETIL: ele nivela o montante e dispara um raio de sangue; o
+        #    Yoru corta o raio ao meio num iai e ja emenda: sobe cortando o
+        #    peito (golpe 2), saca a azul no alto e mergulha no nucleo (golpe 3) ──
+        def _projetil():
+            cine.entrar()
+
+            def _q(i):
+                if i == 12:
+                    px_, py_ = boss.ponta()
+                    _anel(camada, (px_, py_), te * 40, te * 6, 0.3, BRASA, esp=dp(3))     # junta energia na ponta
+                elif i == 20:
+                    _dispara()
+            boss.tocar('aponta', on_quadro=_q, on_fim=boss_idle)
+
+        def _dispara():
+            px_, py_ = boss.ponta()
+            alvo = (K0[0] + 34 * te, y_luta + 62 * te)
+            _som('getsuga')
+            _tremer(12)
+            _estrela(camada, px_, py_, ps * 2, BRASA, raios=8, dur=0.2)
+            _projetil_sangue(camada, (px_, py_), alvo, 0.3, te, on_chega=_rebate)
+            chaves, i_r = K.golpe(pronto, corta_tra, lamina_recua=False, seg=P['segue1'],
+                                  **dict(G, n_arma=2, prende=2))
 
             def _q(i):
                 if i == i_r - GIRO:
                     _som('sacar_iai')
                     _gemido()
                     _mover(kk, kk.ancora(), A1, 0.24, ease='out', fantasmas=3, limite=(area, m))
-                    golpear('h1', dur=0.16, on_meio=lambda: acerta(
-                        1, (frente + 6 * te, chao + 104 * te), reage=False))
+                    golpear('dfl', dur=0.16)
             kk.tocar(K.sequencia(sem_rastro(chaves)), on_quadro=_q, on_fim=_sobe)
 
-        # 4) colado nele: abaixa e sobe cortando o peito (golpe 2)
+        def _rebate(x, y):
+            # o raio se parte na lamina: duas metades voam para cima e para baixo
+            kk.impacto(forte=True)
+            kk.pausar(0.08)
+            _som('vidro')
+            _tremer(14)
+            _brilho_tela(camada, 0.2, 0.15, (1.0, 0.4, 0.3))
+            _estrela(camada, x, y, ps * 2, BRANCO, raios=8, dur=0.2)
+            _anel(camada, (x, y), te * 6, te * 90, 0.3, BRASA, esp=dp(3))
+            faiscas.estourar(x, y, BRASA, n=30, forca=dp(300), tam=ps)
+            for sy in (1, -1):
+                _projetil_sangue(camada, (x, y), (x - 210 * te, y + sy * 250 * te), 0.28, te, pequeno=True)
+
         def _sobe():
             chaves, i_r = K.golpe(arma_ve, corta_ve, seg=fim_ve, **dict(G, n_arma=2, prende=2, volta=4))
 
@@ -3155,14 +3557,13 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                     _som('pulo')
                     _gemido()
                     kk.empurrar(capa=-10, lift=10)
-                    _mover(kk, kk.ancora(), B1, 0.28, ease='out', fantasmas=3, limite=(area, m))
-                    golpear('h2', dur=0.16, on_meio=lambda: acerta(2))
+                    _mover(kk, kk.ancora(), B1, 0.3, ease='out', fantasmas=3)
+                    golpear('h2', dur=0.18, on_meio=lambda: acerta(2))
             seq0 = K.sequencia(_de_agora(kk, 3, proxima=arma_ve) + [(4, arma_ve, 'out'), (1, arma_ve)])
             kk.tocar(seq0, on_fim=lambda: kk.tocar(K.sequencia(sem_rastro(chaves)), on_quadro=_q,
                                                    on_fim=_saca_azul))
             kk.empurrar(capa=-10, cabelo=-6)
 
-        # 5) no alto, na cara do chefe: saca a espada azul das costas...
         def _saca_azul():
             seq = K.sequencia(_de_agora(kk, 2, proxima=pega_az) +
                               [(3, pega_az, 'out'), (3, saca_az, 'out'), (5, saca_az, 'segura'),
@@ -3175,10 +3576,9 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                     _anel(camada, kk.ponto_mao(2), ps, ps * 8, 0.3, AZUL, esp=dp(3))
                     _som('sacar')
                     kk.empurrar(cabelo=8, lift=4)
-            _mover(kk, kk.ancora(), C0, 0.56, ease='suave', fantasmas=0, limite=(area, m))
+            _mover(kk, kk.ancora(), C0, 0.56, ease='suave', fantasmas=0)
             kk.tocar(seq, on_quadro=_q, on_fim=_te)
 
-        # ... e mergulha com as duas laminas, rasgando o nucleo (golpe 3)
         def _te():
             chaves, i_r = K.golpe(arma_te, corta_te, seg=corta_te, **dict(G, n_arma=2, prende=2, volta=3))
 
@@ -3186,101 +3586,215 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                 if i == i_r - GIRO:
                     _gemido(forte=True)
                     kk.empurrar(capa=12, lift=6)
-                    _mover(kk, kk.ancora(), C1, 0.26, ease='in', fantasmas=3, limite=(area, m))
-                    golpear('h3', dur=0.18, on_meio=lambda: acerta(3, forte=True))
-                    ag.depois(0.05, lambda: golpear('h3b', dur=0.18, som='corte2'))
-            kk.tocar(K.sequencia(sem_rastro(chaves)), on_quadro=_q, on_fim=_te_volta)
+                    _mover(kk, kk.ancora(), C1, 0.28, ease='in', fantasmas=4, limite=(area, m))
+                    nuc = boss.ponto('nucleo')
+                    golpear('h3', dur=0.2, on_meio=lambda: (acerta(3, forte=True), soco_camera(nuc, 1.14)))
+                    ag.depois(0.05, lambda: golpear('h3b', dur=0.2, som='corte2'))
+            kk.tocar(K.sequencia(sem_rastro(chaves)), on_quadro=_q, on_fim=_recua)
 
-        # 6) o chefe revida com a garra: o Yoru ja saiu num mortal para tras
-        def _te_volta():
-            boss.tocar('garra', on_quadro=lambda i: i == 15 and (_som('corte2'), _tremer(6)), on_fim=boss_idle)
+        def _recua():
+            # mortal para tras: ele sente que vem coisa
             ax, ay = kk.ancora()
             p_pulo = _com(P['pulo'], olhos='s')
-            h = _arco(ay, D0[1], th * 1.1, area[3] - m - _ext(kk, [K.encolhido(p_pulo)])[3])
+            kk.tocar(_voo_seq(K.esticado(p_pulo), K.bola(p_pulo), guarda2, 0.44))
+            _som('pulo')
 
             def _chegou():
                 kk.rotacao = 0
                 _som('pouso')
                 bx_, by_ = kk.ancora()
                 poeira(bx_, by_ - kk.extensao()[1], n=8)
-                kk.empurrar(lift=-8, capa=-6)
-                baixo = _com(prep_fo, dy=prep_fo['dy'] - 1, estica=-1)   # amortece a queda
-                kk.tocar(K.sequencia([(2, baixo, 'out'), (3, prep_fo, 'out'), (1, prep_fo)]), on_fim=_fo)
+                kk.mostrar(guarda2)
+            _mover(kk, (ax, ay), K0, 0.44, altura=te * 90, rot=(0, 360), fantasmas=2, on_fim=_chegou,
+                   rot_janela=(0.2, 0.75))
+            cine.sair()
+            ag.depois(0.25, _salto)
 
-            def _salta():
-                kk.tocar(_voo_seq(K.esticado(p_pulo), K.bola(p_pulo), K.esticado(prep_fo), 0.48))
-                _som('pulo')
-                kk.empurrar(capa=8, lift=8)
-                _mover(kk, (ax, ay), D0, 0.48, altura=h, rot=(0, 360), fantasmas=2, limite=(area, m),
-                       on_fim=_chegou, rot_janela=(0.2, 0.75))
-            ag.depois(0.2, _salta)
+        # ── 5) SALTO: o chefe agacha, some no ceu... a sombra cresce no chao;
+        #    o Yoru dispara por baixo e o chefe desaba do outro lado ──
+        def _salto():
+            boss.tocar('salto_prep', on_fim=_decola)
+            _som('carga')
 
-        # 7) volta voando com as duas laminas cruzadas e desce em X (golpe 4)
-        def _fo():
-            kk.tocar(_voo_seq(K.esticado(prep_fo), arma_fo, arma_fo, 0.3))
+        def _decola():
+            boss.tocar('salto_ar', loop=True)
             _som('pulo')
-            kk.empurrar(capa=-10, lift=10)
-            _mover(kk, kk.ancora(), Dm, 0.3, ease='out', fantasmas=2, limite=(area, m), on_fim=_fo_x)
+            _tremer(16)
+            poeira(bx, chao, n=18)
+            _anel(camada, (bx, chao + te * 2), te * 6, te * 120, 0.35, BRASA, esp=dp(3), achat=0.3)
+            mover_chefe((bx, chao), (bx - 90 * te, H + 120 * te), 0.34, ease='out', on_fim=_no_ceu)
+            cam[0].ir(1.06, foco=(W / 2.0, chao + 500 * te), dur=0.3)           # a camera olha para cima
+            ag.depois(0.12, lambda: emote(camada, kk, '!!', 0.5))
 
-        def _fo_x():
-            chaves, i_r = K.golpe(arma_fo, corta_fo, **dict(G, n_arma=2, prende=2, volta=4))
+        def _no_ceu():
+            _sombra_chao(camada, bxl, chao, te * 24, te * 170, 0.62, te * 4)
+            cam[0].ir(1.0, dur=0.45)
+            ag.depois(0.3, _foge)
+            ag.depois(0.6, _desaba)
 
-            def _q(i):
-                if i == i_r - GIRO:
-                    _som('fala_kurae')
-                    kk.empurrar(capa=10, cabelo=8, lift=6)
-                    _mover(kk, kk.ancora(), D1, 0.26, ease='in', fantasmas=3, limite=(area, m),
-                           on_fim=lambda: poeira(D1[0], D1[1] - kk.extensao()[1], n=8))
-                    golpear('h4', dur=0.18, on_meio=lambda: (acerta(4, (frente + 22 * te, chao + 150 * te),
-                                                                   forte=True, reage=False), _virada()))
-                    ag.depois(0.04, lambda: golpear('h4b', dur=0.18, som='corte2'))
-            kk.tocar(K.sequencia(sem_rastro(chaves)), on_quadro=_q,
-                     on_fim=lambda: kk.tocar(K.sequencia(_de_agora(kk, 3, 'out') + [(4, guarda2, 'out'),
-                                                                                    (1, guarda2)])))
+        def _foge():
+            # passa por baixo da sombra num risco, para o outro lado da tela
+            kk.espelhar = False
+            kk.mostrar(_com(guarda2, pernas='avanco_baixo'))
+            _som('desliza')
+            _linhas_velocidade(camada, 0.3, CIANO, y0=chao, y1=chao + 190 * te, n=12)
 
-        # 8) o chefe cai de joelho, apoiado no montante... e se levanta em
-        #    FURIA: ergue o montante, tudo aceso, e o sopro joga o Yoru longe
-        def _virada():
-            boss.tocar('cambaleia', on_fim=lambda: boss.tocar('ajoelhado', loop=True))
-            CH.aquecer(['carrega', 'carrega_segura'], por_quadro=1)
-            ag.depois(0.42, _aproveita)
-            ag.depois(1.5, _furia)
+            def _freou():
+                kk.espelhar = True                          # vira para onde ele vai cair
+                kk.mostrar(guarda2)
+                bx_, by_ = kk.ancora()
+                poeira(bx_, by_ - kk.extensao()[1], n=8)
+            _mover(kk, kk.ancora(), R0, 0.22, linear=True, fantasmas=5, cor_fantasma=CIANO, on_fim=_freou)
 
+        def _desaba():
+            boss.espelhar = True                            # agora olha para a direita, onde o Yoru esta
+            boss.tocar('salto_desce', loop=True)
+            mover_chefe((bxl, H + 120 * te), (bxl, chao), 0.2, ease='in', on_fim=_impacto_salto)
+
+        def _impacto_salto():
+            boss.tocar('pouso', on_fim=boss_idle)
+            _som('golpe_final')
+            _som('trevas')
+            _tremer(36)
+            _anel(camada, (bxl, chao + te * 4), te * 12, te * 340, 0.55, BRASA, esp=dp(6), achat=0.3, grao=3)
+            _anel(camada, (bxl, chao + te * 4), te * 6, te * 200, 0.4, BRANCO, esp=dp(3), achat=0.3, grao=2)
+            _brilho_tela(camada, 0.3, 0.25, (1.0, 0.3, 0.2), atras=boss)
+            for k_ in range(-3, 6):
+                poeira(bxl + k_ * 45 * te, chao, n=6)
+            faiscas.estourar(bxl, chao, BRASA, n=44, forca=dp(360), tam=ps, gravidade=dp(300))
+            cen.tranco()
+            soco_camera((bxl, chao + 60 * te), 1.1, 0.5)
+            # o chao joga o Yoru para cima um instante
+            _pulinhos(kk, guarda2, n=1, altura=te * 26)
+            ag.depois(0.55, lambda: _rajada(0))
+
+        # ── 6) RAJADA: ele ainda esta se levantando - quatro golpes seguidos,
+        #    alternando as espadas; o chefe revida com a garra e o Yoru sai num mortal ──
         RAJADA = [('sb1_a', 'sb1_b', 1, (150, -40)), ('sb2_a', 'sb2_b', 2, (215, 40)),
                   ('sb3_a', 'sb3_b', 1, (175, 0)), ('sb4_a', 'sb4_b', 2, (185, -5))]
 
-        def _aproveita(j=0):
-            # o chefe caiu de joelho: o Yoru nao perdoa - quatro golpes
-            # seguidos, alternando as espadas, e a barra de vida vai junto
+        def _rajada(j):
             if j >= len(RAJADA):
                 kk.tocar(K.sequencia(_de_agora(kk, 2, 'out') + [(3, guarda2, 'out'), (1, guarda2)]))
-                return
+                return _garra()
             a, c_, qual, arc = RAJADA[j]
             arma, corta = P[a], P[c_]
             sm = K.smear(corta, arma['a1'] if qual == 1 else None, arma['a2'] if qual == 2 else None)
             cor = CIANO if qual == 1 else AZUL
+            kk.espelhar = True
 
             def _q(q):
                 if q != 1:
                     return
                 nx, ny = boss.ponto('nucleo')
-                px_ = nx - 22 * te + random.uniform(-8, 8) * te
-                py_ = ny + random.uniform(-30, 18) * te
-                camada.add_widget(CorteMeiaLua(centro=(px_, py_), raio=th * 1.5, ang_ini=arc[0],
-                                               ang_fim=arc[1], espessura=th * 0.8, achat=0.4, cor=cor,
+                px_ = nx + 26 * te + random.uniform(-10, 10) * te
+                py_ = ny + random.uniform(-70, 40) * te
+                camada.add_widget(CorteMeiaLua(centro=(px_, py_), raio=th * 1.7, ang_ini=180 - arc[0],
+                                               ang_fim=180 - arc[1], espessura=th * 0.9, achat=0.4, cor=cor,
                                                dur_cheio=3 / 30.0, dur_decai=4 / 30.0))
-                acerta(5 + j, (px_, py_), reage=False, leve=True, cor=cor)
+                acerta(4 + j, (px_, py_), reage=False, leve=True, cor=cor)
                 _som('corte2' if qual == 2 else 'corte')
                 if j % 2 == 0:
                     _gemido()
                 kk.empurrar(capa=8, cabelo=6)
             kk.parar()
             kk.mostrar(arma)
-            perto = quadro(D1[0] + (j + 1) * 5 * te, D1[1], [arma, corta])
-            _mover(kk, kk.ancora(), perto, 0.05, linear=True, fantasmas=1, cor_fantasma=cor, limite=(area, m),
+            perto = (bxl + (150 - j * 8) * te, y_luta)
+            _mover(kk, kk.ancora(), perto, 0.07 if j else 0.16, linear=True, fantasmas=2 if not j else 1,
+                   cor_fantasma=cor,
                    on_fim=lambda: kk.tocar(K.sequencia([(1, arma, 'segura'), (1, sm, 'segura'),
                                                         (2, corta, 'segura'), (1, corta)]),
-                                           on_quadro=_q, on_fim=lambda: _aproveita(j + 1)))
+                                           on_quadro=_q, on_fim=lambda: _rajada(j + 1)))
+
+        def _garra():
+            def _q(i):
+                if i == 11:
+                    _foge_garra()
+                elif i == 16:
+                    gx_, gy_ = boss.garra()
+                    _som('corte2')
+                    _tremer(10)
+                    for k_ in range(3):
+                        camada.add_widget(CorteMeiaLua(centro=boss.ponto('ombro'), raio=te * (150 + 22 * k_),
+                                                       ang_ini=130, ang_fim=-50, espessura=te * 8, achat=1.0,
+                                                       cor=BRASA, dur_cheio=3 / 30.0, dur_decai=5 / 30.0))
+                    faiscas.estourar(gx_, gy_, BRASA, n=14, forca=dp(200), tam=ps)
+            boss.tocar('garra', on_quadro=_q, on_fim=_investe)
+
+        def _foge_garra():
+            ax, ay = kk.ancora()
+            p_pulo = _com(P['pulo'], olhos='s')
+            kk.tocar(_voo_seq(K.esticado(p_pulo), K.bola(p_pulo), guarda2, 0.4))
+            _som('pulo')
+
+            def _chegou():
+                kk.rotacao = 0
+                _som('pouso')
+                bx_, by_ = kk.ancora()
+                poeira(bx_, by_ - kk.extensao()[1], n=8)
+                kk.mostrar(guarda2)
+            _mover(kk, (ax, ay), R0, 0.4, altura=te * 110, rot=(0, -360), fantasmas=2, on_fim=_chegou,
+                   rot_janela=(0.2, 0.75))
+
+        # ── 7) INVESTIDA: ele recolhe o montante e atravessa a tela numa estocada;
+        #    o Yoru salta por cima e desce as duas laminas em X nas costas dele (golpe 8) ──
+        def _investe():
+            cine.entrar()
+
+            def _q(i):
+                if i == 13:
+                    _salta_investida()
+                elif i == 17:
+                    _som('sacar_iai')
+                    _som('rugido')
+                    _tremer(18)
+                    boss.inclina_capa = -16.0
+                    _linhas_velocidade(camada, 0.45, BRASA, y0=chao + 20 * te, y1=chao + 330 * te, n=22,
+                                       sentido=1)
+                    for k_ in range(6):
+                        ag.depois(0.03 * k_, lambda k_=k_: poeira(bxl + (60 + 45 * k_) * te, chao, n=5))
+                    mover_chefe((bxl, chao), (bx, chao), 0.2, ease='out',
+                                on_fim=lambda: setattr(boss, 'inclina_capa', 0.0))
+            boss.tocar('investida', on_quadro=_q, on_fim=boss_idle)
+
+        def _salta_investida():
+            kk.espelhar = True
+            kk.tocar(_voo_seq(K.esticado(_com(P['pulo'], olhos='s')), arma_fo, arma_fo, 0.34))
+            _som('pulo')
+            kk.empurrar(capa=-10, lift=10)
+            _mover(kk, kk.ancora(), Xm, 0.34, ease='out', fantasmas=3, on_fim=_x_de_cima)
+
+        def _x_de_cima():
+            kk.espelhar = False                             # no alto ele ja esta virado para o chefe, que passou
+            chaves, i_r = K.golpe(arma_fo, corta_fo, **dict(G, n_arma=2, prende=2, volta=4))
+
+            def _q(i):
+                if i == i_r - GIRO:
+                    _som('fala_kurae')
+                    kk.empurrar(capa=10, cabelo=8, lift=6)
+                    _mover(kk, kk.ancora(), X1, 0.24, ease='in', fantasmas=4)
+                    nuc = boss.ponto('nucleo')
+                    golpear('h4', dur=0.2, on_meio=lambda: (acerta(8, (nuc[0], nuc[1] + 50 * te), forte=True,
+                                                                   reage=False), soco_camera(nuc, 1.16, 0.5),
+                                                            _virada()))
+                    ag.depois(0.04, lambda: golpear('h4b', dur=0.2, som='corte2'))
+            kk.tocar(K.sequencia(sem_rastro(chaves)), on_quadro=_q, on_fim=_cai_do_x)
+
+        def _cai_do_x():
+            def _chegou():
+                _som('pouso')
+                bx_, by_ = kk.ancora()
+                poeira(bx_, by_ - kk.extensao()[1], n=8)
+                kk.tocar(K.sequencia([(2, _com(guarda2, estica=-1), 'out'), (3, guarda2, 'out'), (1, guarda2)]))
+            _mover(kk, kk.ancora(), (K0[0], y_luta), 0.3, altura=te * 20, fantasmas=1, on_fim=_chegou)
+
+        # ── 8) o chefe cai de joelho, apoiado no montante... e se levanta em
+        #    FURIA: ergue o montante, tudo aceso, e o sopro joga o Yoru longe ──
+        def _virada():
+            boss.espelhar = False                           # vira para o Yoru (o claro do golpe esconde a troca)
+            boss.tocar('cambaleia', on_fim=lambda: boss.tocar('ajoelhado', loop=True))
+            cine.sair()
+            ag.depois(1.75, _furia)
 
         def _furia():
             _som('rugido')
@@ -3289,9 +3803,10 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
 
         def _empurrao():
             ox_, oy_ = boss.ponto('nucleo')
-            _anel(camada, (ox_, oy_), te * 8, te * 230, 0.5, BRASA, esp=dp(6), grao=3)
+            _anel(camada, (ox_, oy_), te * 10, te * 330, 0.5, BRASA, esp=dp(6), grao=3)
             _tremer(22)
-            _brilho_tela(camada, 0.22, 0.25, (1.0, 0.36, 0.2), atras=boss)
+            cen.tranco()
+            _brilho_tela(camada, 0.22, 0.25, (1.0, 0.25, 0.16), atras=boss)
             _som('carga')
             ax, ay = kk.ancora()
             kk.tocar(K.sequencia([(2, _com(guarda2, pernas='recua', estica=-1), 'segura'),
@@ -3686,6 +4201,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             camada.add_widget(tv, index=i)
             estado['trevas'] = tv
             tv.crescer(ax, ay + alt * 0.3, dur=0.75)
+            cine.entrar()
             _som('trevas')
             aura.alvo = 1.0
             cam[0].ir(1.12, foco=(ax, ay + alt * 0.3), dur=1.4)
@@ -3764,6 +4280,10 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             _som('getsuga')
             _tremer(28)
             _brilho_tela(camada, 0.5, 0.35, (0.9, 0.82, 1.0))
+            # o mundo do chefe se desfaz com ele: volta a tela do app
+            cen.fechar(0.6)
+            cine.sair()
+            _fundo(tela, reator=0.5, barra=0.1, dur=0.8)
             # o chefe se parte no corte (as duas metades se afastam) e vira cacos
             soltar = estado.pop('cacos', None)
             if soltar is not None:
@@ -3946,7 +4466,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             titulo.completo()
             restaurar_fundo()
             encerrar()
-        ag.depois(39.0, _seguranca)
+        ag.depois(64.0, _seguranca)
     except Exception as e:
         print(f"[cena] falhou, seguindo sem ela: {e}")
         restaurar_fundo()

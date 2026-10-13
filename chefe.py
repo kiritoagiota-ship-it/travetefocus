@@ -1,74 +1,104 @@
 """
 chefe.py - O CHEFE da abertura ("THE ABYSS WARDEN"), o vilao do Yoru.
 
-O desenho e a animacao sao feitos no PC (dev/chefe_arte.py desenha as pecas,
-dev/chefe_rig.py anima peca por peca e grava chefe/clipes.bin). Aqui o app
-so TOCA os quadros prontos: cada desenho vira uma textura (pixel art, sem
-suavizar) num retangulo; nada e montado na hora.
+O desenho vem do MODELO FINAL do usuario, recortado em PECAS no PC
+(dev/chefe_ref.py -> dev/chefe_rig.py exportar -> chefe/rig.bin). Aqui o app
+MONTA o boneco na hora: cada peca e uma textura (pixel art, sem suavizar) e
+vai para o lugar que a pose manda (chefe_poses.py: juntas que giram, pernas
+que dobram, capa balancando). Tudo e montado primeiro numa tela pequena do
+tamanho do desenho (1 ponto = 1 pixel dela) e so depois ampliado: os pixels
+ficam sempre na grade, mesmo com as pecas giradas.
 """
 import os
 import json
 import zlib
 import random
-from collections import OrderedDict
 
 from kivy.uix.widget import Widget
 from kivy.clock import Clock
-from kivy.graphics import Color, Rectangle
+from kivy.graphics import Color, Rectangle, Fbo, ClearColor, ClearBuffers, PushMatrix, PopMatrix
+from kivy.graphics.context_instructions import MatrixInstruction
+from kivy.graphics.transformation import Matrix
 from kivy.graphics.texture import Texture
 from kivy.graphics.stencil_instructions import StencilPush, StencilUse, StencilUnUse, StencilPop
 from kivy.properties import NumericProperty, BooleanProperty
 
+import chefe_poses as CP
+
 _DADOS = {}
-_TEX = OrderedDict()
-_TEX_MAX = 110             # ~250 KB cada: os clipes em uso cabem, os antigos saem
+_TEX = {}
+FPS = 30
+COR_CLARAO = (1.0, 0.93, 0.86)
 
 
 def dados():
-    """Cabecalho de chefe/clipes.bin (le uma vez)."""
+    """Cabecalho de chefe/rig.bin (le uma vez)."""
     if 'cab' in _DADOS:
         return _DADOS['cab']
-    caminho = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'chefe', 'clipes.bin')
+    caminho = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'chefe', 'rig.bin')
     with open(caminho, 'rb') as f:
         bruto = f.read()
-    if bruto[:4] != b'BK01':
-        raise ValueError('chefe/clipes.bin de outra versao')
+    if bruto[:4] != b'CR01':
+        raise ValueError('chefe/rig.bin de outra versao')
     n = int.from_bytes(bruto[4:8], 'little')
     cab = json.loads(zlib.decompress(bruto[8:8 + n]).decode('utf-8'))
     _DADOS['base'] = 8 + n
     _DADOS['bruto'] = bruto
-    tabs = [bytearray(256) for _ in range(4)]
-    for i, c in enumerate(cab['paleta']):
-        for k in range(4):
-            tabs[k][i] = c[k]
-    _DADOS['tab'] = [bytes(t) for t in tabs]
+    pal = cab['paleta']
+    g = cab['lava']
+    # 3 niveis de brasa: 0 = apagando, 1 = normal, 2 = aceso (so os indices da lava mudam)
+    trocas = ({g[4]: g[3], g[3]: g[2], g[2]: g[1], g[1]: g[0]}, {}, {g[1]: g[2], g[2]: g[3], g[3]: g[4]})
+    tabs = []
+    for tr in trocas:
+        t4 = [bytearray(256) for _ in range(4)]
+        for i, c in enumerate(pal):
+            c = pal[tr.get(i, i)]
+            for k in range(4):
+                t4[k][i] = c[k]
+        tabs.append([bytes(t) for t in t4])
+    _DADOS['tabs'] = tabs
     sil = bytearray(256)
-    for i in range(1, len(cab['paleta'])):
+    for i in range(1, len(pal)):
         sil[i] = 255
     _DADOS['sil'] = bytes(sil)
+    _DADOS['lava'] = bytes(g)
+    _DADOS['pts'] = {k: tuple(v) for k, v in cab['pontos'].items()}
+    _DADOS['clipes'] = CP.clipes()
     _DADOS['cab'] = cab
     return cab
 
 
-def quadro(nome, i, silhueta=False):
-    """(textura, caixa (x0, y0, w, h) na tela do clipe, garra, ponta) do
-    quadro i do clipe `nome`."""
+def _item(nome, i=None):
     cab = dados()
-    pos, tam, caixa, garra, ponta = cab['clipes'][nome]['quadros'][i]
-    ch = (pos, silhueta)
+    if i is None:
+        return cab['pecas'][nome]
+    qual, modo = nome
+    return cab['panos'][qual][modo]['quadros'][i]
+
+
+def textura(nome, i=None, nivel=1):
+    """(textura, caixa (x0, y0, w, h) na tela de trabalho) de uma peca (nome)
+    ou de um desenho de pano ((qual, modo), i). nivel: 0/1/2 = brasa
+    apagando/normal/acesa; 's' = silhueta branca (quadro de impacto)."""
+    pos, tam, caixa = _item(nome, i)
+    ch = (pos, nivel)
     tex = _TEX.get(ch)
     if tex is None:
         ini = _DADOS['base'] + pos
         idx = zlib.decompress(_DADOS['bruto'][ini:ini + tam])
+        if nivel != 's' and nivel != 1 and not any(b in idx for b in _DADOS['lava']):
+            tex = textura(nome, i, 1)[0]                  # peca sem lava: um desenho so
+            _TEX[ch] = tex
+            return tex, caixa
         buf = bytearray(len(idx) * 4)
-        if silhueta:
+        if nivel == 's':
             s = idx.translate(_DADOS['sil'])
             buf[0::4] = s
             buf[1::4] = s
             buf[2::4] = s
             buf[3::4] = s
         else:
-            t = _DADOS['tab']
+            t = _DADOS['tabs'][nivel]
             buf[0::4] = idx.translate(t[0])
             buf[1::4] = idx.translate(t[1])
             buf[2::4] = idx.translate(t[2])
@@ -76,30 +106,28 @@ def quadro(nome, i, silhueta=False):
         tex = Texture.create(size=(caixa[2], caixa[3]), colorfmt='rgba')
         tex.mag_filter = tex.min_filter = 'nearest'
         tex.blit_buffer(bytes(buf), colorfmt='rgba', bufferfmt='ubyte')
-        tex.flip_vertical()                     # as linhas vem de cima para baixo
+        tex.flip_vertical()                             # as linhas vem de cima para baixo
         _TEX[ch] = tex
-        while len(_TEX) > _TEX_MAX:
-            _TEX.popitem(last=False)
-    else:
-        _TEX.move_to_end(ch)
-    return tex, caixa, garra, ponta
+    return tex, caixa
 
 
-def aquecer(nomes, por_quadro=2, on_fim=None):
-    """Cria antes as texturas dos clipes (`por_quadro` por quadro da tela),
-    para nenhum desenho ser montado no meio do golpe."""
+def aquecer(nomes=None, por_quadro=2, on_fim=None):
+    """Cria antes as texturas (pecas nos 3 niveis de brasa e os desenhos do
+    pano), `por_quadro` por quadro da tela: nada e montado no meio da luta.
+    (`nomes` ficou do chefe antigo, que aquecia clipe por clipe: e ignorado.)"""
     try:
         cab = dados()
     except Exception as e:
         print(f"[chefe] aquecer: {e}")
         return
-    fila, vistos = [], set()
-    for nome in nomes:
-        c = cab['clipes'].get(nome)
-        for i, q in enumerate(c['quadros'] if c else ()):
-            if q[0] not in vistos:
-                vistos.add(q[0])
-                fila.append((nome, i))
+    fila = []
+    for nome in cab['ordem']:
+        if nome in cab['pecas']:
+            fila += [(nome, None, n) for n in (1, 2, 0, 's')]
+    for qual, modos in cab['panos'].items():
+        for modo, d in modos.items():
+            fila += [((qual, modo), i, 1) for i in range(len(d['quadros']))]
+    fila = [f for f in fila if (_item(f[0], f[1])[0], f[2]) not in _TEX]
 
     def _passo(dt):
         try:
@@ -108,7 +136,7 @@ def aquecer(nomes, por_quadro=2, on_fim=None):
                     if on_fim:
                         on_fim()
                     return False
-                quadro(*fila.pop(0))
+                textura(*fila.pop(0))
         except Exception as e:
             print(f"[chefe] aquecer: {e}")
             return False
@@ -121,47 +149,70 @@ def soltar_texturas():
 
 
 class ChefePixel(Widget):
-    """O chefe na tela. `te` = px de tela por pixel do desenho (o mesmo do
-    Yoru na cena). ancorar(x, y) poe os pes dele (o meio, no chao) nesse
-    ponto. Olha para a ESQUERDA; espelhar=True vira para a direita.
-    pos/size do widget acompanham o desenho (a explosao em cacos fotografa
-    o widget)."""
+    """O chefe na tela. `te` = px de tela por pixel do desenho. ancorar(x, y)
+    poe os pes dele (o meio, no chao) nesse ponto. Olha para a ESQUERDA;
+    espelhar=True vira para a direita. pos/size do widget acompanham o
+    desenho (a explosao em cacos fotografa o widget)."""
     espelhar = BooleanProperty(False)
-    clarao = NumericProperty(0.0)           # 0..1: silhueta branca por cima (quadro de impacto)
+    clarao = NumericProperty(0.0)           # 0..1: silhueta clara por cima (quadro de impacto)
 
-    def __init__(self, te=2.0, **kwargs):
+    def __init__(self, te=1.0, **kwargs):
         kwargs.setdefault('size_hint', (None, None))
         super().__init__(**kwargs)
+        cab = dados()
         self.te = float(te)
         self.ax, self.ay = 0.0, 0.0
         self.clipe = 'idle'
         self.t = 0.0
         self.loop = True
+        self.inclina_capa = 0.0             # graus a mais na capa (a cena usa nas arrancadas)
+        self.cor_clarao = COR_CLARAO        # a tinta da silhueta do quadro de impacto
         self._fim = None
         self._cb = None
         self._ult = -1
+        self._chave = None
         self._pausa = 0.0
         self._tremor = 0
         self._desvio = (0, 0)
         self._recorte = None
         self._flash = 0
+        self._pontos = None
+        self._caixa = (0, 0, 1, 1)
+        self._no_ar = False
+        self.CW, self.CH = cab['tela']
+        with self.canvas:                       # a telinha tem de estar na arvore de desenho para se redesenhar
+            self._fbo = Fbo(size=(self.CW, self.CH))
+        self._fbo.texture.mag_filter = 'nearest'
+        self._fbo.texture.min_filter = 'nearest'
+        self._inst = {}
+        with self._fbo:
+            ClearColor(0, 0, 0, 0)
+            ClearBuffers()
+            self._cor_fbo = Color(1, 1, 1, 1)
+            for nome in cab['ordem']:
+                PushMatrix()
+                mi = MatrixInstruction()
+                r = Rectangle(pos=(0, 0), size=(0, 0))
+                PopMatrix()
+                self._inst[nome] = (mi, r)
         with self.canvas:
             self._cor = Color(1, 1, 1, 1)
-            self._ret = Rectangle(pos=(0, 0), size=(0, 0))
-            self._cor_cl = Color(1.0, 0.93, 0.86, 0)
-            self._ret_cl = Rectangle(pos=(0, 0), size=(0, 0))
-        self.bind(espelhar=lambda *_: self._desenhar(), clarao=lambda *_: self._desenhar())
+            self._ret = Rectangle(pos=(0, 0), size=(0, 0), texture=self._fbo.texture)
+        self.bind(espelhar=lambda *_: self._desenhar(True), clarao=lambda *_: self._desenhar(True))
         self._ev = Clock.schedule_interval(self._tique, 1 / 60.)
-        self._desenhar()
+        self._desenhar(True)
 
     # ── controle ─────────────────────────────────────────────────────────
     def ancorar(self, x, y):
         self.ax, self.ay = float(x), float(y)
-        self._desenhar()
+        self._posicionar()
 
     def tocar(self, nome, loop=False, on_fim=None, on_quadro=None, t0=0.0):
-        """Toca o clipe (30 quadros/s). loop=False: para no ultimo quadro e
-        chama on_fim. on_quadro(i) a cada quadro novo."""
+        """Toca o movimento `nome` (chefe_poses.clipes). loop=False: para no
+        fim e chama on_fim. on_quadro(i) a cada 1/30 s."""
+        if nome not in _DADOS['clipes']:
+            print(f"[chefe] clipe desconhecido: {nome}")
+            nome = 'idle'
         self.clipe = nome
         self.t = float(t0)
         self.loop = loop
@@ -171,15 +222,14 @@ class ChefePixel(Widget):
         self._desenhar()
 
     def duracao(self, nome):
-        cab = dados()
-        return len(cab['clipes'][nome]['quadros']) / float(cab['fps'])
+        return _DADOS['clipes'][nome][1]
 
     def pausar(self, seg):
         """Hit-stop: congela o desenho por `seg` segundos."""
         self._pausa = max(self._pausa, seg)
 
     def impacto(self, quadros=3, tremor=5):
-        """Levou um golpe: pisca branco (quadros de impacto) e treme."""
+        """Levou um golpe: pisca claro (quadros de impacto) e treme."""
         self._flash = int(quadros)
         self._tremor = int(tremor)
         self.clarao = 1.0
@@ -224,27 +274,36 @@ class ChefePixel(Widget):
 
     # ── pontos (coordenadas do pai) ──────────────────────────────────────
     def _indice(self):
-        cab = dados()
-        n = len(cab['clipes'][self.clipe]['quadros'])
-        i = int(self.t * cab['fps'])
+        dur = _DADOS['clipes'][self.clipe][1]
+        n = max(1, int(round(dur * FPS)))
+        i = int(self.t * FPS)
         return (i % n) if self.loop else min(i, n - 1)
 
     def _para_pai(self, sx, sy):
-        qx, qy = dados()['quadril']
+        qx, qy = dados()['pes']
         dx = (sx - qx) * self.te
         return (self.ax - dx if self.espelhar else self.ax + dx), self.ay + (qy - sy) * self.te
 
+    def _ponto_agora(self, nome):
+        if self._pontos is None:
+            self._desenhar(True)
+        return self._para_pai(*self._pontos[nome])
+
     def ponta(self):
-        """Ponta da lamina do montante neste quadro."""
-        return self._para_pai(*quadro(self.clipe, self._indice())[3])
+        """Ponta da lamina do montante agora."""
+        return self._ponto_agora('ponta')
 
     def garra(self):
-        """Meio das unhas da garra neste quadro."""
-        return self._para_pai(*quadro(self.clipe, self._indice())[2])
+        """Meio das unhas da garra agora."""
+        return self._ponto_agora('garra')
+
+    def mao(self):
+        """A mao que segura o montante agora."""
+        return self._ponto_agora('mao')
 
     def ponto(self, nome):
-        """'olho', 'nucleo' ou 'cabeca' (na pose parada)."""
-        return self._para_pai(*dados()[nome])
+        """'olho', 'nucleo', 'cabeca', 'ombro' (onde estao agora)."""
+        return self._ponto_agora(nome)
 
     def corpo(self):
         """(x0, y0, x1, y1) do corpo (sem montante nem capa), no pai."""
@@ -256,16 +315,16 @@ class ChefePixel(Widget):
     # ── desenho ──────────────────────────────────────────────────────────
     def _tique(self, dt):
         try:
-            # o branco do impacto e o tremor correm mesmo no hit-stop
+            # o claro do impacto e o tremor correm mesmo no hit-stop
             if self._flash > 0:
                 self._flash -= 1
                 if self._flash <= 0:
                     self.clarao = 0.0
             if self._tremor > 0:
                 self._tremor -= 1
-                a = max(1, int(round(self.te * 2)))
+                a = max(1, int(round(self.te * 3)))
                 self._desvio = (random.choice((-a, 0, a)), random.choice((-a, 0, a))) if self._tremor else (0, 0)
-                self._desenhar()
+                self._posicionar()
             if self._pausa > 0:
                 self._pausa -= dt
                 return True
@@ -280,8 +339,7 @@ class ChefePixel(Widget):
                     except Exception as e:
                         print(f"[chefe] quadro: {e}")
             if not self.loop and self._fim is not None:
-                cab = dados()
-                if int(self.t * cab['fps']) >= len(cab['clipes'][self.clipe]['quadros']):
+                if self.t >= _DADOS['clipes'][self.clipe][1]:
                     cb, self._fim = self._fim, None
                     try:
                         cb()
@@ -292,39 +350,87 @@ class ChefePixel(Widget):
             print(f"[chefe] {e}")
             return True
 
-    def _desenhar(self):
+    def _desenhar(self, forcar=False):
+        """Monta as pecas na pose de agora (so refaz quando a pose muda)."""
         try:
             cab = dados()
-            tex, (x0, y0, w, h), _g, _p = quadro(self.clipe, self._indice())
+            fn, dur, _loop = _DADOS['clipes'][self.clipe]
+            t = self._indice() / float(FPS)
+            q, tc, vento = fn(t)
+            modo = CP.modo_capa(vento)
+            panos = cab['panos']
+            dc = panos['capa'][modo]
+            i_capa = int(tc * dc['por_s']) % len(dc['quadros'])
+            mt = 'calmo' if modo == 'calmo' else 'vento'
+            dt_ = panos['tabardo'][mt]
+            i_tab = int(tc * dt_['por_s']) % len(dt_['quadros'])
+            claro = self.clarao > 0
+            nivel = 's' if claro else int(q.get('brilho', 1))
+            chave = (tuple(sorted((k, round(v, 2) if isinstance(v, float) else v) for k, v in q.items()
+                                  if not isinstance(v, tuple))), modo, i_capa, i_tab, nivel,
+                     round(self.inclina_capa, 1), tuple(self.cor_clarao) if claro else None)
+            if chave == self._chave and not forcar:
+                return
+            self._chave = chave
+            M, pontos = CP.matrizes(q, _DADOS['pts'])
+            self._pontos = pontos
+            self._no_ar = bool(q.get('ar'))
+            if self.inclina_capa:
+                M['capa'] = CP.mul(M['capa'], CP.rot(tuple(cab['raiz_capa']), self.inclina_capa))
+            CH_ = self.CH
+            x0 = y0 = 10 ** 9
+            x1 = y1 = -10 ** 9
+            for nome in cab['ordem']:
+                mi, r = self._inst[nome]
+                if nome == 'capa':
+                    tex, (bx, by, bw, bh) = textura(('capa', modo), i_capa, 's' if claro else 1)
+                elif nome == 'tabardo':
+                    tex, (bx, by, bw, bh) = textura(('tabardo', mt), i_tab, 's' if claro else 1)
+                else:
+                    tex, (bx, by, bw, bh) = textura(nome, None, nivel)
+                a, b, tx, c, d, ty = M[nome]
+                if abs(b) < 1e-9 and abs(c) < 1e-9:           # so desloca: passos inteiros
+                    tx, ty = round(tx), round(ty)
+                # a tela de trabalho tem o y para baixo; a do Fbo, para cima
+                m = Matrix()
+                m.set(flat=[a, -c, 0, 0, -b, d, 0, 0, 0, 0, 1, 0, tx + b * CH_, CH_ * (1 - d) - ty, 0, 1])
+                mi.matrix = m
+                r.texture = tex
+                r.pos = (bx, CH_ - by - bh)
+                r.size = (bw, bh)
+                for px, py in ((bx, by), (bx + bw, by), (bx, by + bh), (bx + bw, by + bh)):
+                    X, Y = a * px + b * py + tx, c * px + d * py + ty
+                    x0, x1, y0, y1 = min(x0, X), max(x1, X), min(y0, Y), max(y1, Y)
+            self._cor_fbo.rgb = tuple(self.cor_clarao) if claro else (1, 1, 1)
+            chao = cab['pes'][1] + 3
+            self._caixa = (max(0, int(x0) - 1), max(0, int(y0) - 1), min(self.CW, int(x1) + 2),
+                           min(self.CH if self._no_ar else chao, int(y1) + 2))
+            self._fbo.ask_update()
+            self._posicionar()
+        except Exception as e:
+            print(f"[chefe] desenhar: {e}")
+
+    def _posicionar(self):
+        """Poe na tela o pedaco da telinha onde esta o desenho."""
+        try:
+            x0, y0, x1, y1 = self._caixa
             te = self.te
-            qx, qy = cab['quadril']
+            qx, qy = dados()['pes']
+            w, h = x1 - x0, y1 - y0
             if self.espelhar:
-                esq = self.ax - (x0 + w - qx) * te
+                esq = self.ax - (x1 - qx) * te
             else:
                 esq = self.ax + (x0 - qx) * te
             topo = self.ay + (qy - y0) * te
             px, py = round(esq + self._desvio[0]), round(topo - h * te + self._desvio[1])
-            tc = tex.tex_coords
+            u0, u1 = x0 / float(self.CW), x1 / float(self.CW)
+            v0, v1 = (self.CH - y1) / float(self.CH), (self.CH - y0) / float(self.CH)
             if self.espelhar:
-                tc = (tc[2], tc[3], tc[0], tc[1], tc[6], tc[7], tc[4], tc[5])
-            self._ret.texture = tex
-            self._ret.tex_coords = tc
+                u0, u1 = u1, u0
+            self._ret.tex_coords = (u0, v0, u1, v0, u1, v1, u0, v1)
             self._ret.pos = (px, py)
             self._ret.size = (round(w * te), round(h * te))
             self.pos = (px, py)
             self.size = self._ret.size
-            if self.clarao > 0:
-                sil = quadro(self.clipe, self._indice(), silhueta=True)[0]
-                tcs = sil.tex_coords
-                if self.espelhar:
-                    tcs = (tcs[2], tcs[3], tcs[0], tcs[1], tcs[6], tcs[7], tcs[4], tcs[5])
-                self._ret_cl.texture = sil
-                self._ret_cl.tex_coords = tcs
-                self._ret_cl.pos = self._ret.pos
-                self._ret_cl.size = self._ret.size
-                self._cor_cl.a = self.clarao
-            else:
-                self._cor_cl.a = 0
-                self._ret_cl.size = (0, 0)
         except Exception as e:
-            print(f"[chefe] desenhar: {e}")
+            print(f"[chefe] posicionar: {e}")

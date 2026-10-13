@@ -49,7 +49,17 @@ ANIMACAO QUADRO A QUADRO (relogio simulado: 60 quadros/s exatos, a foto nao atra
   folha_filme.py    PASTA ini fim passo SAIDA: folha de quadros recortada no Yoru
   zoom_filme.py     PASTA SAIDA q1,q2,...: quadros ampliados (pixel duro)
 
-O CHEFE DA ABERTURA ("THE ABYSS WARDEN" - desenhado aqui, sem referencia)
+O CHEFE DA ABERTURA ("THE ABYSS WARDEN") - desde 13/10/2026 e o MODELO FINAL do usuario
+  chefe_ref.py      Copia referencias/2026-10-13_chefe_modelo_final.png para pixel art e
+                    corta em PECAS (poligonos em px do modelo; precisa do opencv).
+                    previa / pecas / folha SAIDA.png ; "refazer" no fim refaz o cache.
+  chefe_rig.py      exportar -> app/chefe/rig.bin (as pecas + a capa balancando). O app
+                    MONTA o chefe na hora (app/chefe.py) com as poses de app/chefe_poses.py
+                    (golpes novos = so editar chefe_poses.py; nao precisa exportar de novo).
+                    gif [clipes] SAIDA.gif / folha CLIPE SAIDA.png = previas no PC.
+  chefe_teste.py    PASTA [clipes]: o chefe tocando os movimentos DENTRO do app (fotos).
+  cenario_chefe.py  O cenario da luta (lua em eclipse, castelo, chao em brasa) -> app/chefe/cenario_*.png
+  (chefe_arte.py = o chefe antigo, desenhado sem referencia: so historico)
   chefe_arte.py     Desenha o chefe em pixel art, peca por peca (capa, pernas,
                     tronco, cabeca, ombreiras, bracos, garra, montante): formas
                     pintadas em faixas de cor, quinas, frisos, fendas de lava.
