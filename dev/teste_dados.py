@@ -36,8 +36,10 @@ class Falso:
         self.vibracao = True
 
 
-for nome in ('salvar_dados', '_salvar_bg', '_salvar_bg_impl', 'carregar_dados', 'recalcular_totais'):
+for nome in ('salvar_dados', '_salvar_bg', '_salvar_bg_impl', 'carregar_dados', 'recalcular_totais',
+             '_normalizar_memorias', '_normalizar_registros'):
     setattr(Falso, nome, getattr(App, nome))
+Falso._int = staticmethod(App._int)
 
 
 def confere(cond, txt):
@@ -89,6 +91,27 @@ try:
     e = Falso(pasta)
     e.carregar_dados()
     confere(e.total_geral == 120 and len(e.registros) == 1, '4) dados antigos abrem e somam certo')
+    confere(e.memorias[0]['total'] == 120 and e.memorias[0]['xp'] == 0,
+            '4) total salvo como texto ("120") vira numero e o xp que faltava vira 0')
+
+    # 5) registro antigo/estranho: quantidade com espaco, xp faltando, item quebrado
+    with open(os.path.join(pasta, 'dados.json'), 'w', encoding='utf-8') as f:
+        json.dump({'memorias': [{'data': '01/09/2026', 'total': 50, 'itens': 'x', 'meu_campo': 7}],
+                   'registros': [['Saia', ' 10 ', 30], ['Short', '5'], ['quebrado'], 'lixo']}, f)
+    g = Falso(pasta)
+    g.carregar_dados()
+    confere(g.registros == [['Saia', '10', 30], ['Short', '5', 0]], '5) registros estranhos ficam certos (e os quebrados saem)')
+    confere(g.memorias[0]['itens'] == [] and g.memorias[0]['meu_campo'] == 7, '5) campo desconhecido continua la')
+
+    # 6) um defeito na conferencia NAO pode trocar dados bons por copia/vazio
+    a.salvar_dados(sincrono=True)
+    bom = open(os.path.join(pasta, 'dados.json'), encoding='utf-8').read()
+    h = Falso(pasta)
+    h._normalizar_memorias = lambda lista: 1 / 0          # simula um erro na conferencia
+    h.carregar_dados()
+    confere(h.memorias == a.memorias and not os.path.exists(os.path.join(pasta, 'dados.json.corrompido2')),
+            '6) erro na conferencia: os turnos continuam os do arquivo (nada de copia ou vazio)')
+    confere(open(os.path.join(pasta, 'dados.json'), encoding='utf-8').read() == bom, '6) o arquivo nao foi mexido')
 finally:
     shutil.rmtree(pasta, ignore_errors=True)
 print('%d falhas' % len(falhas))

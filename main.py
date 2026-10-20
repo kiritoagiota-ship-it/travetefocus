@@ -236,11 +236,9 @@ class TraveteApp(App):
             except ValueError:
                 pass
         if dias:
+            import metas
             ultima = max(dias)
-            seq = 1
-            while ultima - timedelta(days=seq) in dias:
-                seq += 1
-            self.streak      = seq
+            self.streak      = metas.sequencia(dias)      # o domingo de folga nao quebra
             self.ultima_data = ultima.strftime("%d/%m/%Y")
         else:
             self.streak      = 0
@@ -298,6 +296,43 @@ class TraveteApp(App):
         except Exception as e:
             print(f"[ERRO] _salvar_bg: {e}")
 
+    @staticmethod
+    def _int(v):
+        try:
+            return int(float(str(v).replace(',', '.')))
+        except (TypeError, ValueError):
+            return 0
+
+    def _normalizar_memorias(self, lista):
+        """Turnos salvos por versoes antigas podem ter numero como texto ('120')
+        ou faltar campo: as telas comparam e somam numeros. Aqui so se acerta o
+        TIPO (nada e apagado; campos desconhecidos ficam)."""
+        out = []
+        for m in lista if isinstance(lista, list) else []:
+            if not isinstance(m, dict):
+                continue
+            m = dict(m)
+            m['data'] = str(m.get('data', '') or '')
+            m['total'] = self._int(m.get('total', 0))
+            m['xp'] = self._int(m.get('xp', 0))
+            if not isinstance(m.get('itens'), list):
+                m['itens'] = []
+            out.append(m)
+        return out
+
+    def _normalizar_registros(self, lista):
+        out = []
+        for r in lista if isinstance(lista, list) else []:
+            if not isinstance(r, (list, tuple)) or len(r) < 2:
+                continue
+            r = list(r)
+            r[1] = str(self._int(r[1]))
+            if len(r) < 3:
+                r.append(0)
+            r[2] = self._int(r[2])
+            out.append(r)
+        return out
+
     def carregar_dados(self):
         """Carrega dados com fallback para backups se arquivo principal estiver corrompido."""
         d = self.user_data_dir
@@ -315,8 +350,18 @@ class TraveteApp(App):
                     d = json.load(f)
                 if os.path.basename(arquivo) != "dados.json":
                     print(f"[DADOS] Recuperado de {arquivo}")
-                self.memorias        = d.get("memorias",        [])
-                self.registros       = d.get("registros",       [])
+                # a conferencia dos tipos NUNCA pode fazer um arquivo bom parecer
+                # estragado: se ela falhar, ficam os dados como vieram
+                try:
+                    self.memorias = self._normalizar_memorias(d.get("memorias", []))
+                except Exception as e:
+                    print(f"[DADOS] conferir turnos: {e}")
+                    self.memorias = d.get("memorias", [])
+                try:
+                    self.registros = self._normalizar_registros(d.get("registros", []))
+                except Exception as e:
+                    print(f"[DADOS] conferir lotes: {e}")
+                    self.registros = d.get("registros", [])
                 self.meta_geral      = d.get("meta_geral",    10000)
                 self.streak          = d.get("streak",            0)
                 self.ultima_data     = d.get("ultima_data",      "")

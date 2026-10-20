@@ -16,6 +16,9 @@ import time
 import metas
 
 
+LOTE_GRANDE = 1000          # acima disso o app confere antes (digitacao errada)
+
+
 class TelaRegistro(Screen):
 
     def on_enter(self):
@@ -151,7 +154,16 @@ class TelaRegistro(Screen):
             som.tocar_erro()
             tatil.erro()
             return
-        popup_pedir_xp(n, int(q), lambda xp: self.salvar(n, q, xp))
+        q = str(int(q))                                  # "0180" -> "180"
+        seguir = lambda: popup_pedir_xp(n, int(q), lambda xp: self.salvar(n, q, xp))
+        if int(q) > LOTE_GRANDE:
+            # um lote enorme quase sempre e dedo escorregando (180 -> 1800)
+            from helpers import popup_confirmar
+            som.tocar_erro()
+            tatil.erro()
+            popup_confirmar(f"[b]{fmt_br(int(q))}[/b] peças num lote só?", seguir, sim=">>  SIM, ISSO MESMO")
+            return
+        seguir()
 
     def _shake_input(self, inp):
         Animation.cancel_all(inp, 'borda_color')

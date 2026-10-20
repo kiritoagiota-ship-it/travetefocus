@@ -77,4 +77,16 @@ reg = [['A', '50', 1, '', base], ['B', '52', 1, '', base + 3600], ['C', '10', 1]
 ok(len(M.lotes_de_hoje(reg, ter)) == 2, 'lotes sem hora, com hora estragada ou de outro dia ficam de fora')
 ok(M.tempo_txt(1.5) == '1h30' and M.tempo_txt(0.25) == '15 min', 'tempo escrito: 1h30 / 15 min')
 
+# a sequencia de dias (domingo e folga)
+d = lambda dd, mm: date(2026, mm, dd)
+ok(M.sequencia({d(12, 10), d(13, 10), d(14, 10)}) == 3, 'seg-ter-qua seguidos: 3 dias')
+ok(M.sequencia({d(9, 10), d(10, 10), d(12, 10), d(13, 10)}) == 4, 'sex-sab, (domingo de folga), seg-ter: 4 dias')
+ok(M.sequencia({d(9, 10), d(12, 10)}) == 1, 'faltou o sabado: a sequencia recomeca')
+ok(M.sequencia({d(10, 10), d(11, 10), d(12, 10)}) == 3, 'trabalhou no domingo (feriado ou extra): conta junto')
+ok(M.sequencia(set()) == 0, 'sem turnos: 0')
+ok(M.sequencia_vale(d(10, 10), d(12, 10)), 'na segunda, o turno de sabado ainda vale (domingo e folga)')
+ok(not M.sequencia_vale(d(9, 10), d(12, 10)), 'na segunda, o ultimo turno na sexta: quebrou')
+ok(M.sequencia_vale(d(13, 10), d(14, 10)) and not M.sequencia_vale(d(12, 10), d(14, 10)),
+   'na quarta vale o de terca; o de segunda nao')
+
 print('%d casos, %d falhas' % (casos[0], len(falhas)))

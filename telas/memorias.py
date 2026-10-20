@@ -280,11 +280,12 @@ class TelaMemorias(Screen):
                 return f"{partes[0].strip()[:2]}/{partes[1].strip()[:2]}"
             return data_str[:5]
 
+        hoje = datetime.now().strftime("%d/%m/%Y")
         grafico.dados = [
             {'label':  _label_dia(m['data']), 'valor': m['total'],
              'record': m['total'] == max_t and max_t > 0,
-             'hoje':   idx == len(recentes) - 1}
-            for idx, m in enumerate(recentes)
+             'hoje':   m['data'].strip().split(' ')[0] == hoje}
+            for m in recentes
         ]
 
     def abrir_detalhes_memoria(self, memoria):

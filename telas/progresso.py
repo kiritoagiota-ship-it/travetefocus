@@ -72,12 +72,14 @@ class TelaProgresso(Screen):
 
     @staticmethod
     def _sequencia_valida(app):
-        """A sequencia so vale se o ultimo turno finalizado foi hoje ou
-        ontem; passou disso, ela quebrou (mostra 0 ate o proximo turno)."""
+        """A sequencia so vale se o ultimo turno finalizado foi hoje ou no
+        ultimo dia de trabalho (na segunda, o sabado vale: domingo e folga);
+        passou disso, ela quebrou (mostra 0 ate o proximo turno)."""
         try:
+            import metas
             from datetime import datetime as DT
             ultima = DT.strptime(app.ultima_data, "%d/%m/%Y").date()
-            if (DT.now().date() - ultima).days > 1:
+            if not metas.sequencia_vale(ultima, DT.now().date()):
                 return 0
         except Exception:
             pass

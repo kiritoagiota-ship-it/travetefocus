@@ -159,6 +159,40 @@ def meta_diaria(alvo, feitas_semana, feitas_hoje, hoje, pecas_sabado=200):
     return r
 
 
+# ── a sequencia de dias (o STREAK) ─────────────────────────────────────
+def dia_util_anterior(d):
+    """O dia de trabalho antes de `d` (domingo e folga: da segunda volta ao sabado)."""
+    d = d - timedelta(days=1)
+    if d.weekday() == 6:
+        d = d - timedelta(days=1)
+    return d
+
+
+def sequencia(dias):
+    """Dias de trabalho seguidos (com turno) terminando no mais recente; o
+    domingo sem turno nao quebra (folga). Um domingo COM turno conta junto."""
+    if not dias:
+        return 0
+    ultimo = max(dias)
+    n, d = 1, ultimo
+    while True:
+        ant = d - timedelta(days=1)
+        if ant in dias:
+            n, d = n + 1, ant
+            continue
+        if ant.weekday() == 6 and (ant - timedelta(days=1)) in dias:
+            n, d = n + 1, ant - timedelta(days=1)      # pulou o domingo de folga
+            continue
+        return n
+
+
+def sequencia_vale(ultimo, hoje):
+    """A sequencia ainda vale hoje? (o ultimo turno foi hoje ou no ultimo dia de trabalho)"""
+    if ultimo is None:
+        return False
+    return ultimo >= dia_util_anterior(hoje)
+
+
 # ── o ritmo do dia ─────────────────────────────────────────────────────
 def lotes_de_hoje(registros, hoje):
     """[(ts, qtd)] dos lotes de hoje que tem hora (em ordem)."""

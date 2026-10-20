@@ -495,6 +495,11 @@ def roteiro_meta():
               (0.3, lambda: tela().abrir_meta()), (1.4, lambda: foto('m2-painel-meta')), (0.3, fechar_popups),
               (0.8, lote), (0.8, lambda: setattr(campo_do_popup(), 'text', '3')),
               (0.3, lambda: apertar('CONFIRMAR')), (1.0, soltar_foco), (2.5, lambda: foto('m3-registro-depois')),
+              # lote enorme (dedo escorregou): o app confere; CORRIGIR volta sem lancar
+              (0.3, lambda: (setattr(tela().ids.nome_input, 'text', 'Short'), setattr(tela().ids.qtd_input, 'text', '1800'),
+                             soltar_foco(), tela().adicionar_item())),
+              (0.9, lambda: foto('m3b-confere-lote')), (0.3, lambda: apertar('CORRIGIR')),
+              (0.8, lambda: LOG.setdefault('lotes_depois_corrigir', len(app().registros))),
               (0.6, ir('ganhos')), (2.4, soltar_foco), (0.5, lambda: foto('m4-ganhos')),
               (0.3, lambda: tela().alternar_ajustes(True)), (0.6, lambda: foto('m4b-ajustes-abertos')),
               (0.3, lambda: setattr(tela().ids.rolagem, 'scroll_y', 0)), (0.6, lambda: foto('m4c-rolou-ate-o-fim')),

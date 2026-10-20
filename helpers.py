@@ -719,6 +719,32 @@ def popup_aviso(texto, cor='#00e5ff', titulo=None):
     _abrir_popup(caixa, pop)
 
 
+def popup_confirmar(pergunta, on_sim, sim=">>  SIM", nao="CORRIGIR", titulo="CONFERE?"):
+    """Pergunta curta com dois botoes (no estilo do app): sim segue, nao volta."""
+    pop, layout = _make_popup()
+    caixa = BoxLayout(orientation='vertical', padding=[dp(22), dp(18), dp(22), dp(18)], spacing=dp(12),
+                      size_hint=(0.86, None), height=dp(220))
+    aplicar_fundo_holografico(caixa, (1, 0.8, 0, 0.9))
+    caixa.add_widget(Label(text=f"[b][color=#ffcc00]{titulo}[/color][/b]", markup=True, font_name="orbitron.ttf",
+                           font_size="13sp", size_hint_y=None, height=dp(26), halign="center"))
+    lbl = Label(text=f"[color=#c8d2e6]{pergunta}[/color]", markup=True, font_name="rajdhani.ttf", font_size="17sp",
+                halign="center", valign="middle")
+    lbl.bind(size=lambda i, s: setattr(i, 'text_size', s))
+    caixa.add_widget(lbl)
+    bts = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(12))
+    b_nao = BotaoAngular(text=nao)
+    b_sim = BotaoAngular(text=sim, cor_borda=[0, 1, 0.55, 0.9], cor_borda_kv=[0, 1, 0.55, 0.9],
+                         cor_texto=[0, 1, 0.55, 1])
+    b_nao.bind(on_release=lambda *_: pop.dismiss())
+    b_sim.bind(on_release=uma_vez(lambda *_: (pop.dismiss(), on_sim())))
+    bts.add_widget(b_nao)
+    bts.add_widget(b_sim)
+    caixa.add_widget(bts)
+    layout.add_widget(caixa)
+    caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+    _abrir_popup(caixa, pop)
+
+
 def popup_delete_engracado(on_confirm, pergunta="Desintegrar este registro?", botao="DESINTEGRAR"):
     pop, layout = _make_popup()
     linhas = pergunta.count('\n')
