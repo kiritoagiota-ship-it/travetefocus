@@ -204,22 +204,25 @@ _TRONCO = [
 ESC_PERNAS = 0.85         # pernas 15% mais curtas (pedido do usuario, 29/09/2026)
 _COXA, _CANELA = 7.5 * ESC_PERNAS, 7.5 * ESC_PERNAS
 _PERNAS_P = {
-    'repouso':      dict(H=16.1, ar=False, f=(2.6, 0.0), b=(-2.3, 0.0)),
-    'passo':        dict(H=15.8, ar=False, f=(4.4, 0.0), b=(-3.9, 0.0)),
+    # (13/10/2026: em pe as pernas ficam quase retas - antes os joelhos dobravam
+    # mesmo parado; no ar os joelhos dobram e cada pe vai num lugar - antes as
+    # pernas penduravam retas e paralelas, como pernas de pau)
+    'repouso':      dict(H=16.9, ar=False, f=(2.4, 0.0), b=(-2.1, 0.0)),
+    'passo':        dict(H=16.4, ar=False, f=(4.2, 0.0), b=(-3.7, 0.0)),
     'avanco':       dict(H=14.8, ar=False, f=(7.2, 0.0), b=(-8.0, 0.0)),
     'avanco_baixo': dict(H=11.1, ar=False, f=(7.5, 0.0), b=(-8.8, 0.0)),
     'agachado':     dict(H=8.5, ar=False, f=(5.2, 0.0), b=(-4.1, 0.0)),
     'dobra':        dict(H=13.2, ar=False, f=(3.6, 0.0), b=(-2.8, 0.0)),
     # bases de espadachim: pes afastados e joelhos soltos
-    'base':         dict(H=15.4, ar=False, f=(5.0, 0.0), b=(-4.5, 0.0)),
+    'base':         dict(H=15.8, ar=False, f=(5.0, 0.0), b=(-4.5, 0.0)),
     'base_larga':   dict(H=14.3, ar=False, f=(6.5, 0.0), b=(-6.7, 0.0)),
     'recua':        dict(H=14.2, ar=False, f=(4.1, 0.0), b=(-6.2, 0.0)),     # peso na perna de tras
     'pulo':         dict(H=14.2, ar=True, f=(3.6, -8.5), b=(-0.5, -7.7)),
-    'suspenso':     dict(H=15.9, ar=True, f=(2.3, -15.7), b=(-1.8, -15.1)),
-    'solto':        dict(H=16.0, ar=True, f=(1.3, -16.0), b=(-1.4, -15.7)),
-    'solto2':       dict(H=15.7, ar=True, f=(1.9, -15.7), b=(-5.0, -14.6)),
-    'solto_meio':   dict(H=15.9, ar=True, f=(1.5, -15.9), b=(-3.2, -15.4)),
-    'pendente':     dict(H=15.7, ar=True, f=(2.1, -15.6), b=(-0.5, -15.5)),
+    'suspenso':     dict(H=15.9, ar=True, f=(3.4, -11.6), b=(-2.6, -12.8)),
+    'solto':        dict(H=16.0, ar=True, f=(2.8, -12.6), b=(-1.8, -13.4)),
+    'solto2':       dict(H=15.7, ar=True, f=(3.6, -11.4), b=(-5.2, -12.4)),
+    'solto_meio':   dict(H=15.9, ar=True, f=(3.0, -12.0), b=(-3.6, -12.8)),
+    'pendente':     dict(H=15.7, ar=True, f=(2.0, -13.4), b=(-0.4, -13.9)),
     'grudado':      dict(H=11.6, ar=True, f=(4.6, -8.3), b=(0.5, -8.0)),
 }
 

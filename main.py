@@ -244,7 +244,9 @@ class TraveteApp(App):
             self.ultima_data = ""
 
     def salvar_dados(self, sincrono=False):
-        snapshot = {
+        # copia de verdade (nao so a lista): a gravacao roda em outra thread e
+        # nao pode ler um turno no meio de uma alteracao
+        snapshot = json.loads(json.dumps({
             "memorias":        list(self.memorias),
             "total_geral":     self.total_geral,
             "meta_geral":      self.meta_geral,
@@ -256,7 +258,7 @@ class TraveteApp(App):
             "periodos_ganhos": list(self.periodos_ganhos),
             "config_ganhos":   dict(self.config_ganhos),
             "config_app":      {"vibracao": bool(self.vibracao)},
-        }
+        }, ensure_ascii=False))
         data_dir = self.user_data_dir
         if sincrono:
             self._salvar_bg(snapshot, data_dir)
@@ -279,6 +281,8 @@ class TraveteApp(App):
             dest = os.path.join(data_dir, "dados.json")
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(dados, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())          # no disco de verdade antes de trocar (celular desligando)
             os.replace(tmp, dest)
             # Backup rotativo — mantém últimas 3 versões
             for i in range(2, 0, -1):
@@ -306,7 +310,7 @@ class TraveteApp(App):
             try:
                 with open(arquivo, "r", encoding="utf-8") as f:
                     d = json.load(f)
-                if arquivo != "dados.json":
+                if os.path.basename(arquivo) != "dados.json":
                     print(f"[DADOS] Recuperado de {arquivo}")
                 self.memorias        = d.get("memorias",        [])
                 self.registros       = d.get("registros",       [])
@@ -320,6 +324,14 @@ class TraveteApp(App):
                 return
             except Exception as e:
                 print(f"[DADOS] {arquivo} corrompido: {e} — tentando backup...")
+                # guarda o arquivo estragado antes que a proxima gravacao passe
+                # por cima dele (da para tentar recuperar a mao depois)
+                try:
+                    guarda = arquivo + ".corrompido"
+                    if not os.path.exists(guarda):
+                        shutil.copy2(arquivo, guarda)
+                except Exception as e2:
+                    print(f"[DADOS] nao guardei a copia: {e2}")
 
 
 if __name__ == "__main__":

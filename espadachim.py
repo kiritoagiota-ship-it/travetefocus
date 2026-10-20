@@ -431,9 +431,10 @@ class CorteMeiaLua(Widget):
             a = self._a0 + (self._a1 - self._a0) * s
             if perfil:
                 # crescente: zero nas pontas, mais grosso perto da ponta que avanca
-                g = grossura * (math.sin(math.pi * s) ** 0.75) * (0.45 + 0.55 * s)
+                # (max: na ponta a conta pode dar -0.0000000001 e a raiz vira numero complexo)
+                g = grossura * (max(0.0, math.sin(math.pi * s)) ** 0.75) * (0.45 + 0.55 * s)
             else:
-                g = grossura * math.sin(math.pi * (i / (n - 1.0))) ** 0.5
+                g = grossura * max(0.0, math.sin(math.pi * (i / (n - 1.0)))) ** 0.5
             ext = r_ext + g * 0.10 + self._ruido[i] * grossura * 0.03 * (1 - s)
             inte = ext - g
             ca, sa = math.cos(a), math.sin(a) * self._achat
