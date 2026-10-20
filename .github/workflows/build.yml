@@ -130,15 +130,30 @@ jobs:
           sed -i "/^p4a.hook/a p4a.source_dir = $GITHUB_WORKSPACE/p4a-src" buildozer.spec
           grep -n "^p4a" buildozer.spec
 
-      # ── 9c. VERSAO AUTOMATICA ──────────────────────────────────────────────
-      # Cada build ganha um numero de versao maior que o anterior (1.0.<n>),
-      # entao o celular instala por cima como atualizacao.
-      - name: Numero de versao automatico
+      # ── 9c. VERSAO ─────────────────────────────────────────────────────────
+      # O nome da versao vem do arquivo VERSAO (1.3, 1.4, ... - escolha do
+      # usuario: cada atualizacao sobe 1). O numero INTERNO (versionCode) e o
+      # que o Android compara para instalar por cima: ele tem que ser SEMPRE
+      # maior que o anterior, senao o celular recusa e obrigaria a desinstalar
+      # (perderia as anotacoes). O automatico do python-for-android daria
+      # "10"+minapi+versao: 1.0.201 -> 102110201, mas 1.3 -> 1021103 (MENOR!).
+      # Por isso o numero e fixado aqui: 2xx.xxx.xxx = 200000000 + maior*1000000
+      # + menor*10000 + build (1.3 no build 210 -> 201030210), sempre acima
+      # de todos os 1.0.N antigos e crescendo a cada versao e a cada build.
+      - name: Numero de versao
         run: |
-          sed -i "s/^version = .*/version = 1.0.${{ github.run_number }}/" buildozer.spec
-          grep -n "^version" buildozer.spec
+          V=$(tr -d ' \r\n' < VERSAO)
+          MAIOR=${V%%.*}
+          MENOR=${V#*.}; MENOR=${MENOR%%.*}
+          CODIGO=$((200000000 + MAIOR * 1000000 + MENOR * 10000 + ${{ github.run_number }} % 10000))
+          sed -i "s/^version = .*/version = $V/" buildozer.spec
+          sed -i '/^android.numeric_version/d' buildozer.spec
+          sed -i "/^version = /a android.numeric_version = $CODIGO" buildozer.spec
+          grep -n "^version\|^android.numeric_version" buildozer.spec
+          echo "VERSAO_APP=$V" >> $GITHUB_ENV
+          echo "::notice::TraveteFocus $V (numero interno $CODIGO)"
           # o app mostra a versao no rodape do menu
-          echo '{"versao": "1.0.${{ github.run_number }}"}' > versao.json
+          echo "{\"versao\": \"$V\"}" > versao.json
 
       # ── 10. BUILD ──────────────────────────────────────────────────────────
       # O flag -v força output verboso sem alterar o buildozer.spec,
@@ -187,11 +202,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           APK=$(ls bin/*.apk | head -n 1)
-          NOVO="bin/TraveteFocus-1.0.${{ github.run_number }}.apk"
+          NOVO="bin/TraveteFocus-${VERSAO_APP}.apk"
           cp "$APK" "$NOVO"
           gh release delete apk-mais-recente --yes --cleanup-tag || true
-          gh release create apk-mais-recente "$NOVO" --target "${{ github.sha }}" --latest --title "TraveteFocus 1.0.${{ github.run_number }}" --notes "APK mais recente do TraveteFocus. Baixe o arquivo .apk abaixo e instale por cima do app."
-          echo "::notice::APK publicado em Releases: TraveteFocus 1.0.${{ github.run_number }}"
+          gh release create apk-mais-recente "$NOVO" --target "${{ github.sha }}" --latest --title "TraveteFocus ${VERSAO_APP}" --notes "APK mais recente do TraveteFocus (versao ${VERSAO_APP}, build ${{ github.run_number }}). Baixe o arquivo .apk abaixo e instale por cima do app."
+          echo "::notice::APK publicado em Releases: TraveteFocus ${VERSAO_APP}"
 
       - name: Upload do log completo de build
         if: always()
