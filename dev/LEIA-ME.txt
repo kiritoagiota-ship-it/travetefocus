@@ -100,6 +100,11 @@ BANKAI (desenhos da referencia do usuario, copiados pixel a pixel)
   continuidade.py   mede, num filme com CADA=1, quanto o Yoru muda de um quadro para o
                     outro (barras vermelhas = "pisca")
 
+ICONE DO APP
+  icone.py          3 opcoes em pixel art (yoru, espadas, tf). previa PASTA = as opcoes e
+                    como o Android corta; usar NOME = grava icon.png, icone_frente.png,
+                    icone_fundo.png (icone adaptativo) e presplash.png. Escolhido: yoru (20/10/2026).
+
 VER / FAZER PREVIAS
   folha2.py, folha_poses.py, cena_zoom.py   folhas de quadros para conferir
   gif_tour.py, gif_cenas.py, gif_folha.py    GIFs de previa

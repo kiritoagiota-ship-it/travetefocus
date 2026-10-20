@@ -20,8 +20,12 @@ requirements = python3,kivy,sqlite3,plyer
 orientation = portrait
 fullscreen   = 0
 
-# Ícone do app — coloque icon.png na raiz do repositório (512×512 px ideal)
+# Ícone do app (dev/icone.py "usar NOME" grava os tres): icon.png e o icone
+# inteiro (celulares antigos); nos novos o Android monta o icone adaptativo com
+# o fundo e o desenho separados e corta no formato do aparelho (circulo etc.)
 icon.filename = %(source.dir)s/icon.png
+icon.adaptive_foreground.filename = %(source.dir)s/icone_frente.png
+icon.adaptive_background.filename = %(source.dir)s/icone_fundo.png
 
 # Tela de abertura (no lugar do "Loading..." padrao do Kivy)
 presplash.filename    = %(source.dir)s/presplash.png
