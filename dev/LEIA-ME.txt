@@ -49,7 +49,7 @@ ANIMACAO QUADRO A QUADRO (relogio simulado: 60 quadros/s exatos, a foto nao atra
                     barra de ganhos, anel do progresso, historico da calculadora
   analisa_filme.py  PASTA [quadros]: por trecho, desenhos novos x deslizando x
                     girando; desenhos por segundo do corpo, sobretudo e cabeca
-                    (alvo: 12 a 18 por segundo)
+                    (alvo desde 20/10/2026: 24 por segundo - kirito.DESENHOS; efeitos 30 a 60)
   folha_filme.py    PASTA ini fim passo SAIDA: folha de quadros recortada no Yoru
   zoom_filme.py     PASTA SAIDA q1,q2,...: quadros ampliados (pixel duro)
 
@@ -101,6 +101,9 @@ BANKAI (desenhos da referencia do usuario, copiados pixel a pixel)
                     campo de chama + ruido subindo, faixas de cor sem degrade. As emendas
                     (estouro -> fervura -> dissipacao) continuam o mesmo fogo. Vai junto no
                     clipes.bin (o bankai_rig.py chama).
+                    RITMO (20/10/2026): o Bankai em 24 desenhos/s (FPS_CORPO) e o reiatsu
+                    em 30 (FPS_REI); cada clipe guarda o proprio 'fps' no clipes.bin. Mudou
+                    o ritmo ou o desenho do Yoru: gerar de novo e assar (assar.py gravar/assar).
   continuidade.py   mede, num filme com CADA=1, quanto o Yoru muda de um quadro para o
                     outro (barras vermelhas = "pisca")
 

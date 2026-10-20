@@ -141,7 +141,8 @@ class _Uma:
                 print(f"[cenas] on_fim: {e}")
 
 
-_PASSO_MOVER = 1 / 30.0      # o corpo anda em degraus de 1/30 s (desenho em 2s a 60 fps)
+_PASSO_MOVER = 1 / 30.0      # o que nao e o Yoru anda em degraus de 1/30 s
+_PASSO_YORU = 1 / 24.0       # o Yoru anda na grade dos desenhos dele (24/s)
 
 
 def _mover(k, de, para, dur, altura=0.0, rot=None, fantasmas=3,
@@ -189,13 +190,15 @@ def _mover(k, de, para, dur, altura=0.0, rot=None, fantasmas=3,
             if on_fim:
                 on_fim()
 
+    no_relogio = vivo and hasattr(k, 'a_cada_desenho')
+
     def _p(dt):
         try:
             if getattr(k, '_pausa', 0) > 0:
                 return True          # hit-stop: o corpo congela junto com a pose
             t[0] += dt
             u = min(1.0, t[0] / dur)
-            d = int(t[0] / _PASSO_MOVER)
+            d = degrau[0] + 1 if no_relogio else int(t[0] / _PASSO_MOVER + 1e-6)
             if d == degrau[0] and u < 1:
                 return True          # entre dois degraus: o desenho fica onde esta
             degrau[0] = d
@@ -230,6 +233,10 @@ def _mover(k, de, para, dur, altura=0.0, rot=None, fantasmas=3,
             print(f"[cenas] mover: {ex}")
             _acabar()
             return False
+    if no_relogio:
+        # o Yoru anda no MESMO tique em que troca de desenho (24/s): o passo
+        # do corpo e o desenho novo aparecem juntos, como um quadro de anime
+        return k.a_cada_desenho(_p)
     return Clock.schedule_interval(_p, 1 / 60.)
 
 
@@ -2311,7 +2318,7 @@ class _PilarReiatsu(Widget):
     """A coluna de luz do BAN-KAI: continua o topo do casulo (widget `kr`,
     que toca os clipes do reiatsu) ate o fim da tela. E o bloco 'rei_pilar'
     do clipes.bin (mesmas cores e mesmo fogo subindo do casulo) empilhado -
-    so troca a textura 12 vezes por segundo, no MESMO passo do casulo (sem
+    troca a textura 30 vezes por segundo, no MESMO passo do casulo (sem
     emenda). Nasce subindo como um raio ate o ceu e, no fim, descola de
     baixo para cima."""
 
@@ -2343,11 +2350,11 @@ class _PilarReiatsu(Widget):
         nome = getattr(kr, '_desenho', None)
         t = getattr(kr, '_clipe_t', self.t)
         if nome == 'rei_estouro':          # o estouro termina 1 passo antes da fervura
-            d = int(t * 15)
-            passo = int(round(((d - 5) / 15.0 - 1 / 12.0) * 12))
-            return (passo % 8) * n // 8
+            d = int(t * 30 + 1e-6)
+            m = len(cab['clipes']['rei_estouro']['quadros'])
+            return (min(d, m - 1) - m) % n
         if nome == 'rei_ferve':
-            return int(t * 30) % n
+            return int(t * 30 + 1e-6) % n
         return int(self.t * 30) % n
 
     def _tick(self, dt):
@@ -2403,7 +2410,7 @@ class _PilarReiatsu(Widget):
 class _OlhosAcesos(Widget):
     """O olho do Bankai acendendo dentro do reiatsu: miolo branco com a
     borda escura (aparece em cima de qualquer cor) e uma cruz lilas que
-    cresce e pisca (12 trocas por segundo)."""
+    cresce (desenho novo todo quadro) e pisca."""
 
     def __init__(self, pos, u, **kwargs):
         kwargs.setdefault('size_hint', (None, None))
@@ -2425,10 +2432,10 @@ class _OlhosAcesos(Widget):
             u = self.u
             cx = math.floor(self.p[0] / u) * u
             cy = math.floor(self.p[1] / u) * u
-            f = int(self.t * 12)
+            f = self.t * 12.0
             # o olho: miolo branco com borda escura e o risco de luz de anime
-            # (abre para os lados em degraus e depois pisca)
-            n = min(12, 3 + 2 * f) - (f % 2 if f > 6 else 0)
+            # (abre para os lados e depois pisca)
+            n = min(12, int(3 + 2 * f)) - (int(f) % 2 if f > 6 else 0)
             pts = {'borda': [(cx - 3 * u, cy - 2 * u, 7 * u, 4 * u), (cx - (n + 2) * u, cy - u, (2 * n + 5) * u, 3 * u)],
                    'halo': [(cx - (n + 1) * u, cy, (2 * n + 3) * u, u), (cx - 2 * u, cy - u, 5 * u, 3 * u)],
                    'luz': [(cx - u, cy - u, 3 * u, 2 * u), (cx - (n // 2 + 1) * u, cy, (n + 3) * u, u)]}
@@ -2493,7 +2500,7 @@ class _LuaNegra(Widget):
             cx = math.floor(self.c[0] / u) * u
             cy = math.floor(self.c[1] / u) * u
             pts = {}
-            f = int(self.t * 12)
+            f = int(self.t * 30)
             for iy in range(-n - 2, n + 3):
                 w_f = math.sqrt(max(0.0, (n - 0.5) ** 2 - iy * iy))
                 if w_f > 0:
@@ -4252,7 +4259,8 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                 k2 = estado.get('kr')
                 if k2 is None:
                     return _revela()
-                volta = len(K.clipes_dados()['clipes']['rei_ferve']['quadros']) / 30.0
+                c_f = K.clipes_dados()['clipes']['rei_ferve']
+                volta = len(c_f['quadros']) / float(c_f.get('fps', 30.0))
                 resto = volta - (k2._clipe_t % volta)
                 if resto > 1 / 30.0 and resto < volta - 1 / 60.0:
                     ag.depois(resto, _revela)
@@ -4695,7 +4703,7 @@ def cena_titulo(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         def _explode():
             cx, cy = titulo.x_do_trecho(0, len(texto))
             for sent, cor in ((1, CIANO), (-1, AZUL)):
-                camada.add_widget(CorteMeiaLua(cor=cor, dur_cheio=5 / 30.0, dur_decai=9 / 30.0, por_s=15,
+                camada.add_widget(CorteMeiaLua(cor=cor, dur_cheio=5 / 30.0, dur_decai=9 / 30.0, por_s=30,
                                                **_meialua_explosao(sent)))
             faiscas.estourar(cx, cy, CIANO, n=45, forca=dp(340), tam=ps)
             faiscas.estourar(cx, cy, AZUL, n=25, forca=dp(260), tam=ps)
@@ -4890,7 +4898,7 @@ def cena_entrada_rapida(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                 camada.add_widget(CorteMeiaLua(centro=(ox_t + titulo.tw / 2.0, cy), raio=titulo.tw * 0.6,
                                                ang_ini=160 if sent > 0 else 20, ang_fim=-45 if sent > 0 else 225,
                                                espessura=th * 1.1, achat=0.34, rotacao=12 * sent, cor=cor_,
-                                               dur_cheio=4 / 30.0, dur_decai=7 / 30.0, por_s=15))
+                                               dur_cheio=4 / 30.0, dur_decai=7 / 30.0, por_s=30))
             faiscas.estourar(ox_t + titulo.tw / 2.0, cy, CIANO, n=30, forca=dp(300), tam=ps)
             p_pulo = _com(P['pulo'], olhos='s')
             ax, ay = kk.ancora()

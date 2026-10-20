@@ -37,7 +37,30 @@ from kivy.graphics.texture import Texture
 from kivy.properties import BooleanProperty, NumericProperty
 from kivy.clock import Clock
 
-FPS = 30.0
+FPS = 30.0          # linha do tempo das poses (as sequencias e as cenas contam quadros de 30/s)
+DESENHOS = 24.0     # o Yoru troca de desenho 24 vezes por segundo (corpo, sobretudo, cabelo)
+FASES = 16          # passos do balanco do sobretudo/cabelo: um passo novo a cada desenho
+
+
+class _Tocando:
+    """Marca de 'sequencia tocando' (quem anda e o relogio do boneco)."""
+    def cancel(self):
+        pass
+
+
+_TOCANDO = _Tocando()
+
+
+class _NoDesenho:
+    """O que foi preso no relogio do boneco (cancel() solta)."""
+    def __init__(self, k, fn):
+        self.k, self.fn = k, fn
+
+    def cancel(self):
+        try:
+            self.k._a_cada_desenho.remove(self.fn)
+        except ValueError:
+            pass
 
 _PALETA = {
     'H': (0.11, 0.10, 0.17, 1), 'h': (0.36, 0.36, 0.49, 1),     # cabelo
@@ -2985,6 +3008,11 @@ class KiritoPixel(Widget):
         self._ev_vida = None
         self._seq = []
         self._i = 0
+        self._t_seq = 0.0
+        self._grade = -1                  # ultimo desenho da grade de 24/s
+        self._dt_des = 0.0                # tempo desde o ultimo desenho
+        self._no_relogio = False          # dentro do tique de desenho (mostrar so guarda a pose)
+        self._a_cada_desenho = []         # quem anda junto com os desenhos (ex.: o deslocamento)
         self._on_quadro = None
         self._on_fim = None
         self._loop = False
@@ -3117,10 +3145,14 @@ class KiritoPixel(Widget):
         dx = (sx - qx) * te
         return (ax - dx if self.espelhar else ax + dx), ay + (qy - sy) * te
 
+    def _fps_clipe(self, nome=None):
+        cab = clipes_dados()
+        return float(cab['clipes'][nome or self._desenho].get('fps', cab['fps']))
+
     def _quadro_atual(self):
         cab = clipes_dados()
         n = len(cab['clipes'][self._desenho]['quadros'])
-        i = int(self._clipe_t * cab['fps'])
+        i = int(self._clipe_t * self._fps_clipe() + 1e-6)
         return (i % n) if self._clipe_loop else min(i, n - 1)
 
     def corpo_desenho(self):
@@ -3218,17 +3250,23 @@ class KiritoPixel(Widget):
         if self._desenho is None:
             return
         self._clipe_t += dt
-        i = self._quadro_atual()
+        n = len(clipes_dados()['clipes'][self._desenho]['quadros'])
+        dur = n / self._fps_clipe()
+        t = (self._clipe_t % dur) if self._clipe_loop else min(self._clipe_t, dur - 1e-6)
+        i = int(t * FPS + 1e-6)                    # aviso em quadros de 30/s (as cenas contam assim)
         if i != self._clipe_ult:
+            ult = self._clipe_ult
             self._clipe_ult = i
             if self._clipe_cb is not None:
-                try:
-                    self._clipe_cb(i)
-                except Exception as e:
-                    print(f"[kirito] clipe quadro: {e}")
+                # avisa tambem os quadros que passaram entre dois tiques
+                seq = range(ult + 1, i + 1) if 0 <= ult < i and i - ult <= 4 else (i,)
+                for j in seq:
+                    try:
+                        self._clipe_cb(j)
+                    except Exception as e:
+                        print(f"[kirito] clipe quadro: {e}")
         if not self._clipe_loop:
-            n = len(clipes_dados()['clipes'][self._desenho]['quadros'])
-            if int(self._clipe_t * clipes_dados()['fps']) >= n and self._clipe_fim is not None:
+            if self._clipe_t >= dur and self._clipe_fim is not None:
                 cb, self._clipe_fim = self._clipe_fim, None
                 try:
                     cb()
@@ -3237,6 +3275,11 @@ class KiritoPixel(Widget):
 
     def mostrar(self, p):
         self._desenho = None
+        if self._no_relogio or (self._ev_vida is not None and self._ult_chave is not None):
+            # com o relogio andando, a pose nova aparece no proximo desenho
+            # (24/s, junto com a fisica) - nunca fora do compasso
+            self._base = p
+            return
         if self._base is not p and self.fisica:
             ant = self._base
             if ant is None or any(ant.get(k) != p.get(k) for k in ('dx', 'dy', 'm1', 'm2', 'a1', 'a2',
@@ -3282,8 +3325,8 @@ class KiritoPixel(Widget):
         if b.get('brilho') is not None:
             q['brilho'] = b['brilho']
         else:
-            q['brilho'] = (round(ciclo / 0.45 * 6) / 6.0) if (ciclo < 0.45 and self._loop
-                                                                and not b.get('mugetsu')) else None
+            q['brilho'] = (round(ciclo / 0.45 * 11) / 11.0) if (ciclo < 0.45 and self._loop
+                                                                  and not b.get('mugetsu')) else None
         return q
 
     def _camadas_da_pose(self, q):
@@ -3409,21 +3452,49 @@ class KiritoPixel(Widget):
             print(f"[kirito] desenho ignorado: {e}")
 
     def _vida(self, dt):
-        """Fisica do sobretudo/cabelo a partir da velocidade real do boneco."""
+        """O relogio do boneco (todo quadro da tela): a borda de energia
+        ferve a 30/s; na grade de 24/s anda a sequencia, roda a fisica do
+        sobretudo/cabelo (pela velocidade real do boneco) e troca o desenho -
+        corpo, pano e cabelo no mesmo tique, como um quadro de anime."""
         try:
-            if self._pausa > 0:
-                if self._ev is None:          # sem sequencia tocando, o hit-stop acaba sozinho
-                    self._pausa = max(0.0, self._pausa - dt)
+            if (self.parent is None and self._ev is None and self._desenho is None
+                    and not self._a_cada_desenho):
+                self._ev_vida = None                 # fora da tela e sem nada tocando
+                return False
+            if self._pausa > 0:                      # hit-stop: congela tudo
+                self._pausa = max(0.0, self._pausa - dt)
                 return
             dt = min(dt, 1 / 15.)
             self._t += dt
-            self._avanca_clipe(dt)
-            if self.aura > 0:                        # a borda de energia ferve (12/s)
+            if self._desenho is not None:
+                self._avanca_clipe(dt)
+                self._desenhar()                     # clipe: segue o ritmo do proprio clipe
+            if self.aura > 0:                        # a borda de energia ferve (30/s)
                 self._aura_t += dt
-                if self._aura_t >= 1 / 12.:
+                if self._aura_t >= 1 / 30.:
                     self._aura_t = 0.0
                     self._aura_n += 1
                     self._pos_aura()
+            self._dt_des += dt
+            g = int(self._t * DESENHOS)
+            if g == self._grade:
+                return
+            self._grade = g
+            dt, self._dt_des = min(self._dt_des, 1 / 15.), 0.0
+            self._no_relogio = True
+            try:
+                for fn in list(self._a_cada_desenho):    # o deslocamento anda no mesmo tique
+                    try:
+                        if fn(dt) is False and fn in self._a_cada_desenho:
+                            self._a_cada_desenho.remove(fn)
+                    except Exception as e:
+                        print(f"[kirito] a cada desenho: {e}")
+                        if fn in self._a_cada_desenho:
+                            self._a_cada_desenho.remove(fn)
+                if self._ev is not None:
+                    self._mostra_seq(dt)             # a pose deste instante
+            finally:
+                self._no_relogio = False
             ax, ay = self.ancora()
             if self._ult is not None and dt > 0:
                 vx = (ax - self._ult[0]) / dt
@@ -3446,27 +3517,22 @@ class KiritoPixel(Widget):
             vel = math.hypot(frente, cima)
             self._fase = (self._fase + dt * (1.6 + min(3.0, vel / 120.0))) % 1.0
             self._camadas(dt, frente, cima)
-            self._travar_batida()
+            self._travar_batida(forcar=True)
             self._desenhar()
         except Exception as e:
             print(f"[kirito] fisica: {e}")
 
     def _travar_batida(self, forcar=False):
-        """Copia o estado das molas para o desenho: junto com cada desenho
-        novo do corpo (forcar) ou, com o corpo parado, a cada 3 tiques da
-        fisica (10 por segundo). O atraso do cabelo e do sobretudo vem das
-        molas; a troca de desenho acontece no mesmo quadro do corpo."""
-        self._batida += 1
-        if not forcar and self._batida < 3:
-            return
+        """Copia o estado das molas para o desenho, a cada desenho (24/s).
+        O atraso do cabelo e do sobretudo vem das molas; o balanco anda um
+        passo (de FASES) por desenho, entao o pano nunca fica congelado."""
         self._batida = 0
         pr = self._preso
-        f6 = (int(self._fase * 6) % 6) / 6.0
         pr['capa'] = self._m_capa.x
         pr['lift'] = self._m_lift.x
-        pr['fase'] = f6
+        pr['fase'] = (int(self._fase * FASES) % FASES) / float(FASES)
         pr['cabelo'] = self._m_cab.x
-        pr['fase_cab'] = (int(self._fase * 6 + 1) % 6) / 6.0     # o cabelo vai 1 passo atras do pano
+        pr['fase_cab'] = (int(self._fase * FASES + 1) % FASES) / float(FASES)   # o cabelo vai 1 passo atras do pano
         pr['hx'] = int(round(max(-1.0, min(1.0, self._m_hx.x))))
         pr['hy'] = int(round(max(-1.0, min(1.0, self._m_hy.x))))
 
@@ -3565,8 +3631,23 @@ class KiritoPixel(Widget):
             return
         self._seq, self._i = seq, 0
         self._on_fim, self._on_quadro, self._loop = on_fim, on_quadro, loop
-        self._quadro(0)
-        self._ev = Clock.schedule_interval(self._quadro, 1 / FPS)
+        self._t_seq = 0.0
+        self._ev = _TOCANDO
+        self._mostra_seq(0.0)
+        self._ligar_relogio()
+
+    def a_cada_desenho(self, fn):
+        """fn(dt) roda a cada desenho do boneco (24/s), antes de desenhar;
+        devolver False solta. Devolve algo com cancel()."""
+        self._a_cada_desenho.append(fn)
+        self._ligar_relogio()
+        return _NoDesenho(self, fn)
+
+    def _ligar_relogio(self):
+        if self._ev_vida is None:
+            self._ult = None
+            self._grade = int(self._t * DESENHOS)
+            self._ev_vida = Clock.schedule_interval(self._vida, 1 / 60.)
 
     def amassar(self, v, quadros=5):
         """Amassa (v < 0) ou estica (v > 0) o corpo por alguns quadros e volta
@@ -3588,7 +3669,7 @@ class KiritoPixel(Widget):
                     self._ev_amassa = None
                     return False
             _p(0)
-            self._ev_amassa = Clock.schedule_interval(_p, 2 / 60.)
+            self._ev_amassa = Clock.schedule_interval(_p, 1 / DESENHOS)     # no ritmo dos desenhos
         except Exception as e:
             print(f"[kirito] amassar: {e}")
 
@@ -3597,26 +3678,42 @@ class KiritoPixel(Widget):
         impacto - o golpe parece mais pesado."""
         self._pausa = max(self._pausa, float(seg))
 
-    def _quadro(self, dt):
+    def _mostra_seq(self, dt):
+        """Anda a sequencia (poses de 30/s) pelo TEMPO e mostra a pose do
+        instante - chamado a cada desenho (24/s). Os quadros que passaram
+        entre dois desenhos tambem sao avisados (as cenas marcam golpes e
+        efeitos pelo numero do quadro)."""
         try:
-            if self._pausa > 0:
-                self._pausa -= dt
+            if self._ev is None or not self._seq:
                 return
-            if self._i >= len(self._seq):
-                if self._loop:
+            seq = self._seq
+            self._t_seq += dt
+            n = len(seq)
+            alvo = int(self._t_seq * FPS + 1e-6)
+            if alvo >= n:
+                if self._i < n:
+                    alvo = n - 1                     # o ultimo aparece antes de acabar
+                elif self._loop:
+                    self._t_seq -= n / FPS
                     self._i = 0
+                    alvo = min(n - 1, int(self._t_seq * FPS + 1e-6))
                 else:
-                    if self._ev is not None:
-                        self._ev.cancel()
-                        self._ev = None
+                    self._ev = None
                     cb, self._on_fim = self._on_fim, None
                     if cb:
                         cb()
-                    return False
-            self.mostrar(self._seq[self._i])
+                    return
+            if alvo < self._i:
+                return
+            for j in range(self._i, alvo):           # quadros pulados: so o aviso
+                if self._on_quadro:
+                    self._on_quadro(j)
+                if self._seq is not seq or self._ev is None:
+                    return                           # o aviso trocou a sequencia
+            self._i = alvo + 1
+            self.mostrar(seq[alvo])
             if self._on_quadro:
-                self._on_quadro(self._i)
-            self._i += 1
+                self._on_quadro(alvo)
         except Exception as e:
             print(f"[kirito] quadro ignorado: {e}")
             if self._ev is not None:
@@ -3643,9 +3740,8 @@ class KiritoPixel(Widget):
             if self._ev_vida is not None:
                 self._ev_vida.cancel()
                 self._ev_vida = None
-        elif self._ev_vida is None:
-            self._ult = None
-            self._ev_vida = Clock.schedule_interval(self._vida, 1 / FPS)
+        else:
+            self._ligar_relogio()
 
     def idle(self, base=None, piscar=True):
         """Parado, mas vivo: respira (o tronco desce 1 px e as maos vem 3

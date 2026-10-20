@@ -3,12 +3,12 @@ branco) explode dele, cobre o corpo inteiro fervendo e depois se desfaz em
 fiapos que sobem, revelando o Bankai.
 
 Pixel art quadro a quadro, gerado aqui no PC (vai junto no clipes.bin):
-  rei_estouro  - 6 desenhos: raios, onda de choque no chao, o casulo cresce
-                 muito claro e assenta;
-  rei_ferve    - 8 desenhos em loop (12/s): linguas de fogo subindo, borda
+  rei_estouro  - 12 desenhos (30/s): raios, onda de choque no chao, o casulo
+                 cresce muito claro e assenta;
+  rei_ferve    - 20 desenhos em loop (30/s): linguas de fogo subindo, borda
                  fervendo, faiscas;
-  rei_dissipa  - 12 desenhos: o casulo quebra de baixo para cima em pedacos
-                 que sobem, escurecem e somem.
+  rei_dissipa  - 32 desenhos (30/s): o casulo quebra de baixo para cima em
+                 pedacos que sobem, escurecem e somem.
 O campo de energia e: formato de chama (gota apontando para cima) + ruido
 esticado na vertical que SOBE com o tempo (repete certinho no loop); as
 faixas de cor sao cortes desse campo (sem degrade liso) e cada faixa perde
@@ -221,23 +221,33 @@ class Reiatsu:
             out.append(img)
         return out
 
-    def estouro(self):
-        """6 desenhos (15/s): raios + anel no chao + casulo crescendo claro."""
+    def estouro(self, por_s=30.0, dur=0.4):
+        """Raios + anel no chao + casulo crescendo claro (dur s a por_s/s).
+        As chaves (k = 0..5) sao as do desenho original de 6 quadros; os
+        desenhos do meio interpolam entre elas."""
         escalas = [0.3, 0.55, 0.8, 1.06, 1.03, 1.0]
         claro = [0.55, 0.45, 0.3, 0.16, 0.07, 0.0]
+
+        def lerp(v, k):
+            i0 = min(len(v) - 2, int(k))
+            return v[i0] + (v[i0 + 1] - v[i0]) * (k - i0)
         out = []
         pe = (self.qx, self.qy + 58)
         L = 8 / 12.0
-        for i, (s, c) in enumerate(zip(escalas, claro)):
+        n = max(2, int(round(dur * por_s)))
+        for j in range(n):
+            k = j * 5.0 / (n - 1)
+            s, c = lerp(escalas, k), lerp(claro, k)
+            i = k
             # o fogo ja vem subindo no mesmo passo da fervura: o ultimo desenho
             # do estouro e o que vem logo antes do primeiro da fervura
-            t = (i - 5) / 15.0 - 1 / 12.0
-            F = self.campo(self.P * t / L, escala=s, fervura=0.6 + 0.4 * i / 5.0)
+            t = (j - n) / float(por_s)
+            F = self.campo(self.P * t / L, escala=s, fervura=0.6 + 0.4 * k / 5.0)
             f = self.faixas(F, clarear=c)
             extra = np.zeros(f.shape, np.uint8)
             # raios saindo do centro (so nos primeiros)
-            if i <= 2:
-                comp = [70, 120, 150][i]
+            if k <= 2.0:
+                comp = int(lerp([70, 120, 150], min(k, 2.0)))
                 for k in range(14):
                     a = 2 * math.pi * k / 14 + 0.2
                     larg = 3 if k % 2 == 0 else 2

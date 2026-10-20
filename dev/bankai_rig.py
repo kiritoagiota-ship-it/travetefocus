@@ -15,8 +15,9 @@ Agora:
   tronco, pernas, cabeca - firmes (o corpo sobe e desce 1 pixel);
   braco -> antebraco -> espada - giram no ombro/cotovelo/punho so nos
             golpes (girar e reamostrar; parado eles ficam como no desenho).
-Os desenhos trocam 10 (parado) a 15 (golpe) vezes por segundo - cada um
-fica 3 ou 2 quadros de 30/s, como animacao desenhada.
+Os desenhos do Bankai trocam 24 vezes por segundo (anime "em 1s"; antes
+10 a 15) e o reiatsu 30 vezes por segundo (cada clipe guarda o proprio ritmo
+no clipes.bin: 'fps').
 
 Os clipes vao para app/bankai/clipes.bin (quadros repetidos sao guardados
 uma vez so); o app so toca os quadros.
@@ -36,7 +37,9 @@ from bankai_ref import extrair                                          # noqa: 
 
 APP = os.path.join('C:' + os.sep, 'Users', 'kirit', 'travetefocus', 'app')
 SAIDA_TESTE = os.path.join('C:' + os.sep, 'Users', 'kirit', 'travetefocus', 'ferramentas', 'saida_testes', 'rig')
-FPS = 30
+FPS = 30                          # linha do tempo do app (os avisos de quadro contam em 30/s)
+FPS_CORPO = 24                    # desenhos do Bankai por segundo
+FPS_REI = 30                      # desenhos do reiatsu por segundo
 S_DESENHO = 3.0                   # px da referencia por pixel: do tamanho do Yoru normal
 CW, CH = 320, 320                 # tela de cada quadro
 OX, OY = 70, 110                  # onde o desenho (170x170) fica dentro dela
@@ -522,7 +525,7 @@ def degrau(t, por_s):
     return math.floor(t * por_s + 1e-6) / float(por_s)
 
 
-P_IDLE = 2.4                      # ciclo do cabelo parado (s)
+P_IDLE = 2.5                      # ciclo do cabelo parado (s): 60 desenhos, o loop fecha certinho
 # golpe (graus a partir do desenho, + = horario): carrega com a lamina baixa
 # para tras e corta SUBINDO pela frente (o rosto fica sempre a vista)
 CARGA = dict(b=46.0, a=10.0, e=70.0, bob=2)
@@ -548,7 +551,7 @@ def clipes():
 
     # PARADO flutuando (o braco fica como no desenho: sem girar)
     def idle(t):
-        tc = degrau(t, 10)
+        tc = degrau(t, FPS_CORPO)
         q = dict(REPOUSO)
         q['bob'] = int(round(1.2 * math.sin(2 * math.pi * tc / P_IDLE)))
         return q, tc, dict(onda=7.0, per=P_IDLE, sobe=0.05)
@@ -561,7 +564,7 @@ def clipes():
     D_REV = 1.4
 
     def revela(t):
-        tc = degrau(t, 12)
+        tc = degrau(t, FPS_CORPO)
         th = tc - D_REV
         s = 0.95 * math.exp(-tc / 0.32) * math.cos(tc * 7.5) + 0.05 * (1 - math.exp(-tc / 0.3))
         q = dict(REPOUSO)
@@ -575,20 +578,20 @@ def clipes():
           (0.73, CARGA, 'out'), (0.9, dict(CARGA, b=CARGA['b'] + 4))]
 
     def carga(t):
-        tc = degrau(t, 15)
+        tc = degrau(t, FPS_CORPO)
         q = trilha(ch, tc)
         q['bob'] = int(round(q.get('bob', 0)))
         return q, tc, dict(onda=8.0, per=P_IDLE, sobe=0.08, x=-6.0 * min(1.0, tc / 0.7))
     CL['carga'] = (carga, 28 / 30.0, False)
 
     def carga_segura(t):
-        tc = degrau(t, 15)
+        tc = degrau(t, FPS_CORPO)
         q = dict(CARGA, b=CARGA['b'] + 4)
-        q['bob'] = CARGA['bob'] + (1 if int(tc * 15) % 2 else 0)
-        q['e'] += 1.5 * math.sin(tc * 30)
-        # loop de 0,8 s = um ciclo inteiro do cabelo (volta sem pulo)
-        return q, tc, dict(onda=11.0, per=0.8, sobe=0.12, x=-6.0)
-    CL['carga_segura'] = (carga_segura, 0.8, True)
+        q['bob'] = CARGA['bob'] + (1 if int(tc * 12 + 1e-6) % 2 else 0)
+        q['e'] += 1.5 * math.sin(tc * 2 * math.pi / 0.25)
+        # loop de 0,75 s (18 desenhos) = um ciclo inteiro do cabelo (volta sem pulo)
+        return q, tc, dict(onda=11.0, per=0.75, sobe=0.12, x=-6.0)
+    CL['carga_segura'] = (carga_segura, 0.75, True)
 
     # CORTE: acelera (rastro) -> passa pela frente -> segue -> acomoda. O
     # cabelo do corte e do 'fim' corre num tempo so, que termina em 0 no fim
@@ -602,7 +605,7 @@ def clipes():
         return 14.0 * math.exp(-max(0.0, tc - 0.15) / 0.25)
 
     def corte(t):
-        tc = degrau(t, 15)
+        tc = degrau(t, FPS_CORPO)
         q = trilha(ch2, tc)
         q['bob'] = int(round(q.get('bob', 0)))
         f = int(round(tc * 30))
@@ -616,7 +619,7 @@ def clipes():
     ch3 = [(0.0, dict(SEGUE, b=-92.0), 'suave'), (26 / 30., dict(REPOUSO))]
 
     def fim(t):
-        tc = degrau(t, 15)
+        tc = degrau(t, FPS_CORPO)
         q = trilha(ch3, tc)
         q['bob'] = int(round(q.get('bob', 0)))
         return q, tc - D_FIM, dict(onda=7.0 + 2.0 * math.exp(-tc / 0.3), per=P_IDLE,
@@ -633,16 +636,16 @@ def gerar_quadros(nomes=None):
         if nomes and nome not in nomes:
             continue
         quadros = []
-        n = int(round(dur * FPS))
+        n = int(round(dur * FPS_CORPO))
         for f in range(n):
-            q, tc, vento = fn(f / float(FPS))
+            q, tc, vento = fn(f / float(FPS_CORPO))
             kw = {k: v for k, v in q.items() if k in ('b', 'a', 'e', 'bob', 'olhos', 'cresce_esp', 'rastro')}
             chave = json.dumps([sorted((k, round(v, 3) if isinstance(v, float) else v) for k, v in kw.items()),
                                 round(tc, 4), sorted((k, round(v, 4)) for k, v in vento.items())])
             if chave not in cache:
                 cache[chave] = bon.quadro(tc, vento, **kw)
             quadros.append(cache[chave])
-        saida[nome] = (quadros, loop)
+        saida[nome] = (quadros, loop, FPS_CORPO)
         print(nome, n, 'quadros,', len({id(x) for x in quadros}), 'desenhos')
     # o REIATSU do BAN-KAI (desenhado por cima do boneco, mesma tela e quadril)
     rei_nomes = ('rei_estouro', 'rei_ferve', 'rei_dissipa')
@@ -653,22 +656,18 @@ def gerar_quadros(nomes=None):
         assert len(bon.pal) <= 256
         nada = ((0.0, 0.0), (0.0, 0.0))
 
-        def _em_quadros(imgs, por_s):
-            """desenhos a `por_s`/s -> quadros de 30/s (cada desenho repetido)"""
-            itens = [(img,) + nada for img in imgs]
-            out = []
-            for f in range(int(round(len(imgs) * FPS / por_s))):
-                out.append(itens[min(len(itens) - 1, int(f * por_s / FPS))])
-            return out
-        saida['rei_estouro'] = (_em_quadros(rei.estouro(), 15.0), False)
-        saida['rei_ferve'] = (_em_quadros(rei.ferve(), 12.0), True)
+        def _em_quadros(imgs):
+            """um desenho por quadro (o clipe toca a FPS_REI/s)"""
+            return [(img,) + nada for img in imgs]
+        saida['rei_estouro'] = (_em_quadros(rei.estouro(por_s=FPS_REI)), False, FPS_REI)
+        saida['rei_ferve'] = (_em_quadros(rei.ferve(n=20, por_s=FPS_REI)), True, FPS_REI)
         # a energia sai primeiro de cima do corpo (a forma dele no 1o quadro da revelacao)
         fn_rev = clipes()['revela'][0]
         q0, tc0, v0 = fn_rev(0.0)
         kw0 = {k: v for k, v in q0.items() if k in ('b', 'a', 'e', 'bob', 'olhos')}
         corpo = bon.quadro(tc0, v0, **kw0)[0] > 0
-        saida['rei_dissipa'] = (_em_quadros(rei.dissipa(corpo=corpo), 15.0), False)
-        saida['rei_pilar'] = (_em_quadros(rei.pilar(), 12.0), True)
+        saida['rei_dissipa'] = (_em_quadros(rei.dissipa(n=32, por_s=FPS_REI, corpo=corpo)), False, FPS_REI)
+        saida['rei_pilar'] = (_em_quadros(rei.pilar(n=20, por_s=FPS_REI)), True, FPS_REI)
         rei_nomes = rei_nomes + ('rei_pilar',)
         for n in rei_nomes:
             print(n, len(saida[n][0]), 'quadros')
@@ -689,7 +688,7 @@ def escrever(bon, saida):
            'corpo': corpo, 'olhos': olhos, 'clipes': {}}
     pos = 0
     ja = {}
-    for nome, (quadros, loop) in saida.items():
+    for nome, (quadros, loop, fps_c) in saida.items():
         lst = []
         for item in quadros:
             img, mao, ponta = item
@@ -707,7 +706,7 @@ def escrever(bon, saida):
             p, tam, caixa = ja[id(item)]
             lst.append([p, tam, caixa, [round(mao[0], 1), round(mao[1], 1)],
                         [round(ponta[0], 1), round(ponta[1], 1)]])
-        cab['clipes'][nome] = {'loop': loop, 'quadros': lst}
+        cab['clipes'][nome] = {'loop': loop, 'quadros': lst, 'fps': fps_c}
     cz = zlib.compress(json.dumps(cab).encode('utf-8'), 9)
     os.makedirs(os.path.join(APP, 'bankai'), exist_ok=True)
     caminho = os.path.join(APP, 'bankai', 'clipes.bin')
