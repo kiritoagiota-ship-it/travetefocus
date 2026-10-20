@@ -8,6 +8,12 @@ Animacoes de interface usadas por todas as telas:
   pulso(widget)                  "batida" curta de escala
   deslizar(widgets, dy)          os itens saem de dy e escorregam ate o lugar (fecha buracos)
   entrada_tela(layout, pular)    os blocos da tela entram em cascata (todas as telas iguais)
+  voar(w, dy)                    o widget chega de longe crescendo (ex.: conta indo pro historico)
+  faixa_aviso(titulo, sub)       faixa HUD que abre, brilha e fecha (meta batida, faixa nova)
+  brilho_texto(label)            reflexo de luz atravessando as letras de tempos em tempos
+  luz_na_linha(linha)            ponto de luz correndo pela linha decorativa
+  decifrar(label, final)         digitos rolando ate parar no numero certo
+  EfeitoBordaAcesa               rolagem sem quique: a borda acende no fim da lista
 
 Regras: nada de .bind(...).start(...) encadeado (bind devolve None) e nenhum
 callback de Clock/Animation deixa excecao escapar.
@@ -17,7 +23,7 @@ import math
 from kivy.animation import Animation
 from kivy.clock import Clock
 from kivy.graphics import (Color, Line, Mesh, PushMatrix, PopMatrix,
-                           Translate, Scale)
+                           Translate, Scale, Rectangle)
 from kivy.graphics.texture import Texture
 from kivy.metrics import dp
 
@@ -353,3 +359,473 @@ def pulso(widget, fator=1.08, duracao=0.28):
         Clock.schedule_interval(_p, 1 / 60.)
     except Exception as e:
         print(f"[anim_ui] pulso: {e}")
+
+
+def voar(w, dy, escala0=1.2, duracao=0.34):
+    """O widget chega de `dy` (ex.: saindo do visor) ate o lugar, crescendo
+    de `escala0` para 1 e acendendo (so visual)."""
+    try:
+        tr, sc = _matriz(w)
+        tr.y = dy
+        sc.x = sc.y = escala0
+        w.opacity = 0.2
+        t = [0.0]
+
+        def _p(dt):
+            try:
+                t[0] += dt
+                k = min(1.0, t[0] / duracao)
+                e = 1 - (1 - k) ** 3
+                ov = 1 + 1.6 * (k - 1) ** 3 + 0.6 * (k - 1) ** 2      # out_back leve
+                tr.y = dy * (1 - ov)
+                sc.x = sc.y = escala0 + (1 - escala0) * e
+                w.opacity = 0.2 + 0.8 * e
+                if k >= 1:
+                    tr.y = 0
+                    sc.x = sc.y = 1
+                    w.opacity = 1
+                    return False
+            except Exception:
+                tr.y = 0
+                sc.x = sc.y = 1
+                w.opacity = 1
+                return False
+        Clock.schedule_interval(_p, 1 / 60.)
+    except Exception as e:
+        print(f"[anim_ui] voar: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  FAIXA DE AVISO (meta batida, faixa nova...)
+# ═══════════════════════════════════════════════════════════════════
+def _chanfro(x, y, w, h, c):
+    return [x + c, y, x + w - c, y, x + w, y + c, x + w, y + h - c,
+            x + w - c, y + h, x + c, y + h, x, y + h - c, x, y + c]
+
+
+_FAIXA_ATUAL = [None]
+
+
+def faixa_aviso(titulo, sub='', ancora=None, cor=(1, 0.88, 0.1), segura=2.4):
+    """Uma faixa HUD que abre de dentro para fora logo abaixo de `ancora`,
+    uma luz passa por ela, fica `segura` s e fecha. Tem fundo proprio (le
+    por cima de qualquer coisa) e nao pega o toque. Uma de cada vez."""
+    from kivy.core.window import Window
+    from kivy.uix.label import Label
+    velho = _FAIXA_ATUAL[0]
+    if velho is not None:
+        try:
+            velho._faixa_fim()
+        except Exception:
+            pass
+    try:
+        r, g, b = cor[:3]
+        larg = min(Window.width * 0.92, dp(520))
+        alt = dp(66) if sub else dp(46)
+        topo = Window.height * 0.80
+        if ancora is not None and ancora.get_root_window() is not None:
+            topo = ancora.to_window(ancora.x, ancora.y)[1] - dp(8)
+        hexc = '%02x%02x%02x' % (int(r * 255), int(g * 255), int(b * 255))
+        txt = f"[b][color=#{hexc}]{titulo}[/color][/b]"
+        if sub:
+            txt += f"\n[font=rajdhani.ttf][size=15sp][color=#e3eaf5]{sub}[/color][/size][/font]"
+        x0, y0 = (Window.width - larg) / 2.0, topo - alt
+        lbl = Label(text=txt, markup=True, font_name='orbitron.ttf', font_size='15sp',
+                    halign='center', valign='middle', size_hint=(None, None),
+                    size=(larg, alt), pos=(x0, y0), opacity=0)
+        lbl.text_size = (larg - dp(24), alt)
+        c = dp(12)
+        pts = _chanfro(x0, y0, larg, alt, c)
+        cx, cy = x0 + larg / 2.0, y0 + alt / 2.0
+        vs = [cx, cy, 0, 0]
+        for i in range(0, len(pts), 2):
+            vs += [pts[i], pts[i + 1], 0, 0]
+        vs += [pts[0], pts[1], 0, 0]
+        with lbl.canvas.before:
+            Color(r * 0.10, g * 0.10, b * 0.10, 0.97)
+            Mesh(mode='triangle_fan', vertices=vs, indices=list(range(len(vs) // 4)))
+            c_luz = Color(1, 1, 1, 0)
+            m_luz = Mesh(mode='triangle_fan', indices=[0, 1, 2, 3], vertices=[0] * 16)
+            Color(r, g, b, 0.22)
+            Line(points=_chanfro(x0 + dp(4), y0 + dp(4), larg - dp(8), alt - dp(8), c - dp(2)),
+                 width=1, close=True)
+            Color(r, g, b, 1)
+            Line(points=pts, width=dp(1.1), close=True)
+        try:
+            m_luz.texture = _textura_faixa_luz()
+        except Exception:
+            pass
+        tr, sc = _matriz(lbl)
+        sc.x = 0.06
+        Window.add_widget(lbl)
+        _FAIXA_ATUAL[0] = lbl
+    except Exception as e:
+        print(f"[anim_ui] faixa de aviso: {e}")
+        return
+
+    T_ABRE, T_LUZ0, T_LUZ, T_SAI = 0.26, 0.24, 0.6, 0.22
+    t_sai0 = T_ABRE + segura
+    t = [0.0]
+    ev = [None]
+
+    def _fim(*_):
+        if ev[0] is not None:
+            ev[0].cancel()
+            ev[0] = None
+        try:
+            Window.remove_widget(lbl)
+        except Exception:
+            pass
+        if _FAIXA_ATUAL[0] is lbl:
+            _FAIXA_ATUAL[0] = None
+    lbl._faixa_fim = _fim
+
+    def _q(dt):
+        try:
+            t[0] += dt
+            k = t[0]
+            if k < T_ABRE:
+                e = 1 - (1 - k / T_ABRE) ** 3
+                sc.x = 0.06 + 0.94 * e
+                lbl.opacity = min(1.0, e * 1.8)
+            elif k < t_sai0:
+                sc.x = sc.y = 1
+                lbl.opacity = 1
+            elif k < t_sai0 + T_SAI:
+                e = ((k - t_sai0) / T_SAI) ** 2
+                sc.y = 1 - 0.9 * e
+                tr.y = dp(8) * e
+                lbl.opacity = 1 - e
+            else:
+                _fim()
+                return False
+            kl = (k - T_LUZ0) / T_LUZ
+            if 0 <= kl <= 1:
+                lw = max(dp(30), larg * 0.18)
+                incl = alt * 0.5
+                xa = x0 - lw - incl + (larg + 2 * lw + incl) * (1 - (1 - kl) ** 2)
+
+                def cl(v):
+                    return min(max(v, x0 + dp(2)), x0 + larg - dp(2))
+                m_luz.vertices = [cl(xa), y0, 0, 0.5, cl(xa + lw), y0, 1, 0.5,
+                                  cl(xa + lw + incl), y0 + alt, 1, 0.5, cl(xa + incl), y0 + alt, 0, 0.5]
+                c_luz.rgba = (0.6 + 0.4 * r, 0.6 + 0.4 * g, 0.6 + 0.4 * b, 0.30 * math.sin(math.pi * kl))
+            else:
+                c_luz.a = 0
+        except Exception as ex:
+            print(f"[anim_ui] faixa frame: {ex}")
+            _fim()
+            return False
+    ev[0] = Clock.schedule_interval(_q, 1 / 60.)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  VIDA CONTINUA (brilho no titulo, luz correndo nas linhas)
+# ═══════════════════════════════════════════════════════════════════
+def _repetir(widget, periodo, atraso, rodar):
+    """Chama rodar() a cada `periodo` s, so enquanto o widget esta na tela
+    (fora dela nao gasta nada alem do relogio)."""
+    def _vez(dt):
+        try:
+            if widget.get_root_window() is not None:
+                rodar()
+        except Exception as e:
+            print(f"[anim_ui] repetir: {e}")
+        Clock.schedule_once(_vez, periodo)
+    Clock.schedule_once(_vez, atraso)
+
+
+def brilho_texto(label, periodo=6.0, atraso=1.4, duracao=0.75, forca=0.75):
+    """De tempos em tempos um reflexo de luz atravessa as letras do label
+    (as proprias letras acendem em branco numa faixa inclinada)."""
+    if getattr(label, '_brilho_texto_ok', False):
+        return
+    label._brilho_texto_ok = True
+    try:
+        with label.canvas.after:
+            faixas = []
+            for a, larg_rel in ((0.35, 0.16), (forca, 0.06)):     # halo largo + nucleo
+                cor = Color(1, 1, 1, 0)
+                m = Mesh(mode='triangle_fan', indices=[0, 1, 2, 3], vertices=[0] * 16)
+                faixas.append((cor, m, a, larg_rel))
+    except Exception as e:
+        print(f"[anim_ui] brilho do texto: {e}")
+        return
+    estado = {'ev': None, 't': 0.0}
+
+    def _quadro(dt):
+        try:
+            estado['t'] += dt
+            k = min(1.0, estado['t'] / duracao)
+            # copia propria das letras em branco (desenhar com a textura do
+            # proprio Label nao aparece: ela e trocada por baixo a cada ajuste)
+            chave = (label.text, label.font_name, float(label.font_size), bool(label.bold))
+            if estado.get('chave') != chave:
+                from kivy.core.text import Label as CoreLabel
+                cl = CoreLabel(text=label.text, font_name=label.font_name,
+                               font_size=label.font_size, bold=label.bold)
+                cl.refresh()
+                estado['tex'], estado['chave'] = cl.texture, chave
+            tex = estado['tex']
+            if tex is None:
+                return True
+            tw, th = tex.size
+            tx = int(label.center_x - tw / 2.0)
+            ty = int(label.center_y - th / 2.0)
+            uv = tex.tex_coords
+            incl = th * 0.6
+            e = k * k * (3 - 2 * k)
+            for cor, m, a, larg_rel in faixas:
+                lw = max(dp(6), tw * larg_rel)
+                xa = tx - lw - incl + (tw + 2 * lw + incl) * e
+
+                def pt(x, y):
+                    x = min(max(x, tx), tx + tw)
+                    fx = (x - tx) / float(tw) if tw else 0
+                    fy = (y - ty) / float(th) if th else 0
+                    u = uv[0] + (uv[2] - uv[0]) * fx
+                    v = uv[1] + (uv[7] - uv[1]) * fy
+                    return [x, y, u, v]
+                m.texture = tex
+                m.vertices = (pt(xa, ty) + pt(xa + lw, ty) +
+                              pt(xa + lw + incl, ty + th) + pt(xa + incl, ty + th))
+                cor.a = a * math.sin(math.pi * k)
+            if k >= 1:
+                for cor, *_ in faixas:
+                    cor.a = 0
+                estado['ev'] = None
+                return False
+        except Exception as ex:
+            print(f"[anim_ui] brilho do texto frame: {ex}")
+            for cor, *_ in faixas:
+                cor.a = 0
+            estado['ev'] = None
+            return False
+
+    def _rodar():
+        if estado['ev'] is None:
+            estado['t'] = 0.0
+            estado['ev'] = Clock.schedule_interval(_quadro, 1 / 60.)
+    _repetir(label, periodo, atraso, _rodar)
+
+
+def luz_na_linha(linha, cor=(0, 0.9, 1), periodo=4.0, atraso=0.8, duracao=1.3, larg=None):
+    """Um ponto de luz corre pela linha decorativa, de ponta a ponta."""
+    if getattr(linha, '_luz_linha_ok', False):
+        return
+    linha._luz_linha_ok = True
+    try:
+        with linha.canvas.after:
+            c = Color(cor[0], cor[1], cor[2], 0)
+            m = Mesh(mode='triangle_fan', indices=[0, 1, 2, 3], vertices=[0] * 16)
+        m.texture = _textura_faixa_luz()
+    except Exception as e:
+        print(f"[anim_ui] luz na linha: {e}")
+        return
+    estado = {'ev': None, 't': 0.0}
+
+    def _quadro(dt):
+        try:
+            estado['t'] += dt
+            k = min(1.0, estado['t'] / duracao)
+            lw = larg or max(dp(50), linha.width * 0.22)
+            x, w = linha.x, linha.width
+            h = dp(3)
+            y = linha.center_y - h / 2.0
+            xa = x - lw + (w + lw) * (k * k * (3 - 2 * k))
+            xb = xa + lw
+            ca, cb = max(xa, x), min(xb, x + w)
+            if cb <= ca:
+                c.a = 0
+            else:
+                ua, ub = (ca - xa) / lw, (cb - xa) / lw
+                m.vertices = [ca, y, ua, 0.5, cb, y, ub, 0.5, cb, y + h, ub, 0.5, ca, y + h, ua, 0.5]
+                c.a = 0.95 * math.sin(math.pi * k)
+            if k >= 1:
+                c.a = 0
+                estado['ev'] = None
+                return False
+        except Exception as ex:
+            print(f"[anim_ui] luz na linha frame: {ex}")
+            c.a = 0
+            estado['ev'] = None
+            return False
+
+    def _rodar():
+        if estado['ev'] is None:
+            estado['t'] = 0.0
+            estado['ev'] = Clock.schedule_interval(_quadro, 1 / 60.)
+    _repetir(linha, periodo, atraso, _rodar)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  DIGITOS DECIFRANDO (resultado da calculadora)
+# ═══════════════════════════════════════════════════════════════════
+def parar_decifrar(label):
+    ev = getattr(label, '_anim_decifra', None)
+    if ev is not None:
+        ev.cancel()
+        label._anim_decifra = None
+
+
+def decifrar(label, final, duracao=0.34):
+    """Os digitos rolam (numeros trocando) e vao parando da esquerda para a
+    direita ate formar `final`. O resto (pontos, virgula, sinais) fica fixo."""
+    import random
+    parar_decifrar(label)
+    pos = [i for i, ch in enumerate(final) if ch.isdigit()]
+    if not pos:
+        label.text = final
+        return
+    t = [0.0]
+    acc = [1.0]
+
+    def _p(dt):
+        try:
+            t[0] += dt
+            acc[0] += dt
+            k = min(1.0, t[0] / duracao)
+            if k >= 1:
+                label.text = final
+                label._anim_decifra = None
+                return False
+            if acc[0] < 1 / 30.:                     # troca 30x por segundo
+                return True
+            acc[0] = 0.0
+            fixos = int(len(pos) * k)
+            s = list(final)
+            for j, i in enumerate(pos):
+                if j >= fixos:
+                    s[i] = random.choice('0123456789')
+            label.text = ''.join(s)
+        except Exception:
+            label.text = final
+            label._anim_decifra = None
+            return False
+    label._anim_decifra = Clock.schedule_interval(_p, 1 / 60.)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ROLAGEM: SEM QUIQUE, A BORDA ACENDE
+# ═══════════════════════════════════════════════════════════════════
+_TEX_BORDA = None
+
+
+def _textura_borda():
+    """Brilho da borda: forte na beira e no meio, some para dentro e nas pontas."""
+    global _TEX_BORDA
+    if _TEX_BORDA is None:
+        nx, ny = 32, 16
+        buf = bytearray(nx * ny * 4)
+        for y in range(ny):
+            fy = (1 - y / (ny - 1.0)) ** 1.6
+            for x in range(nx):
+                fx = math.sin(math.pi * x / (nx - 1.0))
+                a = fy * (0.25 + 0.75 * fx)
+                i = (y * nx + x) * 4
+                buf[i] = buf[i + 1] = buf[i + 2] = 255
+                buf[i + 3] = int(255 * a)
+        dados = bytes(buf)
+        tex = Texture.create(size=(nx, ny), colorfmt='rgba')
+        tex.wrap = 'clamp_to_edge'
+        tex.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte')
+        tex.add_reload_observer(lambda t: t.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte'))
+        _TEX_BORDA = tex
+    return _TEX_BORDA
+
+
+try:
+    from kivy.effects.scroll import ScrollEffect as _ScrollEffect
+except Exception:                                  # pragma: no cover
+    _ScrollEffect = object
+
+
+class EfeitoBordaAcesa(_ScrollEffect):
+    """Rolagem das listas: no fim nao quica - a borda de cima ou de baixo
+    acende, mais forte quanto mais o dedo puxa ou mais rapido a lista chega."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._luz = {'cima': 0.0, 'baixo': 0.0}
+        self._inst = None
+        self._ev = None
+
+    def on_value(self, *args):
+        try:
+            lo, hi = sorted((self.min, self.max))
+            v = self.value
+            if v < lo or v > hi:
+                forca = abs(v - (lo if v < lo else hi)) / dp(36)
+                if not self.is_manual:
+                    forca = max(forca, abs(self.velocity) / dp(2400))
+                self._acender('baixo' if v > hi else 'cima', forca)
+        except Exception as e:
+            print(f"[rolagem] borda: {e}")
+        return super().on_value(*args)
+
+    def _rolagem(self):
+        alvo = self.target_widget
+        sv = getattr(alvo, 'parent', None) if alvo is not None else None
+        if sv is None or getattr(sv, 'effect_y', None) is not self:
+            return None                                  # so o eixo vertical acende
+        return sv
+
+    def _acender(self, lado, forca):
+        sv = self._rolagem()
+        if sv is None:
+            return
+        if self._inst is None or self._inst[0] is not sv:
+            with sv.canvas.after:
+                cc = Color(0, 0.9, 1, 0)
+                rc = Rectangle(texture=_textura_borda())
+                lc = Color(0.6, 1, 1, 0)
+                lr = Rectangle()
+                cb = Color(0, 0.9, 1, 0)
+                rb = Rectangle(texture=_textura_borda())
+                lcb = Color(0.6, 1, 1, 0)
+                lrb = Rectangle()
+            self._inst = (sv, (cc, rc, lc, lr), (cb, rb, lcb, lrb))
+        self._luz[lado] = min(1.0, self._luz[lado] + min(forca, 1.0) * 0.6)
+        self._desenhar()
+        if self._ev is None:
+            self._ev = Clock.schedule_interval(self._apagar, 1 / 60.)
+
+    def _desenhar(self):
+        sv, cima, baixo = self._inst
+        x, y, w, h = sv.x, sv.y, sv.width, sv.height
+        alt = min(dp(40), h * 0.25)
+        for lado, (c, r, lc, lr) in (('cima', cima), ('baixo', baixo)):
+            a = self._luz[lado]
+            alt_l = alt * (0.5 + 0.5 * a)
+            if lado == 'cima':
+                r.pos, r.size = (x, y + h - alt_l), (w, alt_l)
+                r.tex_coords = (0, 1, 1, 1, 1, 0, 0, 0)       # beira em cima
+                lr.pos, lr.size = (x + w * 0.1, y + h - dp(1.5)), (w * 0.8, dp(1.5))
+            else:
+                r.pos, r.size = (x, y), (w, alt_l)
+                r.tex_coords = (0, 0, 1, 0, 1, 1, 0, 1)       # beira embaixo
+                lr.pos, lr.size = (x + w * 0.1, y), (w * 0.8, dp(1.5))
+            c.a = 0.55 * a
+            lc.a = 0.9 * a
+
+    def _apagar(self, dt):
+        try:
+            if self._inst is None:
+                self._ev = None
+                return False
+            fator = math.exp(-dt * (2.2 if self.is_manual else 5.0))
+            vivo = False
+            for lado in self._luz:
+                self._luz[lado] *= fator
+                if self._luz[lado] < 0.01:
+                    self._luz[lado] = 0.0
+                else:
+                    vivo = True
+            self._desenhar()
+            if not vivo:
+                self._ev = None
+                return False
+        except Exception as e:
+            print(f"[rolagem] apagar: {e}")
+            self._ev = None
+            return False

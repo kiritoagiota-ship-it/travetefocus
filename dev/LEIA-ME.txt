@@ -43,6 +43,10 @@ ANIMACAO QUADRO A QUADRO (relogio simulado: 60 quadros/s exatos, a foto nao atra
                     CENA=zap CADA=0: o COLAR DO WHATSAPP de ponta a ponta
                     CENA=varre CADA=0 VARRE="turnos,itens,pecas": casos extremos de
                     guardar o turno, carta e WIPE (ex.: "1,0,1" e "40,30,14")
+                    CENA=anim CADA=2: teclado, avisos, lote apagado, entrada das telas
+                    CENA=vivo CADA=2: brilho do menu, faixa de aviso, HOJE contando,
+                    borda acesa no fim da lista, grafico crescendo/trocando de mes,
+                    barra de ganhos, anel do progresso, historico da calculadora
   analisa_filme.py  PASTA [quadros]: por trecho, desenhos novos x deslizando x
                     girando; desenhos por segundo do corpo, sobretudo e cabeca
                     (alvo: 12 a 18 por segundo)

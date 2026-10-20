@@ -627,6 +627,31 @@ class BarraNeon(Widget):
 #  BARRA CIRCULAR (XP ring)
 # ═══════════════════════════════════════════════════════════
 
+_TEX_HALO = None
+
+
+def _textura_halo():
+    """Luz redonda e macia (forte no centro, some na borda)."""
+    global _TEX_HALO
+    if _TEX_HALO is None:
+        from kivy.graphics.texture import Texture
+        n = 32
+        buf = bytearray(n * n * 4)
+        for yy in range(n):
+            for xx in range(n):
+                d = math.hypot(xx - (n - 1) / 2.0, yy - (n - 1) / 2.0) / ((n - 1) / 2.0)
+                a = max(0.0, 1 - d) ** 2
+                i = (yy * n + xx) * 4
+                buf[i] = buf[i + 1] = buf[i + 2] = 255
+                buf[i + 3] = int(255 * a)
+        dados = bytes(buf)
+        tex = Texture.create(size=(n, n), colorfmt='rgba')
+        tex.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte')
+        tex.add_reload_observer(lambda t: t.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte'))
+        _TEX_HALO = tex
+    return _TEX_HALO
+
+
 class BarraCircular(FloatLayout):
     valor                = NumericProperty(0)
     maximo               = NumericProperty(10000)
@@ -639,6 +664,11 @@ class BarraCircular(FloatLayout):
         super().__init__(**kwargs)
         self._anim_giro   = None
         self._anim_pulso  = None
+        self._vida_ev     = None
+        self._vida_g      = None
+        self._faiscas     = []          # [x, y, vx, vy, vida, vida_max, Color, Rectangle]
+        self._t_vida      = 0.0
+        self._t_faisca    = 0.0
 
     def parar_animacoes(self):
         """Cancela todas as animações repetidas — chamar no on_leave da tela."""
@@ -649,6 +679,95 @@ class BarraCircular(FloatLayout):
         if self._anim_pulso:
             self._anim_pulso.stop(self)
             self._anim_pulso = None
+        if self._vida_ev is not None:
+            self._vida_ev.cancel()
+            self._vida_ev = None
+        if self._vida_g is not None:
+            self.canvas.after.remove(self._vida_g)
+            self._vida_g = None
+        self._faiscas = []
+
+    # ── vida do anel: a ponta acesa respira, solta faiscas e um pulso de luz
+    #    percorre o que ja encheu ─────────────────────────────────────────
+    def _ligar_vida(self):
+        from kivy.graphics import InstructionGroup
+        if self._vida_g is not None:
+            self.canvas.after.remove(self._vida_g)
+        g = InstructionGroup()
+        self._c_pulso = Color(1, 1, 1, 0)
+        self._l_pulso = Line(width=dp(7), cap='round')
+        self._c_ponta = Color(1, 1, 1, 0)
+        self._r_ponta = Rectangle(texture=_textura_halo())
+        for ins in (self._c_pulso, self._l_pulso, self._c_ponta, self._r_ponta):
+            g.add(ins)
+        self.canvas.after.add(g)
+        self._vida_g = g
+        self._faiscas = []
+        self._t_vida = 0.0
+        self._vida_ev = Clock.schedule_interval(self._vida, 1 / 60.)
+
+    def _vida(self, dt):
+        try:
+            if self.get_root_window() is None:
+                return True
+            self._t_vida += dt
+            t = self._t_vida
+            ang = self.angulo_preenchimento
+            raio = min(self.width, self.height) / 2.55
+            cx, cy = self.center_x, self.center_y
+            r, g, b = self.cor_anel[:3]
+            rad = math.radians(ang)
+            px, py = cx + raio * math.sin(rad), cy + raio * math.cos(rad)
+            if ang > 2:
+                tam = dp(44) * (1 + 0.12 * math.sin(t * 4.2))
+                self._r_ponta.pos = (px - tam / 2, py - tam / 2)
+                self._r_ponta.size = (tam, tam)
+                self._c_ponta.rgba = (r, g, b, 0.55 + 0.2 * math.sin(t * 4.2))
+                # faiscas saindo da ponta
+                self._t_faisca += dt
+                while self._t_faisca > 0.07 and len(self._faiscas) < 26:
+                    self._t_faisca -= 0.07
+                    fora = random.uniform(dp(18), dp(55))
+                    frente = random.uniform(dp(10), dp(40))
+                    vx = math.sin(rad) * fora + math.cos(rad) * frente
+                    vy = math.cos(rad) * fora - math.sin(rad) * frente
+                    vmax = random.uniform(0.45, 0.9)
+                    lado = random.choice((dp(2), dp(3)))
+                    cf = Color(min(1, r + 0.4), min(1, g + 0.4), min(1, b + 0.4), 1)
+                    rf = Rectangle(pos=(px, py), size=(lado, lado))
+                    self._vida_g.add(cf)
+                    self._vida_g.add(rf)
+                    self._faiscas.append([px + random.uniform(-dp(5), dp(5)),
+                                          py + random.uniform(-dp(5), dp(5)), vx, vy, vmax, vmax, cf, rf])
+            else:
+                self._c_ponta.a = 0
+            vivas = []
+            for fz in self._faiscas:
+                fz[4] -= dt
+                if fz[4] <= 0:
+                    self._vida_g.remove(fz[6])
+                    self._vida_g.remove(fz[7])
+                    continue
+                fz[0] += fz[2] * dt
+                fz[1] += fz[3] * dt
+                fz[7].pos = (int(fz[0]), int(fz[1]))          # pixel duro
+                fz[6].a = fz[4] / fz[5]
+                vivas.append(fz)
+            self._faiscas = vivas
+            # pulso de luz correndo do comeco ate a ponta, a cada 3,4 s
+            ciclo = t % 3.4
+            if ang > 25 and ciclo < 1.0:
+                k = ciclo / 1.0
+                fim = ang * (1 - (1 - k) ** 2)
+                ini = max(0.0, fim - 26)
+                self._l_pulso.circle = (cx, cy, raio, ini, fim)
+                self._c_pulso.a = 0.55 * math.sin(math.pi * k)
+            else:
+                self._c_pulso.a = 0
+        except Exception as e:
+            print(f"[anel] vida: {e}")
+            self._vida_ev = None
+            return False
 
     def animar_progresso(self):
         self.parar_animacoes()
@@ -662,9 +781,12 @@ class BarraCircular(FloatLayout):
         Animation(angulo_preenchimento=alvo, valor_display=valor,
                   duration=1.4, transition='out_cubic').start(self)
 
-        self._anim_giro = Animation(angulo_anel_externo=360, duration=5)
+        # (o anel de fora gira devagar: 0 -> 360 sem parar)
+        self.angulo_anel_externo = 0
+        self._anim_giro = Animation(angulo_anel_externo=360, duration=18)
         self._anim_giro.repeat = True
         self._anim_giro.start(self)
+        self._ligar_vida()
 
         if alvo >= 359.5:
             Clock.schedule_once(self._pulso_cheio, 1.7)
@@ -791,17 +913,71 @@ class ListaItem(BotaoAngular):
 # ═══════════════════════════════════════════════════════════
 
 class GraficoBarras(Widget):
+    """Producao dos ultimos dias. Quando os dados mudam as barras crescem da
+    base (uma depois da outra) ou se transformam da altura de antes na nova."""
     dados = ListProperty([])
+    titulo = StringProperty('PRODUÇÃO · ÚLTIMOS DIAS')
+
+    ATRASO, DURACAO = 0.05, 0.5          # cascata entre barras / subida de cada uma
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._tex_cache = {}   # {(text, size, cor): texture}
-        self.bind(pos=self._draw, size=self._draw, dados=self._draw_reset)
+        self._vistas = []      # altura (0..0.9 do espaco) desenhada de cada barra agora
+        self._de = []          # alturas no comeco da animacao
+        self._t = None         # tempo da animacao (None = parada)
+        self._ev = None
+        self.bind(pos=self._draw, size=self._draw, dados=self._draw_reset, titulo=self._draw)
+
+    def _alvos(self):
+        maximo = max((d.get('valor', 0) for d in self.dados), default=0) or 1
+        return [d.get('valor', 0) / float(maximo) * 0.90 for d in self.dados]
 
     def _draw_reset(self, *_):
-        """Invalida o cache ao mudar dados e redesenha."""
+        """Dados novos: as barras saem da altura de antes ate a nova."""
         self._tex_cache.clear()
+        self._animar(list(self._vistas))
+
+    def animar_entrada(self):
+        """Ao abrir a tela: todas as barras crescem do chao."""
+        self._animar([])
+
+    def _animar(self, de):
+        self._de = de
+        self._t = 0.0
+        if self._ev is None:
+            self._ev = Clock.schedule_interval(self._passo, 1 / 60.)
         self._draw()
+
+    def _passo(self, dt):
+        try:
+            if self._t is None:
+                self._ev = None
+                return False
+            self._t += dt
+            if self._t >= self.DURACAO + self.ATRASO * len(self.dados) + 0.05:
+                self._t = None
+                self._ev = None
+                self._draw()
+                return False
+            self._draw()
+        except Exception as e:
+            print(f"[grafico] animacao: {e}")
+            self._t = None
+            self._ev = None
+            return False
+
+    def _altura(self, i, alvo):
+        """(altura agora, quanto ja andou 0..1) da barra i."""
+        if self._t is None:
+            return alvo, 1.0
+        de = self._de[i] if i < len(self._de) else 0.0
+        k = min(1.0, max(0.0, (self._t - i * self.ATRASO) / self.DURACAO))
+        if de <= 0.0:
+            e = 1 + 1.7 * (k - 1) ** 3 + 0.7 * (k - 1) ** 2    # cresce passando um pouco e assenta
+        else:
+            e = 1 - (1 - k) ** 3                                 # transforma sem passar
+        return de + (alvo - de) * e, k
 
     def _get_tex(self, text, size, cor):
         """Retorna textura cacheada — cria apenas na primeira chamada."""
@@ -840,23 +1016,24 @@ class GraficoBarras(Widget):
                 return
 
             n      = len(self.dados)
-            maximo = max(d.get('valor', 0) for d in self.dados) or 1
             px, pb, pt, esp = 14, 28, 20, 7
             wu   = self.width - px * 2
             larg = (wu - esp * (n - 1)) / max(n, 1)
             hmax = self.height - pb - pt
 
-            self._txt('PRODUÇÃO · ÚLTIMOS DIAS',
+            self._txt(self.titulo,
                       self.center_x, self.top - pt + 4, (0, 0.9, 1, 0.35), 9)
             Color(0, 0.9, 1, 0.12)
             Line(points=[self.x + px, self.y + pb - 1,
                          self.right - px, self.y + pb - 1], width=1)
 
-            for i, item in enumerate(self.dados):
+            vistas = []
+            for i, (item, alvo) in enumerate(zip(self.dados, self._alvos())):
                 bx   = self.x + px + i * (larg + esp)
-                prop = item.get('valor', 0) / maximo
-                # Limita altura máxima a 90% para a barra recorde não dominar toda a área
-                alt  = max(prop * hmax * 0.90, 2)
+                # (a barra recorde vai ate 90% para nao dominar toda a area)
+                h_rel, kb = self._altura(i, alvo)
+                vistas.append(h_rel)
+                alt  = max(h_rel * hmax, 2)
                 by   = self.y + pb
                 cx   = bx + larg / 2
 
@@ -879,14 +1056,20 @@ class GraficoBarras(Widget):
                 Color(1, 1, 1, 0.28)
                 Line(points=[bx + 1, by + alt, bx + larg - 1, by + alt], width=2)
 
+                if kb < 1:
+                    # a ponta da barra subindo brilha
+                    Color(bc[0], bc[1], bc[2], 0.5 * (1 - kb))
+                    Rectangle(pos=(bx - 1, by + alt - 2), size=(larg + 2, 4))
+
                 val = item.get('valor', 0)
-                if val > 0:
+                if val > 0 and kb > 0.35:
                     self._txt(str(val), cx, by + alt + 3, (1, 1, 1, 0.9), 10)
-                if item.get('record'):
+                if item.get('record') and kb > 0.6:
                     self._txt('*', cx, by + alt + 14, (1, 0.88, 0, 1), 11)
                 lbl = item.get('label', '')
                 if lbl:
                     self._txt(lbl, cx, self.y + 5, (0.5, 0.5, 0.78, 0.88), 9)
+            self._vistas = vistas
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1674,10 +1857,17 @@ class BarraMeta(Widget):
 
     def __init__(self, **kwargs):
         self.marcas = []                         # [(valor, texto, (r, g, b, a))]
+        self._tex = {}                           # textura do nome de cada marca
+        self._flash = {}                         # marca -> brilho (1 -> 0) ao ser alcancada
+        self._subindo = False
+        self._varre = None                       # reflexo correndo pelo que ja encheu (0..1)
+        self._ev = None
+        self._ultimo = 0.0
         super().__init__(**kwargs)
-        self.bind(pos=self._desenhar, size=self._desenhar, valor=self._desenhar, maximo=self._desenhar,
+        self.bind(pos=self._desenhar, size=self._desenhar, valor=self._ao_valor, maximo=self._desenhar,
                   cor=self._desenhar)
         Clock.schedule_once(self._desenhar, 0)
+        self._ev_vida = Clock.schedule_interval(self._talvez_varrer, 4.2)
 
     def definir(self, valor, maximo=None, marcas=None, cor=None, animar=True):
         if maximo is not None:
@@ -1689,11 +1879,70 @@ class BarraMeta(Widget):
         Animation.cancel_all(self, 'valor')
         alvo = max(0.0, min(float(valor), self.maximo))
         if animar:
+            self._flash = {}
             self.valor = 0.0
-            Animation(valor=alvo, duration=0.9, transition='out_cubic').start(self)
+            self._ultimo = 0.0
+            self._subindo = True
+            a = Animation(valor=alvo, duration=1.1, transition='out_cubic')
+            a.bind(on_complete=self._fim_subida)
+            a.start(self)
         else:
             self.valor = alvo
+            self._ultimo = alvo
         self._desenhar()
+
+    def _fim_subida(self, *_):
+        self._subindo = False
+        self._desenhar()
+
+    def _ao_valor(self, *_):
+        # passou de uma marca agora: ela acende
+        for k, (v, _txt, _rgba) in enumerate(self.marcas):
+            if self._ultimo < v <= self.valor:
+                self._flash[k] = 1.0
+                self._ligar()
+        self._ultimo = self.valor
+        self._desenhar()
+
+    def _talvez_varrer(self, dt):
+        # de tempos em tempos um reflexo corre pelo que ja encheu (so na tela)
+        try:
+            if self.valor > 0 and not self._subindo and self.get_root_window() is not None:
+                self._varre = 0.0
+                self._ligar()
+        except Exception:
+            pass
+
+    def _ligar(self):
+        if self._ev is None:
+            self._ev = Clock.schedule_interval(self._quadro, 1 / 60.)
+
+    def _quadro(self, dt):
+        try:
+            for k in list(self._flash):
+                self._flash[k] -= dt / 0.7
+                if self._flash[k] <= 0:
+                    del self._flash[k]
+            if self._varre is not None:
+                self._varre += dt / 1.1
+                if self._varre >= 1:
+                    self._varre = None
+            self._desenhar()
+            if not self._flash and self._varre is None:
+                self._ev = None
+                return False
+        except Exception as e:
+            print(f"[barra meta] quadro: {e}")
+            self._ev = None
+            return False
+
+    def _textura(self, txt):
+        tex = self._tex.get(txt)
+        if tex is None:
+            cl = CoreLabel(text=txt, font_name='rajdhani.ttf', font_size=dp(11), bold=True)
+            cl.refresh()
+            tex = self._tex[txt] = cl.texture
+        return tex
 
     def _desenhar(self, *_):
         c = self.canvas
@@ -1705,8 +1954,10 @@ class BarraMeta(Widget):
         h = max(dp(8), self.height - topo_txt)
         bloco, vao = dp(5), dp(2)
         n = max(1, int((w + vao) // (bloco + vao)))
-        cheios = int(n * self.valor / max(1.0, self.maximo))
+        f = n * self.valor / max(1.0, self.maximo)
+        cheios = int(f)
         r, g, b, a = self.cor
+        varre = None if self._varre is None else self._varre * (cheios + 6) - 3
         with c:
             Color(0.03, 0.04, 0.10, 0.9)
             Rectangle(pos=(x, y), size=(w, h))
@@ -1714,19 +1965,39 @@ class BarraMeta(Widget):
                 bx = x + i * (bloco + vao)
                 if i < cheios:
                     luz = 1.0 if i == cheios - 1 else 0.82       # a ponta acesa mais forte
-                    Color(r * luz + (1 - luz) * 0.2, g * luz + (1 - luz) * 0.2, b * luz + (1 - luz) * 0.2, a)
+                    br = 0.0
+                    if self._subindo:
+                        br = max(0.0, 1 - (f - i) / 5.0) * 0.75  # rastro claro atras da ponta
+                    if varre is not None:
+                        br = max(br, max(0.0, 1 - abs(i - varre) / 3.0) * 0.55)
+                    cr = r * luz + (1 - luz) * 0.2
+                    cg = g * luz + (1 - luz) * 0.2
+                    cb = b * luz + (1 - luz) * 0.2
+                    Color(cr + (1 - cr) * br, cg + (1 - cg) * br, cb + (1 - cb) * br, a)
+                elif i == cheios and self._subindo:
+                    Color(1, 1, 1, a * (f - cheios))              # o bloco que esta acendendo
                 else:
                     Color(r, g, b, 0.10)
                 Rectangle(pos=(bx, y + dp(2)), size=(bloco, h - dp(4)))
+            if self._subindo and cheios > 0:
+                px = x + min(f, n) * (bloco + vao)               # halo na ponta
+                Color(r, g, b, 0.28)
+                Rectangle(pos=(px - dp(9), y - dp(1)), size=(dp(14), h + dp(2)))
             Color(r, g, b, 0.55)
             Line(rectangle=(x, y, w, h), width=1.1)
-            for v, txt, rgba in self.marcas:
+            for k, (v, txt, rgba) in enumerate(self.marcas):
                 mx = x + w * min(1.0, max(0.0, v / max(1.0, self.maximo)))
-                Color(*rgba)
+                fl = max(0.0, self._flash.get(k, 0.0))
+                ja = self.valor >= v
+                if fl > 0:
+                    Color(rgba[0], rgba[1], rgba[2], 0.45 * fl)
+                    Rectangle(pos=(mx - dp(5), y - dp(4)), size=(dp(10), h + dp(8)))
+                cor_m = [rgba[0] + (1 - rgba[0]) * fl, rgba[1] + (1 - rgba[1]) * fl,
+                         rgba[2] + (1 - rgba[2]) * fl, rgba[3] if ja else rgba[3] * 0.55]
+                Color(*cor_m)
                 Rectangle(pos=(mx - dp(1), y - dp(2)), size=(dp(2), h + dp(4)))
                 if txt:
-                    cl = CoreLabel(text=txt, font_name='rajdhani.ttf', font_size=dp(11), bold=True)
-                    cl.refresh()
-                    tx = max(x, min(x + w - cl.texture.size[0], mx - cl.texture.size[0] / 2.0))
-                    Color(*rgba)
-                    Rectangle(texture=cl.texture, pos=(tx, y + h + dp(1)), size=cl.texture.size)
+                    tex = self._textura(txt)
+                    tx = max(x, min(x + w - tex.size[0], mx - tex.size[0] / 2.0))
+                    Color(*cor_m)
+                    Rectangle(texture=tex, pos=(tx, y + h + dp(1) + dp(2) * fl), size=tex.size)

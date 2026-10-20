@@ -11,7 +11,7 @@ from helpers import (popup_pedir_xp, popup_delete_engracado, popup_resumo_dia, a
 from datetime import datetime
 import som
 import tatil
-from animacoes_ui import entrada_cascata, fmt_br
+from animacoes_ui import entrada_cascata, fmt_br, contar
 import time
 import metas
 
@@ -23,6 +23,7 @@ class TelaRegistro(Screen):
 
     def on_enter(self):
         self.atualizar()
+        self._hj_mostrado = None               # ao abrir a tela o numero ja aparece pronto
         self.atualizar_meta()
         try:
             from animacoes_ui import entrada_tela
@@ -244,23 +245,33 @@ class TelaRegistro(Screen):
             alvo = prox['inicio'] if prox else int(cfg['meta_bonus'])
             md = metas.meta_diaria(alvo, sem, hj, hoje, cfg['pecas_sabado'])
             r = metas.ritmo(metas.lotes_de_hoje(app.registros, hoje))
-            partes = []
-            if hoje.weekday() == 6:
-                partes.append("[color=#8c96aa]DOMINGO  ·  folga[/color]")
-            elif md['hoje_meta'] > 0:
-                cor = '#00ff88' if hj >= md['hoje_meta'] else '#00e5ff'
-                partes.append(f"[color=#9aa6bd]HOJE[/color] [color={cor}][b]{fmt_br(hj)}[/b][/color]"
-                              f"[color=#9aa6bd]/{fmt_br(md['hoje_meta'])}[/color]")
+
+            def montar(v):
+                partes = []
+                if hoje.weekday() == 6:
+                    partes.append("[color=#8c96aa]DOMINGO  ·  folga[/color]")
+                elif md['hoje_meta'] > 0:
+                    cor = '#00ff88' if v >= md['hoje_meta'] else '#00e5ff'
+                    partes.append(f"[color=#9aa6bd]HOJE[/color] [color={cor}][b]{fmt_br(v)}[/b][/color]"
+                                  f"[color=#9aa6bd]/{fmt_br(md['hoje_meta'])}[/color]")
+                else:
+                    partes.append(f"[color=#9aa6bd]HOJE[/color] [color=#00ff88][b]{fmt_br(v)}[/b][/color]")
+                if r:
+                    cor_r = '#00ff88' if r >= metas.REF_REALISTA else ('#ffcc00' if r >= 45 else '#ff6a6a')
+                    partes.append(f"[color={cor_r}][b]{int(round(r))}[/b]/h[/color]")
+                    if md['hoje_falta'] > 0:
+                        partes.append(f"[color=#9aa6bd]~{metas.tempo_txt(md['hoje_falta'] / r)}[/color]")
+                if md['hoje_meta'] > 0 and v >= md['hoje_meta']:
+                    partes.append("[color=#ffcc00]META BATIDA[/color]")
+                return "  ·  ".join(partes) + "   [color=#00e5ff88]>>[/color]"
+
+            antes = getattr(self, '_hj_mostrado', None)
+            self._hj_mostrado = hj
+            if antes is not None and antes != hj and hoje.weekday() != 6:
+                # o numero de HOJE conta ate o novo (sobe com lote, desce ao apagar)
+                contar(self.ids.lbl_meta_hoje, hj, montar, de=antes, duracao=0.7, atraso=0.2)
             else:
-                partes.append(f"[color=#9aa6bd]HOJE[/color] [color=#00ff88][b]{fmt_br(hj)}[/b][/color]")
-            if r:
-                cor_r = '#00ff88' if r >= metas.REF_REALISTA else ('#ffcc00' if r >= 45 else '#ff6a6a')
-                partes.append(f"[color={cor_r}][b]{int(round(r))}[/b]/h[/color]")
-                if md['hoje_falta'] > 0:
-                    partes.append(f"[color=#9aa6bd]~{metas.tempo_txt(md['hoje_falta'] / r)}[/color]")
-            if md['hoje_meta'] > 0 and hj >= md['hoje_meta']:
-                partes.append("[color=#ffcc00]META BATIDA[/color]")
-            self.ids.lbl_meta_hoje.text = "  ·  ".join(partes) + "   [color=#00e5ff88]>>[/color]"
+                contar(self.ids.lbl_meta_hoje, hj, montar, duracao=0)
         except Exception as e:
             print(f"[registro] meta: {e}")
 
@@ -273,13 +284,14 @@ class TelaRegistro(Screen):
                 cfg = metas.completar_cfg(App.get_running_app().config_ganhos)
                 v = metas.faixas(cfg)[fx1][1]
                 Clock.schedule_once(lambda dt: self._festa(
-                    f"FAIXA NOVA!  Todas as peças da semana valem R$ {fmt_br(v, 2)}", True), 2.6)
+                    "FAIXA NOVA!", f"Todas as peças da semana valem R$ {fmt_br(v, 2)}", True), 2.6)
             elif meta0 > 0 and hj0 < meta0 <= hj1:
-                Clock.schedule_once(lambda dt: self._festa("META DE HOJE BATIDA!", False), 2.6)
+                Clock.schedule_once(lambda dt: self._festa(
+                    "META DE HOJE BATIDA!", f"{fmt_br(hj1)} peças hoje", False), 2.6)
         except Exception as e:
             print(f"[registro] comemorar: {e}")
 
-    def _festa(self, texto, grande):
+    def _festa(self, texto, sub, grande):
         try:
             som.tocar_level_up() if grande else som.tocar_finalizar()
             tatil.vitoria()
@@ -289,22 +301,11 @@ class TelaRegistro(Screen):
             lbl = self.ids.lbl_meta_hoje
             (Animation(color=[1, 0.88, 0.1, 1], duration=0.12) + Animation(duration=0.5) +
              Animation(color=[1, 1, 1, 1], duration=0.4)).start(lbl)
-            self._aviso_subindo(texto)
+            # (antes o texto subia solto por cima dos botoes e nao dava para ler)
+            from animacoes_ui import faixa_aviso
+            faixa_aviso(texto, sub, ancora=lbl, cor=(1, 0.88, 0.1) if grande else (0, 1, 0.55))
         except Exception as e:
             print(f"[registro] festa: {e}")
-
-    def _aviso_subindo(self, texto):
-        from kivy.uix.label import Label
-        from kivy.core.window import Window
-        lbl = Label(text=f"[b]{texto}[/b]", markup=True, font_name="orbitron.ttf", font_size="13sp",
-                    color=(1, 0.88, 0.1, 0), halign="center", valign="middle", size_hint=(None, None),
-                    size=(Window.width * 0.92, dp(44)), pos=(Window.width * 0.04, Window.height * 0.62))
-        lbl.text_size = lbl.size
-        Window.add_widget(lbl)
-        a = (Animation(color=(1, 0.88, 0.1, 1), y=lbl.y + dp(18), duration=0.25, transition='out_back') +
-             Animation(duration=1.6) + Animation(color=(1, 0.88, 0.1, 0), y=lbl.y + dp(40), duration=0.4))
-        a.bind(on_complete=lambda *_: Window.remove_widget(lbl))
-        a.start(lbl)
 
     def abrir_meta(self):
         """Toque na faixa do topo: o painel da meta (hoje, ritmo, semana)."""

@@ -83,7 +83,7 @@ if CENA == 'meta':                     # a regra real: 2.500 / 3.000 por semana
     dados['config_ganhos'] = {'valor_base': 0.25, 'valor_bonus': 0.30, 'meta_bonus': 3000, 'tipo_periodo': 'semanal'}
 with open(os.path.join(pasta_app, 'dados.json'), 'w', encoding='utf-8') as f:
     json.dump(dados, f, ensure_ascii=False)
-if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim'):
+if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo'):
     with open(os.path.join(pasta_app, '.tf_session'), 'w') as f:
         f.write(str(time.time()))
 
@@ -505,6 +505,69 @@ def roteiro_anim():
     Roteiro(passos).rodar()
 
 
+def roteiro_vivo():
+    """As animacoes continuas e interativas, quadro a quadro: o menu parado
+    (brilho no titulo, luz nas linhas), a faixa de aviso, o HOJE contando,
+    a borda acesa no fim da lista, o grafico crescendo e trocando de mes,
+    a barra de ganhos enchendo, o anel do progresso e a calculadora."""
+    from kivy.metrics import dp
+
+    def ir(nome):
+        return lambda: app().mudar_tela(nome)
+
+    def lote():
+        t = tela()
+        t.ids.nome_input.text = 'Short'
+        t.ids.qtd_input.text = '40'
+        soltar_foco()
+        t.adicionar_item()
+
+    def puxar(sv_id, para_cima):
+        # o dedo puxa a lista alem do fim (o efeito recebe o arrasto)
+        w = tela().ids[sv_id]
+        sv = w if hasattr(w, 'effect_y') else w.parent
+        e = sv.effect_y
+        lo, hi = sorted((e.min, e.max))
+        v0 = lo if para_cima else hi
+        e.value = v0
+        e.start(v0)
+        for k in range(1, 9):
+            e.update(v0 + (-1 if para_cima else 1) * dp(14) * k)
+        e.stop(v0 + (-1 if para_cima else 1) * dp(14) * 8)
+
+    def mes():
+        for w in tela().ids.filtros_container.children:
+            if '09/' in w.text:
+                tela()._filtrar(w.text)
+                return
+
+    def calc(s):
+        def _f():
+            for ch in s:
+                tela().apertar(ch)
+        return _f
+    passos = [(0.2, lambda: fase('menu parado')), (7.5, lambda: fase('registro')), (0.01, ir('registro')),
+              (2.0, lambda: fase('lote: HOJE conta')), (0.01, lote), (0.8, lambda: setattr(campo_do_popup(), 'text', '3')),
+              (0.2, lambda: apertar('CONFIRMAR')), (0.8, soltar_foco),
+              (2.4, lambda: fase('faixa de aviso')), (0.01, lambda: tela()._festa('FAIXA NOVA!', 'Todas as peças da semana valem R$ 0,30', True)),
+              (3.6, lambda: fase('borda acesa embaixo')), (0.01, lambda: puxar('lista_container', False)),
+              # um turno de outro mes, para o grafico ter o que transformar
+              (0.01, lambda: (app().memorias.append({'data': '05/10/2026  17:00', 'total': 320, 'xp': 960}),
+                              app().memorias.append({'data': '06/10/2026  17:00', 'total': 140, 'xp': 420}))),
+              (1.2, lambda: fase('memorias: grafico cresce')), (0.01, ir('memorias')),
+              (2.2, lambda: fase('borda acesa em cima')), (0.01, lambda: puxar('lista_scroll', True)),
+              (1.2, lambda: fase('grafico troca de mes')), (0.01, mes),
+              (1.6, lambda: fase('grafico volta TODOS')), (0.01, lambda: tela()._filtrar('TODOS')),
+              (1.6, lambda: fase('ganhos: barra enche')), (0.01, ir('ganhos')),
+              (6.0, lambda: fase('progresso: anel vivo')), (0.01, ir('progresso')),
+              (5.5, lambda: fase('calculadora vazia')), (0.01, ir('calculadora')),
+              (1.4, lambda: fase('conta 1')), (0.01, calc('125*3=')),
+              (1.2, lambda: fase('conta 2')), (0.01, calc('846/3=')),
+              (1.2, lambda: fase('digitando')), (0.01, calc('7')), (0.25, calc('5')), (0.25, calc('0')),
+              (1.0, fim)]
+    Roteiro(passos).rodar()
+
+
 def roteiro_meta():
     """As telas das METAS: a faixa HOJE do registro, o painel da meta, um
     lote novo (com a festa se passar da meta) e a tela de ganhos."""
@@ -566,7 +629,7 @@ def esperar_menu(dt):
         return
     fase('menu')
     Clock.schedule_once(lambda dt: {'telas': roteiro_telas, 'zap': roteiro_zap, 'varre': roteiro_varre, 'meta': roteiro_meta,
-              'anim': roteiro_anim}.get(CENA, roteiro_app)(), 1.0)
+              'anim': roteiro_anim, 'vivo': roteiro_vivo}.get(CENA, roteiro_app)(), 1.0)
 
 
 def roteiro_pin():

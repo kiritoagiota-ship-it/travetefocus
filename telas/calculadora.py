@@ -12,6 +12,7 @@ from decimal import Decimal, ROUND_HALF_UP, localcontext
 
 from kivy.uix.screenmanager import Screen
 from kivy.uix.button import Button
+from kivy.uix.label import Label
 from kivy.animation import Animation
 from kivy.clock import Clock
 from kivy.metrics import dp, sp
@@ -208,6 +209,10 @@ class TelaCalculadora(Screen):
             if not ok:
                 self._recusar()
             self._atualizar()
+            if ok and (tecla.isdigit() or tecla == '.'):
+                # o numero novo entra subindo um tiquinho (tecla "pega")
+                from animacoes_ui import deslizar
+                deslizar([self.ids.calc_display], -dp(5), 0.12)
         except Exception as e:
             print(f"[calculadora] {tecla}: {e}")
 
@@ -373,7 +378,12 @@ class TelaCalculadora(Screen):
         self.mostrando_resultado = True
         self._resultado_txt = txt
         self._atualizar(conta_feita=conta + ' =')
-        self._mostrar_historico()
+        self._mostrar_historico(nova=True)
+        try:
+            from animacoes_ui import decifrar
+            decifrar(lbl, lbl.text)            # os digitos rolam e param no resultado
+        except Exception as e:
+            print(f"[calc] decifrar: {e}")
         try:
             som.tocar_calc_resultado()
         except Exception:
@@ -399,6 +409,11 @@ class TelaCalculadora(Screen):
     # ── visor ─────────────────────────────────────────────────────────
     def _atualizar(self, conta_feita=None):
         lbl, sub = self.ids.calc_display, self.ids.calc_conta
+        try:
+            from animacoes_ui import parar_decifrar
+            parar_decifrar(lbl)                # digitou durante o rolar: vale o que digitou
+        except Exception:
+            pass
         larg = max(dp(40), lbl.width - dp(4))
         if self.mostrando_resultado:
             txt = self._resultado_txt
@@ -446,7 +461,7 @@ class TelaCalculadora(Screen):
         lbl.font_size = fs
         return w * fs / sp(maximo) <= largura + 0.5
 
-    def _mostrar_historico(self):
+    def _mostrar_historico(self, nova=False):
         try:
             caixa = self.ids.calc_historico
             area = self.ids.calc_hist_area
@@ -456,6 +471,16 @@ class TelaCalculadora(Screen):
         cabem = int(area.height // dp(34))                         # sem invadir o titulo
         ultimas = self._historico[-max(0, min(self.MAX_HIST, cabem)):] if cabem > 0 else []
         base = len(self._historico) - len(ultimas)
+        if not ultimas and cabem >= 2:
+            # vazio: uma dica apagadinha no lugar
+            dica = Label(text="AS CONTAS FEITAS APARECEM AQUI\n[size=11sp]toque numa para usar o resultado[/size]",
+                         markup=True, font_name='orbitron.ttf', font_size='10sp',
+                         color=(0, 0.9, 1, 0.22), halign='center', valign='middle',
+                         size_hint_y=None, height=dp(60))
+            dica.bind(size=lambda w, s: setattr(w, 'text_size', s))
+            caixa.add_widget(dica)
+            return
+        botoes = []
         for k, (conta, txt, _) in enumerate(ultimas):
             idx = base + k
             b = Button(text=f"[color=#5a7f8c]{conta} =[/color]   [color=#00e5ff]{txt}[/color]",
@@ -465,7 +490,24 @@ class TelaCalculadora(Screen):
                        size_hint_y=None, height=dp(34))
             b.bind(size=lambda w, s: setattr(w, 'text_size', (s[0] - dp(8), s[1])))
             b.bind(on_press=lambda w, i=idx: self.usar_historico(i))
+            # as mais antigas vao apagando (a de baixo e a mais nova)
+            b.opacity = 0.45 + 0.55 * (k + 1) / float(len(ultimas))
             caixa.add_widget(b)
+            botoes.append(b)
+        if nova and botoes:
+            try:
+                from animacoes_ui import voar, deslizar
+                nova_b = botoes[-1]
+                alvo_op = nova_b.opacity
+                visor = self.ids.calc_display.parent
+                sub = self.ids.calc_conta
+                # sai da linha da conta no visor (logo abaixo) e sobe para o lugar
+                desce = nova_b.height / 2.0 + dp(8) + max(0.0, visor.top - sub.center_y)
+                voar(nova_b, -desce, escala0=1.0, duracao=0.36)
+                Clock.schedule_once(lambda dt: setattr(nova_b, 'opacity', alvo_op), 0.40)
+                deslizar(botoes[:-1], -dp(34), 0.30)        # as antigas sobem uma linha
+            except Exception as e:
+                print(f"[calc] historico: {e}")
 
     def _recusar(self):
         """Tecla que nao cabe ali (ex.: '++'): nada muda, so um tremidinho."""

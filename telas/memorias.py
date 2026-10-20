@@ -25,6 +25,14 @@ PAGINA = 30          # turnos desenhados de cada vez (anos de dados abrem rapido
 POR_QUADRO = 8       # ... montados aos poucos, alguns por quadro
 
 
+def _mes_de(data_str):
+    """'20/10/2026  17:28' -> '10/2026'."""
+    partes = str(data_str).strip().split('/')
+    if len(partes) >= 3:
+        return f"{partes[1].strip()}/{partes[2].strip()[:4]}"
+    return ""
+
+
 def _ordenadas(memorias):
     """Turnos em ordem de data (a data de um turno pode ser editada e um
     dia antigo pode ser lancado depois: a ordem de gravacao nao serve)."""
@@ -72,6 +80,10 @@ class TelaMemorias(Screen):
         self.atualizar_lista()
         self._atualizar_grafico()
         try:
+            self.ids.grafico_barras.animar_entrada()       # as barras crescem do chao
+        except Exception as e:
+            print(f"[memorias] grafico: {e}")
+        try:
             from animacoes_ui import entrada_tela
             sv = self.ids.lista_scroll                     # a lista ja entra item a item
             entrada_tela(sv.parent, pular=(sv,))
@@ -108,6 +120,7 @@ class TelaMemorias(Screen):
         if mes == self.filtro_mes:
             return  # debounce: mesmo filtro, nao redesenhar
         self.filtro_mes = mes
+        self._atualizar_grafico()          # as barras se transformam nas do mes
         # Cancelar qualquer update pendente
         if hasattr(self, '_filtro_ev') and self._filtro_ev:
             self._filtro_ev.cancel()
@@ -272,7 +285,13 @@ class TelaMemorias(Screen):
     def _atualizar_grafico(self):
         app      = App.get_running_app()
         grafico  = self.ids.grafico_barras
-        recentes = _ordenadas(app.memorias)[-8:] if app.memorias else []
+        filtro   = getattr(self, 'filtro_mes', 'TODOS')
+        todas    = _ordenadas(app.memorias) if app.memorias else []
+        if filtro != "TODOS":
+            todas = [m for m in todas if _mes_de(m.get('data', '')) == filtro]
+        recentes = todas[-8:]
+        grafico.titulo = ('PRODUÇÃO · ÚLTIMOS DIAS' if filtro == "TODOS"
+                          else f'PRODUÇÃO · {filtro}')
         # Cache: nao redesenhar se dados nao mudaram
         novo_hash = str([(m.get("data"), m.get("total")) for m in recentes])
         if getattr(grafico, "_ultimo_hash", None) == novo_hash:

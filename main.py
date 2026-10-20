@@ -41,6 +41,16 @@ class MenuPrincipal(Screen):
             entrada_cascata(botoes, atraso=0.07, dy=dp(28))
         except Exception as e:
             print(f"[menu] cascata: {e}")
+        # vida enquanto o menu esta aberto: um reflexo passa pelo titulo e
+        # pontos de luz correm pelas linhas (instalados uma vez so)
+        try:
+            from animacoes_ui import brilho_texto, luz_na_linha
+            brilho_texto(self.ids.titulo_menu, periodo=6.5, atraso=1.2)
+            luz_na_linha(self.ids.linha_menu_1, (0, 0.9, 1), periodo=5.0, atraso=0.6)
+            luz_na_linha(self.ids.linha_menu_2, (0.6, 0.25, 1), periodo=5.0, atraso=2.2)
+            luz_na_linha(self.ids.linha_menu_3, (0, 0.9, 1), periodo=5.0, atraso=3.8)
+        except Exception as e:
+            print(f"[menu] vida: {e}")
 
 LARGURA_COLUNA = 560     # dp: largura maxima do app em janela larga (PC/tablet)
 

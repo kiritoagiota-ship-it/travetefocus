@@ -264,7 +264,9 @@ class TelaGanhos(Screen):
                     como = f"cabe no sábado ({fmt_br(md['sabado'])})"
                 linhas.append(f"[color=#c8d2e6]Faltam [b]{fmt_br(md['falta'])}[/b] para {_reais(v)} "
                               f"[color=#00e5ff]->[/color] {como}[/color]")
-            if not linhas:
+            periodo_no_topo = (aberto is not None and getattr(self, '_pecas_periodo', None) is not None
+                               and metas.proxima_faixa(self._pecas_periodo, cfg) is None)
+            if not linhas and not periodo_no_topo:
                 linhas.append(f"[color=#ffcc00]{em('🔥')} Faixa máxima da semana! "
                               f"Todas as peças valem {_reais(fx[-1][1])}[/color]")
             if hoje.weekday() == 6:
