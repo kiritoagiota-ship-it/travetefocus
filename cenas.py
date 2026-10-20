@@ -699,7 +699,7 @@ def _faixas(k, camada, dur, entrando, on_fim=None, cor=CIANO, escuro=False, barr
         topo = ay + cima + te
         larg = max(te * 8, (esq + dir_) * 0.8)
         n = max(4, int(round(dur * 30)))
-        pre, pos = (0, 3) if entrando else (2, 0)
+        pre, pos = (0, 2) if entrando else (2, 0)
         total = pre + n + pos
         if escuro:
             k._cor_clarao.rgb = (0.05, 0.02, 0.1)
@@ -5707,7 +5707,7 @@ def _entrar(s, on_fim, tipos=('teleporte', 'queda', 'corrida', 'sombra')):
     tipo = random.choice(tipos)
     try:
         if tipo == 'teleporte':
-            _materializar(k, s.cam, s.faiscas, dur=0.26, on_fim=fim)
+            _materializar(k, s.cam, s.faiscas, dur=0.13, on_fim=fim)
         elif tipo == 'queda':
             topo = (alvo[0], s.H + k.extensao()[1] + dp(30))
             k.mostrar(K.esticado(_com(P['pulo'], olhos='s')))
@@ -6600,7 +6600,7 @@ def kirito_fatiar(alvo, on_fim=None, tipo=None):
             k.parar()
             Clock.schedule_once(lambda dt: _remover_da_janela(cam), 0.4)
 
-        _materializar(k, cam, faiscas, dur=0.26, on_fim=lambda: Clock.schedule_once(lambda dt: _pula(), 0.08))
+        _materializar(k, cam, faiscas, dur=0.13, on_fim=lambda: Clock.schedule_once(lambda dt: _pula(), 0.08))
         # seguranca: se algo travar, apaga mesmo assim e limpa a camada
         Clock.schedule_once(lambda dt: _explodir(), 3.5)
         Clock.schedule_once(lambda dt: _remover_da_janela(cam), 6.0)
@@ -7490,7 +7490,7 @@ def kirito_wipe(widgets, on_fim=None, grafico=None, area_lista=None, extras=None
             _solta()
             fim()
 
-        _materializar(k, cam, faiscas, dur=0.32, on_fim=_saca)
+        _materializar(k, cam, faiscas, dur=0.13, on_fim=_saca)
 
         def _seguranca(dt):
             _remover_da_janela(cam)

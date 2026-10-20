@@ -38,7 +38,11 @@ from kivy.properties import BooleanProperty, NumericProperty
 from kivy.clock import Clock
 
 FPS = 30.0          # linha do tempo das poses (as sequencias e as cenas contam quadros de 30/s)
-DESENHOS = 24.0     # o Yoru troca de desenho 24 vezes por segundo (corpo, sobretudo, cabelo)
+DESENHOS = 24.0     # o Yoru troca de desenho 24 vezes por segundo (corpo, sobretudo, cabelo)...
+CALMO_APOS = 0.35   # ...e 12 por segundo quando fica parado mais que isso (guarda, respirando):
+                    # como no anime, a acao vai "em 1s" e as pausas "em 2s" - o contraste
+                    # deixa o golpe mais rapido e o pano parado nao fica tremendo
+_CORPO_KEYS = ('dx', 'dy', 'm1', 'm2', 'a1', 'a2', 'pernas', 'pt', 'olhos', 'incl')
 FASES = 16          # passos do balanco do sobretudo/cabelo: um passo novo a cada desenho
 
 
@@ -3013,6 +3017,9 @@ class KiritoPixel(Widget):
         self._dt_des = 0.0                # tempo desde o ultimo desenho
         self._no_relogio = False          # dentro do tique de desenho (mostrar so guarda a pose)
         self._a_cada_desenho = []         # quem anda junto com os desenhos (ex.: o deslocamento)
+        self._dt_fis = 0.0                # tempo da fisica desde o ultimo desenho
+        self._ativo_t = -9.0              # ultima vez que o corpo se mexeu de verdade
+        self._corpo_visto = None
         self._on_quadro = None
         self._on_fim = None
         self._loop = False
@@ -3481,6 +3488,7 @@ class KiritoPixel(Widget):
                 return
             self._grade = g
             dt, self._dt_des = min(self._dt_des, 1 / 15.), 0.0
+            self._dt_fis += dt
             self._no_relogio = True
             try:
                 for fn in list(self._a_cada_desenho):    # o deslocamento anda no mesmo tique
@@ -3496,6 +3504,16 @@ class KiritoPixel(Widget):
             finally:
                 self._no_relogio = False
             ax, ay = self.ancora()
+            # acao (24/s) ou pausa (12/s): andou, a pose mudou fora do loop de
+            # respirar, ou ainda esta assentando depois disso
+            corpo = tuple(self._base.get(k) for k in _CORPO_KEYS)
+            andou = self._ult is not None and (abs(ax - self._ult[0]) + abs(ay - self._ult[1])) > 0.5
+            if andou or self._a_cada_desenho or (corpo != self._corpo_visto and not self._loop):
+                self._ativo_t = self._t
+            if self._t - self._ativo_t > CALMO_APOS and g % 2:
+                return                               # pausa: este desenho fica mais um tique
+            self._corpo_visto = corpo
+            dt, self._dt_fis = min(self._dt_fis, 1 / 10.), 0.0
             if self._ult is not None and dt > 0:
                 vx = (ax - self._ult[0]) / dt
                 vy = (ay - self._ult[1]) / dt
