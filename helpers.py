@@ -1018,3 +1018,108 @@ def popup_resumo_dia(tot_pecas, tot_xp, on_confirm, dias=None, pede_data=True):
     _abrir_popup(caixa, pop)
     _bind_teclado(caixa, pop)
     # auto-focus removido — teclado sobe só quando usuario toca no campo)
+
+def popup_meta_producao():
+    """O painel da META DE PRODUCAO (aberto pela faixa HOJE do Registro):
+    hoje x meta do dia, o ritmo comparado com 60/h e 90/h, quanto tempo falta
+    e a semana com as faixas de pagamento."""
+    import metas
+    from efeitos import BarraMeta
+    app = App.get_running_app()
+    cfg = metas.completar_cfg(app.config_ganhos)
+    hoje = datetime.now().date()
+    sem, hj = metas.pecas_da_semana(app.memorias, app.registros, hoje)
+    prox = metas.proxima_faixa(sem, cfg)
+    alvo = prox['inicio'] if prox else int(cfg['meta_bonus'])
+    md = metas.meta_diaria(alvo, sem, hj, hoje, cfg['pecas_sabado'])
+    r = metas.ritmo(metas.lotes_de_hoje(app.registros, hoje))
+    fx = metas.faixas(cfg)
+    _i, _ini, valor_agora, _nm = metas.faixa_de(sem, cfg)
+
+    pop, layout = _make_popup()
+    caixa = BoxLayout(orientation='vertical', padding=[dp(20), dp(16), dp(20), dp(16)], spacing=dp(8),
+                      size_hint=(0.92, None), height=min(dp(560), Window.height * 0.86))
+    aplicar_fundo_holografico(caixa, (0, 0.9, 1, 0.9))
+
+    def titulo(t, cor='#00e5ff'):
+        caixa.add_widget(Label(text=f"[b][color={cor}]{t}[/color][/b]", markup=True, font_name="orbitron.ttf",
+                               font_size="12sp", size_hint_y=None, height=dp(22), halign="center"))
+
+    def texto(t, alt=dp(40), tam="15sp"):
+        lbl = Label(text=t, markup=True, font_name="rajdhani.ttf", font_size=tam, halign="center",
+                    valign="middle", size_hint_y=None, height=alt)
+        lbl.bind(size=lambda i, s: setattr(i, 'text_size', s))
+        caixa.add_widget(lbl)
+        return lbl
+
+    caixa.add_widget(Label(text="[b][color=#00e5ff]>>  META DE PRODUÇÃO  <<[/color][/b]", markup=True,
+                           font_name="orbitron.ttf", font_size="15sp", size_hint_y=None, height=dp(30),
+                           halign="center"))
+    # ── hoje ──
+    titulo("HOJE")
+    barra_h = BarraMeta(size_hint_y=None, height=dp(30))
+    caixa.add_widget(barra_h)
+    if hoje.weekday() == 6:
+        texto("[color=#8c96aa]Domingo é folga. A conta da semana começa amanhã.[/color]")
+    elif md['batida'] and prox is None:
+        texto("[color=#ffcc00]Você já está na faixa mais alta da semana![/color]")
+    else:
+        if md['hoje_falta'] > 0:
+            linha = (f"[color=#c8d2e6]Saíram [b]{fmt_br(hj)}[/b] de [b]{fmt_br(md['hoje_meta'])}[/b]  ·  "
+                     f"faltam [color=#00e5ff][b]{fmt_br(md['hoje_falta'])}[/b][/color][/color]")
+        else:
+            linha = f"[color=#00ff88][b]{fmt_br(hj)}[/b] peças  ·  META DE HOJE BATIDA![/color]"
+        texto(linha)
+    meta_h = max(1, md['hoje_meta'], hj)
+    barra_h.definir(hj, maximo=meta_h * 1.15,
+                    marcas=[(md['hoje_meta'], f"META {fmt_br(md['hoje_meta'])}", (1, 0.88, 0.1, 1))]
+                    if md['hoje_meta'] else [],
+                    cor=(0, 1, 0.55, 1) if hj >= md['hoje_meta'] > 0 else (0, 0.9, 1, 1))
+    # ── ritmo ──
+    titulo("RITMO")
+    barra_r = BarraMeta(size_hint_y=None, height=dp(30))
+    caixa.add_widget(barra_r)
+    if r:
+        cor_r = (0, 1, 0.55, 1) if r >= metas.REF_REALISTA else ((1, 0.8, 0, 1) if r >= 45 else (1, 0.4, 0.4, 1))
+        barra_r.definir(r, maximo=110, cor=cor_r,
+                        marcas=[(metas.REF_REALISTA, "60/h  1 por min", (1, 0.88, 0.1, 1)),
+                                (metas.REF_PADRAO, "90/h  padrão 40s", (1, 0.42, 0.3, 1))])
+        lin = f"[color=#c8d2e6]Você está a [b]{int(round(r))} peças/h[/b][/color]"
+        if md['hoje_falta'] > 0:
+            f = md['hoje_falta']
+            lin += (f"\n[color=#9aa6bd]Faltam {fmt_br(f)}: [b]~{metas.tempo_txt(f / r)}[/b] nesse ritmo  ·  "
+                    f"{metas.tempo_txt(f / 60.0)} a 60/h  ·  {metas.tempo_txt(f / 90.0)} a 90/h[/color]")
+        texto(lin, alt=dp(68), tam="14sp")
+    else:
+        barra_r.definir(0, maximo=110, marcas=[(60, "60/h", (1, 0.88, 0.1, 1)), (90, "90/h", (1, 0.42, 0.3, 1))],
+                        animar=False)
+        texto("[color=#8c96aa]Lance mais um lote (com uns 15 min de diferença)\npara medir o seu ritmo de hoje.[/color]",
+              alt=dp(44), tam="14sp")
+    # ── semana ──
+    titulo("SEMANA  (seg a sáb)")
+    barra_s = BarraMeta(size_hint_y=None, height=dp(30))
+    caixa.add_widget(barra_s)
+    topo = fx[-1][0]
+    barra_s.definir(sem, maximo=topo * 1.12,
+                    marcas=[(ini, f"R$ {fmt_br(v, 2)}", (1, 0.88, 0.1, 1) if k == len(fx) - 1 else (0, 1, 0.55, 1))
+                            for k, (ini, v, _n) in enumerate(fx) if ini > 0],
+                    cor=(1, 0.88, 0.1, 1) if prox is None else (0, 0.9, 1, 1))
+    lin = (f"[color=#c8d2e6][b]{fmt_br(sem)}[/b] peças  ·  hoje valem [b]R$ {fmt_br(valor_agora, 2)}[/b]  ·  "
+           f"[color=#00ff88]{'R$ ' + fmt_br(metas.ganho(sem, cfg), 2)}[/color][/color]")
+    if prox:
+        lin += (f"\n[color=#ffcc00]Faltam [b]{fmt_br(prox['falta'])}[/b] para os R$ {fmt_br(prox['valor'], 2)} "
+                f"(+R$ {fmt_br(prox['a_mais'], 2)})[/color]")
+        if md['e_sabado']:
+            lin += "\n[color=#9aa6bd]É sábado: tudo isso hoje[/color]"
+        elif md['por_dia'] > 0:
+            lin += (f"\n[color=#9aa6bd]{fmt_br(md['por_dia'])} por dia + {fmt_br(md['sabado'])} no sábado[/color]")
+        elif md['sabado'] > 0:
+            lin += f"\n[color=#9aa6bd]Cabe no sábado: {fmt_br(md['sabado'])}[/color]"
+    texto(lin, alt=dp(70), tam="14sp")
+    caixa.add_widget(Widget())
+    btn = BotaoAngular(text=">>  OK", size_hint_y=None, height=dp(48))
+    btn.bind(on_release=lambda *_: pop.dismiss())
+    caixa.add_widget(btn)
+    layout.add_widget(caixa)
+    caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+    _abrir_popup(caixa, pop)

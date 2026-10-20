@@ -70,6 +70,14 @@ O CHEFE DA ABERTURA ("THE ABYSS WARDEN") - desde 13/10/2026 e o MODELO FINAL do 
                     folha CLIPE SAIDA.png. Mudou pose/tempo: editar clipes().
   sons_chefe.py     O rugido do chefe (sons/rugido.wav), sintetizado.
 
+METAS DE PRODUCAO (metas.py: faixas 0,25/0,27/0,30, meta diaria, ritmo por hora)
+  teste_metas.py    As contas (faixas, o que falta, por dia, sabado, domingo, ritmo,
+                    almoco fora do ritmo): python dev/teste_metas.py -> "0 falhas".
+                    As telas: CENA=meta CADA=0 no filme_cenas.py (faixa HOJE do
+                    registro, painel da meta, Ganhos, aviso de finalizar, fechamento).
+  teste_dados.py    Gravar/ler as anotacoes numa pasta descartavel (arquivo estragado,
+                    40 gravacoes seguidas, dados antigos).
+
 COLAR DO WHATSAPP
   teste_importar.py Testa importar_zap.ler com 10 jeitos de texto copiado do
                     WhatsApp (python dev/teste_importar.py -> "0 falhas").

@@ -125,8 +125,11 @@ class TraveteApp(App):
             pass
         self.config_ganhos = {
             "valor_base":   0.25,
+            "valor_meio":   0.27,          # faixa do meio (configs antigas ganham este padrao)
             "valor_bonus":  0.30,
+            "meta_meio":    2500,
             "meta_bonus":   3000,
+            "pecas_sabado": 200,           # meta do sabado (meio periodo)
             "tipo_periodo": "semanal"
         }
 

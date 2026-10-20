@@ -497,10 +497,25 @@
             color:       rgba("#00e5ff")
             bold:        True
             size_hint_y: None
-            height:      dp(40)
+            height:      dp(34)
             halign:      "center"
             valign:      "middle"
             text_size:   self.size
+        # faixa da meta: hoje / meta do dia / ritmo / tempo que falta (toque: o painel)
+        BotaoAngular:
+            id:           lbl_meta_hoje
+            text:         ""
+            markup:       True
+            font_name:    "rajdhani.ttf"
+            font_size:    "14sp"
+            size_hint_y:  None
+            height:       dp(34)
+            halign:       "center"
+            valign:       "middle"
+            text_size:    self.size
+            cor_borda:    [0, 0.9, 1, 0.45]
+            cor_borda_kv: [0, 0.9, 1, 0.45]
+            on_release:   root.abrir_meta()
         InputHolografico:
             id:              nome_input
             hint_text:       "   Nome da Peça"
@@ -1177,12 +1192,55 @@
                     disabled:     True
                     on_release:   root.fechar_periodo()
 
+        # ══ BLOCO 1b: META DA SEMANA (seg a sáb) ════════════
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint_y: None
+            height:      dp(132)
+            spacing:     dp(4)
+            padding:     [dp(14), dp(8), dp(14), dp(8)]
+            canvas.before:
+                Color:
+                    rgba: rgba("#07071ccc")
+                Rectangle:
+                    pos:  self.pos
+                    size: self.size
+                Color:
+                    rgba: rgba("#ffcc0055")
+                Line:
+                    points: [self.x+dp(12), self.y, self.right-dp(12), self.y, self.right, self.y+dp(12), self.right, self.top-dp(12), self.right-dp(12), self.top, self.x+dp(12), self.top, self.x, self.top-dp(12), self.x, self.y+dp(12), self.x+dp(12), self.y]
+                    width:  1.3
+            Label:
+                id:          lbl_semana_pecas
+                text:        ""
+                markup:      True
+                font_name:   "rajdhani.ttf"
+                font_size:   "15sp"
+                size_hint_y: None
+                height:      dp(20)
+                halign:      "center"
+                valign:      "middle"
+                text_size:   self.size
+            BarraMeta:
+                id:          barra_semana
+                size_hint_y: None
+                height:      dp(32)
+            Label:
+                id:          lbl_semana_metas
+                text:        ""
+                markup:      True
+                font_name:   "rajdhani.ttf"
+                font_size:   "13sp"
+                halign:      "center"
+                valign:      "middle"
+                text_size:   self.size
+
         # ══ BLOCO 2: CONFIGURAÇÕES ══════════════════════════
         BoxLayout:
             orientation: 'vertical'
             size_hint_y: None
-            height:      dp(148)
-            spacing:     dp(6)
+            height:      dp(222)
+            spacing:     dp(4)
             padding:     [dp(12), dp(10), dp(12), dp(10)]
             canvas.before:
                 Color:
@@ -1243,16 +1301,63 @@
                     halign:       "center"
                     size_hint_x:  0.28
 
+            # faixa do meio: valor e a partir de quantas pecas; a de cima: a partir de quantas
             BoxLayout:
                 size_hint_y: None
                 height:      dp(44)
-                spacing:     dp(8)
+                spacing:     dp(6)
                 Label:
-                    text:        "Meta"
+                    text:        "Meio R$"
                     font_name:   "rajdhani.ttf"
                     font_size:   "14sp"
                     color:       rgba("#b4bed2")
-                    size_hint_x: 0.14
+                    size_hint_x: 0.20
+                    halign:      "right"
+                    valign:      "middle"
+                    text_size:   self.size
+                InputHolografico:
+                    id:           inp_valor_meio
+                    text:         "0,27"
+                    input_filter: root.filtro_reais
+                    font_size:    "15sp"
+                    halign:       "center"
+                    size_hint_x:  0.22
+                Label:
+                    text:        "a partir"
+                    font_name:   "rajdhani.ttf"
+                    font_size:   "13sp"
+                    color:       rgba("#b4bed2")
+                    size_hint_x: 0.18
+                    halign:      "right"
+                    valign:      "middle"
+                    text_size:   self.size
+                InputHolografico:
+                    id:           inp_meta_meio
+                    text:         "2500"
+                    input_filter: 'int'
+                    font_size:    "15sp"
+                    halign:       "center"
+                    size_hint_x:  0.22
+                Label:
+                    text:        "pç"
+                    font_name:   "rajdhani.ttf"
+                    font_size:   "13sp"
+                    color:       rgba("#b4bed2")
+                    size_hint_x: 0.08
+                    halign:      "left"
+                    valign:      "middle"
+                    text_size:   self.size
+
+            BoxLayout:
+                size_hint_y: None
+                height:      dp(44)
+                spacing:     dp(6)
+                Label:
+                    text:        "Bônus a partir"
+                    font_name:   "rajdhani.ttf"
+                    font_size:   "13sp"
+                    color:       rgba("#b4bed2")
+                    size_hint_x: 0.30
                     halign:      "right"
                     valign:      "middle"
                     text_size:   self.size
@@ -1262,7 +1367,28 @@
                     input_filter: 'int'
                     font_size:    "15sp"
                     halign:       "center"
-                    size_hint_x:  0.24
+                    size_hint_x:  0.22
+                Label:
+                    text:        "Sábado"
+                    font_name:   "rajdhani.ttf"
+                    font_size:   "13sp"
+                    color:       rgba("#b4bed2")
+                    size_hint_x: 0.22
+                    halign:      "right"
+                    valign:      "middle"
+                    text_size:   self.size
+                InputHolografico:
+                    id:           inp_sabado
+                    text:         "200"
+                    input_filter: 'int'
+                    font_size:    "15sp"
+                    halign:       "center"
+                    size_hint_x:  0.20
+
+            BoxLayout:
+                size_hint_y: None
+                height:      dp(40)
+                spacing:     dp(8)
                 BotaoAngular:
                     id:          spin_tipo
                     text:        "Semanal"

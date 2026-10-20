@@ -1644,3 +1644,75 @@ class TecladoNumeros(_TecladoBase):
             last.add_widget(self._key('DEL', font_size='12sp', size_hint_x=0.25))
             last.add_widget(self._key('OK',  font_size='14sp', size_hint_x=0.25))
         self.add_widget(last)
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  BARRA DE META (faixas de pagamento, meta do dia, ritmo por hora)
+# ══════════════════════════════════════════════════════════════════════
+class BarraMeta(Widget):
+    """Barra holografica em BLOCOS (estilo HUD do SAO): o que ja foi feito
+    acende bloco a bloco ate `valor` (de 0 a `maximo`); cada marca e um
+    traco vertical com o nome em cima - ex.: as faixas 2.500 / 3.000, ou as
+    referencias 60/h e 90/h. definir(valor) anima a subida."""
+    valor = NumericProperty(0.0)
+    maximo = NumericProperty(100.0)
+    cor = ListProperty([0, 0.9, 1, 1])
+
+    def __init__(self, **kwargs):
+        self.marcas = []                         # [(valor, texto, (r, g, b, a))]
+        super().__init__(**kwargs)
+        self.bind(pos=self._desenhar, size=self._desenhar, valor=self._desenhar, maximo=self._desenhar,
+                  cor=self._desenhar)
+        Clock.schedule_once(self._desenhar, 0)
+
+    def definir(self, valor, maximo=None, marcas=None, cor=None, animar=True):
+        if maximo is not None:
+            self.maximo = max(1.0, float(maximo))
+        if marcas is not None:
+            self.marcas = list(marcas)
+        if cor is not None:
+            self.cor = list(cor)
+        Animation.cancel_all(self, 'valor')
+        alvo = max(0.0, min(float(valor), self.maximo))
+        if animar:
+            self.valor = 0.0
+            Animation(valor=alvo, duration=0.9, transition='out_cubic').start(self)
+        else:
+            self.valor = alvo
+        self._desenhar()
+
+    def _desenhar(self, *_):
+        c = self.canvas
+        c.clear()
+        if self.width < 10 or self.height < 6:
+            return
+        x, y, w = self.x, self.y, self.width
+        topo_txt = dp(14)
+        h = max(dp(8), self.height - topo_txt)
+        bloco, vao = dp(5), dp(2)
+        n = max(1, int((w + vao) // (bloco + vao)))
+        cheios = int(n * self.valor / max(1.0, self.maximo))
+        r, g, b, a = self.cor
+        with c:
+            Color(0.03, 0.04, 0.10, 0.9)
+            Rectangle(pos=(x, y), size=(w, h))
+            for i in range(n):
+                bx = x + i * (bloco + vao)
+                if i < cheios:
+                    luz = 1.0 if i == cheios - 1 else 0.82       # a ponta acesa mais forte
+                    Color(r * luz + (1 - luz) * 0.2, g * luz + (1 - luz) * 0.2, b * luz + (1 - luz) * 0.2, a)
+                else:
+                    Color(r, g, b, 0.10)
+                Rectangle(pos=(bx, y + dp(2)), size=(bloco, h - dp(4)))
+            Color(r, g, b, 0.55)
+            Line(rectangle=(x, y, w, h), width=1.1)
+            for v, txt, rgba in self.marcas:
+                mx = x + w * min(1.0, max(0.0, v / max(1.0, self.maximo)))
+                Color(*rgba)
+                Rectangle(pos=(mx - dp(1), y - dp(2)), size=(dp(2), h + dp(4)))
+                if txt:
+                    cl = CoreLabel(text=txt, font_name='rajdhani.ttf', font_size=dp(11), bold=True)
+                    cl.refresh()
+                    tx = max(x, min(x + w - cl.texture.size[0], mx - cl.texture.size[0] / 2.0))
+                    Color(*rgba)
+                    Rectangle(texture=cl.texture, pos=(tx, y + h + dp(1)), size=cl.texture.size)

@@ -12,8 +12,9 @@ De cada linha saem so o NOME da peca e a QUANTIDADE; o dia vem da data da
 mensagem (ou de uma linha de data dentro dela, como a "PRODUCAO DO DIA" que
 o proprio app manda). Conversa, totais e titulos sao ignorados.
 
-    ler(texto) -> {'itens': [{'dia', 'nome', 'qtd', 'quem'}], 'quem': [nomes],
+    ler(texto) -> {'itens': [{'dia', 'nome', 'qtd', 'quem', 'ts'}], 'quem': [nomes],
                    'ignoradas': n}
+    ts = a hora da mensagem (segundos, como time.time()) ou None.
 """
 import re
 import unicodedata
@@ -57,6 +58,27 @@ def _dia(d, m, a, base):
                 a += 2000
         return date(a, m, d).strftime('%d/%m/%Y')
     except (TypeError, ValueError):
+        return None
+
+
+def _hora_de(cabecalho):
+    """'17:32' (ou '5:32 PM') do comeco da mensagem -> (h, m) ou None."""
+    m = re.search(r'(\d{1,2}):(\d{2})(?::\d{2})?\s*([apAP])?\.?\s*[mM]?', cabecalho or '')
+    if not m:
+        return None
+    h, mi = int(m.group(1)), int(m.group(2))
+    if m.group(3):
+        h = h % 12 + (12 if m.group(3).lower() == 'p' else 0)
+    return (h, mi) if h < 24 and mi < 60 else None
+
+
+def _ts(dia, hora):
+    if not dia or not hora:
+        return None
+    try:
+        d = datetime.strptime(dia, '%d/%m/%Y')
+        return d.replace(hour=hora[0], minute=hora[1]).timestamp()
+    except (ValueError, OverflowError, OSError):
         return None
 
 
@@ -110,6 +132,7 @@ def ler(texto, hoje=None):
     """Acha as pecas no texto copiado. `hoje` = dia das linhas sem data."""
     base = hoje or datetime.now().date()
     dia_padrao = base.strftime('%d/%m/%Y')
+    hora_msg = dia_msg = None
     itens, quem, ignoradas = [], [], 0
     dia_msg, autor = dia_padrao, ''
     dia_atual = dia_padrao
@@ -126,7 +149,9 @@ def ler(texto, hoje=None):
                 cab = m.groups()
                 break
         if cab:
-            d, mm, a, autor, linha = cab
+            d, mm, a, autor, linha_msg = cab
+            hora_msg = _hora_de(linha[:len(linha) - len(linha_msg)])
+            linha = linha_msg
             autor = autor.strip()
             dia_msg = _dia(d, mm, a, base) or dia_padrao
             dia_atual = dia_msg
@@ -151,7 +176,8 @@ def ler(texto, hoje=None):
             if so_num and pendente:               # "Camisa polo" numa linha, "180" na outra
                 qtd = int(so_num.group(1).replace('.', ''))
                 if 0 < qtd <= 99999:
-                    itens.append({'dia': dia_atual, 'nome': pendente, 'qtd': qtd, 'quem': autor})
+                    itens.append({'dia': dia_atual, 'nome': pendente, 'qtd': qtd, 'quem': autor,
+                                  'ts': _ts(dia_atual, hora_msg) if dia_atual == dia_msg else None})
                 pendente = None
                 continue
             nome = _nome(limpa)
@@ -164,7 +190,8 @@ def ler(texto, hoje=None):
             continue
         pendente = None
         for nome, qtd in achados:
-            itens.append({'dia': dia_atual, 'nome': nome, 'qtd': qtd, 'quem': autor})
+            itens.append({'dia': dia_atual, 'nome': nome, 'qtd': qtd, 'quem': autor,
+                          'ts': _ts(dia_atual, hora_msg) if dia_atual == dia_msg else None})
     return {'itens': itens, 'quem': quem, 'ignoradas': ignoradas}
 
 

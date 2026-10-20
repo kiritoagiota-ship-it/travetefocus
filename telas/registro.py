@@ -11,13 +11,16 @@ from helpers import (popup_pedir_xp, popup_delete_engracado, popup_resumo_dia, a
 from datetime import datetime
 import som
 import tatil
-from animacoes_ui import entrada_cascata
+from animacoes_ui import entrada_cascata, fmt_br
+import time
+import metas
 
 
 class TelaRegistro(Screen):
 
     def on_enter(self):
         self.atualizar()
+        self.atualizar_meta()
         # Anexar teclados customizados SAO (so na primeira vez por widget)
         Clock.schedule_once(self._anexar_teclados, 0.3)
         self._foco_ev = Clock.schedule_once(self._focar_nome, 0.35)
@@ -126,13 +129,14 @@ class TelaRegistro(Screen):
         ganho = 0
         for it in itens:
             xp_total = max(0, int(xp)) * int(it['qtd'])
-            app.registros.append([it['nome'], str(it['qtd']), xp_total, it['dia']])
+            app.registros.append([it['nome'], str(it['qtd']), xp_total, it['dia'], it.get('ts')])
             ganho += xp_total
         app.total_xp += ganho
         app.salvar_dados()
         som.tocar_add()
         tatil.confirmar()
         self.atualizar()
+        self.atualizar_meta()
         if ganho:
             Clock.schedule_once(lambda dt: animar_ganho_xp(ganho), 0.3)
 
@@ -162,7 +166,9 @@ class TelaRegistro(Screen):
             xp_total = xp * int(q)
         except (ValueError, TypeError):
             xp_total = 0
-        app.registros.append([n, q, xp_total])
+        antes = self._situacao()
+        # [nome, qtd, xp, dia ('' = hoje), hora do lancamento] - a hora mede o ritmo
+        app.registros.append([n, q, xp_total, '', round(time.time(), 1)])
         app.total_xp += xp_total
         app.salvar_dados()
         self.ids.nome_input.text = ""
@@ -187,6 +193,103 @@ class TelaRegistro(Screen):
                 animar_ganho_xp(xp_total, origem=btn)
         Clock.schedule_once(_carimbo, 0.42)
         Clock.schedule_once(lambda _: self._focar_nome(), 0.15)
+        self.atualizar_meta()
+        self._comemorar(antes, self._situacao())
+
+    # ── metas de producao ────────────────────────────────────────────────
+    def _situacao(self):
+        """(pecas na semana, pecas hoje, meta de hoje, faixa da semana)."""
+        app = App.get_running_app()
+        cfg = metas.completar_cfg(app.config_ganhos)
+        hoje = datetime.now().date()
+        sem, hj = metas.pecas_da_semana(app.memorias, app.registros, hoje)
+        prox = metas.proxima_faixa(sem, cfg)
+        alvo = prox['inicio'] if prox else int(cfg['meta_bonus'])
+        md = metas.meta_diaria(alvo, sem, hj, hoje, cfg['pecas_sabado'])
+        return sem, hj, md['hoje_meta'], metas.faixa_de(sem, cfg)[0]
+
+    def atualizar_meta(self):
+        """A faixa do topo: o que saiu hoje, a meta do dia, o ritmo e quanto falta."""
+        try:
+            app = App.get_running_app()
+            cfg = metas.completar_cfg(app.config_ganhos)
+            hoje = datetime.now().date()
+            sem, hj = metas.pecas_da_semana(app.memorias, app.registros, hoje)
+            prox = metas.proxima_faixa(sem, cfg)
+            alvo = prox['inicio'] if prox else int(cfg['meta_bonus'])
+            md = metas.meta_diaria(alvo, sem, hj, hoje, cfg['pecas_sabado'])
+            r = metas.ritmo(metas.lotes_de_hoje(app.registros, hoje))
+            partes = []
+            if hoje.weekday() == 6:
+                partes.append("[color=#8c96aa]DOMINGO  ·  folga[/color]")
+            elif md['hoje_meta'] > 0:
+                cor = '#00ff88' if hj >= md['hoje_meta'] else '#00e5ff'
+                partes.append(f"[color=#9aa6bd]HOJE[/color] [color={cor}][b]{fmt_br(hj)}[/b][/color]"
+                              f"[color=#9aa6bd]/{fmt_br(md['hoje_meta'])}[/color]")
+            else:
+                partes.append(f"[color=#9aa6bd]HOJE[/color] [color=#00ff88][b]{fmt_br(hj)}[/b][/color]")
+            if r:
+                cor_r = '#00ff88' if r >= metas.REF_REALISTA else ('#ffcc00' if r >= 45 else '#ff6a6a')
+                partes.append(f"[color={cor_r}][b]{int(round(r))}[/b]/h[/color]")
+                if md['hoje_falta'] > 0:
+                    partes.append(f"[color=#9aa6bd]~{metas.tempo_txt(md['hoje_falta'] / r)}[/color]")
+            if md['hoje_meta'] > 0 and hj >= md['hoje_meta']:
+                partes.append("[color=#ffcc00]META BATIDA[/color]")
+            self.ids.lbl_meta_hoje.text = "  ·  ".join(partes) + "   [color=#00e5ff88]>>[/color]"
+        except Exception as e:
+            print(f"[registro] meta: {e}")
+
+    def _comemorar(self, antes, depois):
+        """Passou da meta do dia ou de faixa da semana com este lote: festa."""
+        try:
+            sem0, hj0, meta0, fx0 = antes
+            sem1, hj1, meta1, fx1 = depois
+            if fx1 > fx0:
+                cfg = metas.completar_cfg(App.get_running_app().config_ganhos)
+                v = metas.faixas(cfg)[fx1][1]
+                Clock.schedule_once(lambda dt: self._festa(
+                    f"FAIXA NOVA!  Todas as peças da semana valem R$ {fmt_br(v, 2)}", True), 2.6)
+            elif meta0 > 0 and hj0 < meta0 <= hj1:
+                Clock.schedule_once(lambda dt: self._festa("META DE HOJE BATIDA!", False), 2.6)
+        except Exception as e:
+            print(f"[registro] comemorar: {e}")
+
+    def _festa(self, texto, grande):
+        try:
+            som.tocar_level_up() if grande else som.tocar_finalizar()
+            tatil.vitoria()
+            tremer_tela(14 if grande else 8)
+            from cenas import kirito_meta
+            kirito_meta(self.ids.lbl_meta_hoje)
+            lbl = self.ids.lbl_meta_hoje
+            (Animation(color=[1, 0.88, 0.1, 1], duration=0.12) + Animation(duration=0.5) +
+             Animation(color=[1, 1, 1, 1], duration=0.4)).start(lbl)
+            self._aviso_subindo(texto)
+        except Exception as e:
+            print(f"[registro] festa: {e}")
+
+    def _aviso_subindo(self, texto):
+        from kivy.uix.label import Label
+        from kivy.core.window import Window
+        lbl = Label(text=f"[b]{texto}[/b]", markup=True, font_name="orbitron.ttf", font_size="13sp",
+                    color=(1, 0.88, 0.1, 0), halign="center", valign="middle", size_hint=(None, None),
+                    size=(Window.width * 0.92, dp(44)), pos=(Window.width * 0.04, Window.height * 0.62))
+        lbl.text_size = lbl.size
+        Window.add_widget(lbl)
+        a = (Animation(color=(1, 0.88, 0.1, 1), y=lbl.y + dp(18), duration=0.25, transition='out_back') +
+             Animation(duration=1.6) + Animation(color=(1, 0.88, 0.1, 0), y=lbl.y + dp(40), duration=0.4))
+        a.bind(on_complete=lambda *_: Window.remove_widget(lbl))
+        a.start(lbl)
+
+    def abrir_meta(self):
+        """Toque na faixa do topo: o painel da meta (hoje, ritmo, semana)."""
+        som.tocar_click()
+        tatil.botao()
+        try:
+            from helpers import popup_meta_producao
+            popup_meta_producao()
+        except Exception as e:
+            print(f"[registro] painel da meta: {e}")
 
     def confirmar_delete(self, dado, btn):
         def _fazer():
@@ -206,6 +309,7 @@ class TelaRegistro(Screen):
         except ValueError:
             pass
         self.atualizar()
+        self.atualizar_meta()
 
     def finalizar_dia(self):
         app = App.get_running_app()
@@ -253,6 +357,7 @@ class TelaRegistro(Screen):
             som.tocar_finalizar()
             tatil.vitoria()
             tremer_tela(12)
+            self.atualizar_meta()
             # onde cada peca estava na lista: e dali que elas voam para o cartao do turno
             linhas, area = [], None
             try:

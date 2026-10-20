@@ -46,6 +46,19 @@ for i, d in enumerate(range(15, 25)):
     memorias.append({'data': f'{d:02d}/09/2026  17:{10 + i:02d}', 'total': sum(int(x[1]) for x in itens),
                      'xp': sum(x[2] for x in itens), 'itens': itens, 'ts': 1790000000 + i})
 registros = [['Camisa polo', '180', 540], ['Calca jeans', '95', 380], ['Vestido longo', '60', 240]]
+if CENA == 'meta':
+    # METAS: semana com turnos de seg ate ontem e lotes de hoje com hora (ritmo ~52/h)
+    import datetime as _dt
+    _hoje = _dt.date.today()
+    _seg = _hoje - _dt.timedelta(days=_hoje.weekday() if _hoje.weekday() < 6 else -1)
+    memorias = []
+    for _i in range((_hoje - _seg).days):
+        _d = _seg + _dt.timedelta(days=_i)
+        memorias.append({'data': _d.strftime('%d/%m/%Y') + '  17:30', 'total': 430, 'xp': 1290,
+                         'itens': [['Camisa polo', '430', 1290]], 'ts': 1790000000 + _i})
+    _t0 = _dt.datetime.combine(_hoje, _dt.time(7, 30)).timestamp()
+    registros = [['Camisa polo', '60', 180, '', _t0], ['Camisa polo', '52', 156, '', _t0 + 3600],
+                 ['Calca jeans', '50', 150, '', _t0 + 7200], ['Calca jeans', '54', 162, '', _t0 + 10800]]
 if CENA == 'varre':
     # casos extremos: VARRE="turnos,itens do ultimo turno,pecas no registro"
     _nm, _ni, _nr = [int(v) for v in os.environ.get('VARRE', '1,0,1').split(',')]
@@ -66,9 +79,11 @@ dados = {
          'total_ganho': 0.0}],
     'config_ganhos': {'valor_base': 0.25, 'valor_bonus': 0.30, 'meta_bonus': 400, 'tipo_periodo': 'semanal'},
 }
+if CENA == 'meta':                     # a regra real: 2.500 / 3.000 por semana
+    dados['config_ganhos'] = {'valor_base': 0.25, 'valor_bonus': 0.30, 'meta_bonus': 3000, 'tipo_periodo': 'semanal'}
 with open(os.path.join(pasta_app, 'dados.json'), 'w', encoding='utf-8') as f:
     json.dump(dados, f, ensure_ascii=False)
-if CENA in ('app', 'telas', 'zap', 'varre'):
+if CENA in ('app', 'telas', 'zap', 'varre', 'meta'):
     with open(os.path.join(pasta_app, '.tf_session'), 'w') as f:
         f.write(str(time.time()))
 
@@ -464,6 +479,32 @@ def roteiro_zap():
     Roteiro(passos).rodar()
 
 
+def roteiro_meta():
+    """As telas das METAS: a faixa HOJE do registro, o painel da meta, um
+    lote novo (com a festa se passar da meta) e a tela de ganhos."""
+    def ir(nome):
+        return lambda: app().mudar_tela(nome)
+
+    def lote():
+        t = tela()
+        t.ids.nome_input.text = 'Short'
+        t.ids.qtd_input.text = '40'
+        soltar_foco()
+        t.adicionar_item()
+    passos = [(0.3, ir('registro')), (2.2, soltar_foco), (0.4, lambda: foto('m1-registro')),
+              (0.3, lambda: tela().abrir_meta()), (1.4, lambda: foto('m2-painel-meta')), (0.3, fechar_popups),
+              (0.8, lote), (0.8, lambda: setattr(campo_do_popup(), 'text', '3')),
+              (0.3, lambda: apertar('CONFIRMAR')), (1.0, soltar_foco), (2.5, lambda: foto('m3-registro-depois')),
+              (0.6, ir('ganhos')), (2.4, soltar_foco), (0.5, lambda: foto('m4-ganhos')),
+              # fechar com pecas nao finalizadas: o aviso; finaliza o dia e ai fecha
+              (0.3, lambda: tela().fechar_periodo()), (1.0, lambda: foto('m5-aviso-finalizar')),
+              (0.3, fechar_popups), (0.4, ir('registro')), (2.0, lambda: tela().finalizar_dia()),
+              (0.9, lambda: apertar('SALVAR TURNO')), (5.5, ir('ganhos')), (2.4, soltar_foco),
+              (0.3, lambda: tela().fechar_periodo()), (5.0, lambda: foto('m6-ganhos-resultado')),
+              (0.3, fechar_popups), (0.6, lambda: foto('m7-ganhos-fechado')), (0.4, fim)]
+    Roteiro(passos).rodar()
+
+
 def roteiro_varre():
     """Casos extremos das cenas novas (fotos): guardar o turno, a carta do
     WhatsApp e o WIPE com muita ou pouca coisa na tela."""
@@ -490,7 +531,7 @@ def esperar_menu(dt):
         Clock.schedule_once(esperar_menu, 0.05)
         return
     fase('menu')
-    Clock.schedule_once(lambda dt: {'telas': roteiro_telas, 'zap': roteiro_zap, 'varre': roteiro_varre}.get(CENA, roteiro_app)(), 1.0)
+    Clock.schedule_once(lambda dt: {'telas': roteiro_telas, 'zap': roteiro_zap, 'varre': roteiro_varre, 'meta': roteiro_meta}.get(CENA, roteiro_app)(), 1.0)
 
 
 def roteiro_pin():
