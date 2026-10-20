@@ -71,6 +71,12 @@ class TelaMemorias(Screen):
         self._atualizar_filtros()
         self.atualizar_lista()
         self._atualizar_grafico()
+        try:
+            from animacoes_ui import entrada_tela
+            sv = self.ids.lista_scroll                     # a lista ja entra item a item
+            entrada_tela(sv.parent, pular=(sv,))
+        except Exception as e:
+            print(f"[memorias] entrada: {e}")
 
     def _atualizar_filtros(self):
         app  = App.get_running_app()

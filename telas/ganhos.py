@@ -73,6 +73,11 @@ class TelaGanhos(Screen):
         self._atualizar_config_ui()
         self._atualizar_periodo_atual()
         self._atualizar_historico()
+        try:
+            from animacoes_ui import entrada_tela
+            entrada_tela(self.ids.historico_container.parent, pular=(self.ids.historico_container,))
+        except Exception as e:
+            print(f"[ganhos] entrada: {e}")
         # Teclados customizados SAO nos campos de configuracao
         from kivy.clock import Clock as _Clk
         _Clk.schedule_once(self._anexar_teclados_ganhos, 0.4)

@@ -314,6 +314,13 @@ class TelaCalculadora(Screen):
             self._ev_del.cancel()
             self._ev_del = None
 
+    def on_enter(self, *_):
+        try:
+            from animacoes_ui import entrada_tela
+            entrada_tela(self.ids.calc_hist_area.parent)
+        except Exception as e:
+            print(f"[calc] entrada: {e}")
+
     def on_leave(self, *_):
         self.del_soltar()
 

@@ -83,7 +83,7 @@ if CENA == 'meta':                     # a regra real: 2.500 / 3.000 por semana
     dados['config_ganhos'] = {'valor_base': 0.25, 'valor_bonus': 0.30, 'meta_bonus': 3000, 'tipo_periodo': 'semanal'}
 with open(os.path.join(pasta_app, 'dados.json'), 'w', encoding='utf-8') as f:
     json.dump(dados, f, ensure_ascii=False)
-if CENA in ('app', 'telas', 'zap', 'varre', 'meta'):
+if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim'):
     with open(os.path.join(pasta_app, '.tf_session'), 'w') as f:
         f.write(str(time.time()))
 
@@ -479,6 +479,32 @@ def roteiro_zap():
     Roteiro(passos).rodar()
 
 
+def roteiro_anim():
+    """As animacoes da interface, quadro a quadro: entrada das telas, o
+    teclado subindo e descendo, um aviso abrindo e fechando, um lote entrando
+    e um lote apagado (a lista fecha o buraco)."""
+    def ir(nome):
+        return lambda: app().mudar_tela(nome)
+
+    def apaga_meio():
+        t = tela()
+        itens = list(t.ids.lista_container.children)
+        btn = itens[len(itens) // 2]
+        dado = next((r for r in app().registros if r[0] in btn.text), app().registros[0])
+        t.confirmar_delete(dado, btn)
+    passos = [(0.3, lambda: fase('entra registro')), (0.01, ir('registro')),
+              (1.6, lambda: fase('teclado sobe')), (0.01, lambda: setattr(tela().ids.nome_input, 'focus', True)),
+              (0.9, lambda: fase('teclado desce')), (0.01, soltar_foco),
+              (0.8, lambda: fase('aviso abre')), (0.01, apaga_meio),
+              (0.9, lambda: fase('aviso fecha')), (0.01, lambda: apertar('CANCELAR')),
+              (0.8, lambda: fase('apaga lote')), (0.01, apaga_meio), (0.4, lambda: apertar('DESINTEGRAR')),
+              (4.2, lambda: fase('entra ganhos')), (0.01, ir('ganhos')),
+              (1.8, lambda: fase('ajustes')), (0.01, lambda: tela().alternar_ajustes(True)),
+              (0.9, lambda: fase('entra calculadora')), (0.01, ir('calculadora')),
+              (1.6, lambda: fase('entra memorias')), (0.01, ir('memorias')), (2.0, fim)]
+    Roteiro(passos).rodar()
+
+
 def roteiro_meta():
     """As telas das METAS: a faixa HOJE do registro, o painel da meta, um
     lote novo (com a festa se passar da meta) e a tela de ganhos."""
@@ -539,7 +565,8 @@ def esperar_menu(dt):
         Clock.schedule_once(esperar_menu, 0.05)
         return
     fase('menu')
-    Clock.schedule_once(lambda dt: {'telas': roteiro_telas, 'zap': roteiro_zap, 'varre': roteiro_varre, 'meta': roteiro_meta}.get(CENA, roteiro_app)(), 1.0)
+    Clock.schedule_once(lambda dt: {'telas': roteiro_telas, 'zap': roteiro_zap, 'varre': roteiro_varre, 'meta': roteiro_meta,
+              'anim': roteiro_anim}.get(CENA, roteiro_app)(), 1.0)
 
 
 def roteiro_pin():

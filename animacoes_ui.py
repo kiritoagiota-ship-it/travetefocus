@@ -6,6 +6,8 @@ Animacoes de interface usadas por todas as telas:
   fmt_br(valor, casas)           1.234,56 (padrao brasileiro)
   aplicar_brilho_toque(botao)    pulso no contorno + faixa de luz varrendo
   pulso(widget)                  "batida" curta de escala
+  deslizar(widgets, dy)          os itens saem de dy e escorregam ate o lugar (fecha buracos)
+  entrada_tela(layout, pular)    os blocos da tela entram em cascata (todas as telas iguais)
 
 Regras: nada de .bind(...).start(...) encadeado (bind devolve None) e nenhum
 callback de Clock/Animation deixa excecao escapar.
@@ -287,6 +289,47 @@ def aplicar_brilho_toque(botao, cor=None):
             c_faixa.a = 0
             c_pulso.a = 0
     botao.fbind('parent', _parar)
+
+
+def deslizar(widgets, dy, duracao=0.24):
+    """Os widgets aparecem deslocados `dy` (o lugar de antes) e escorregam
+    ate o lugar novo: a lista fecha o buraco de um item apagado em vez de
+    pular (so visual: o layout ja esta no lugar certo)."""
+    for w in widgets or ():
+        try:
+            tr, _sc = _matriz(w)
+            ev = getattr(w, '_anim_ui_desliza', None)
+            if ev is not None:
+                ev.cancel()
+            tr.y = dy
+            t = [0.0]
+
+            def _p(dt, tr=tr, w=w):
+                try:
+                    t[0] += dt
+                    k = min(1.0, t[0] / duracao)
+                    tr.y = dy * (1 - k) ** 3                  # out_cubic
+                    if k >= 1:
+                        tr.y = 0
+                        w._anim_ui_desliza = None
+                        return False
+                except Exception:
+                    tr.y = 0
+                    return False
+            w._anim_ui_desliza = Clock.schedule_interval(_p, 1 / 60.)
+        except Exception as e:
+            print(f"[anim_ui] deslizar: {e}")
+
+
+def entrada_tela(layout, pular=()):
+    """Os blocos de `layout` (de cima para baixo) entram em cascata curta
+    quando a tela abre - o mesmo jeito em todas as telas. `pular` = widgets
+    que tem a propria animacao (ex.: listas que ja entram item a item)."""
+    try:
+        blocos = [w for w in reversed(list(layout.children)) if w not in pular and w.opacity > 0]
+        entrada_cascata(blocos, atraso=0.035, dy=dp(14), duracao=0.30, escala=False, atraso_max=0.28)
+    except Exception as e:
+        print(f"[anim_ui] entrada da tela: {e}")
 
 
 def pulso(widget, fator=1.08, duracao=0.28):

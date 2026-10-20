@@ -24,6 +24,12 @@ class TelaRegistro(Screen):
     def on_enter(self):
         self.atualizar()
         self.atualizar_meta()
+        try:
+            from animacoes_ui import entrada_tela
+            lista = self.ids.lista_container.parent            # a lista ja entra item a item
+            entrada_tela(self.ids.lbl_meta_hoje.parent, pular=(lista, self.ids.empty_state))
+        except Exception as e:
+            print(f"[registro] entrada: {e}")
         # Anexar teclados customizados SAO (so na primeira vez por widget)
         Clock.schedule_once(self._anexar_teclados, 0.3)
         self._foco_ev = Clock.schedule_once(self._focar_nome, 0.35)
@@ -205,7 +211,7 @@ class TelaRegistro(Screen):
                 animar_ganho_xp(xp_total, origem=btn)
         Clock.schedule_once(_carimbo, 0.42)
         Clock.schedule_once(lambda _: self._focar_nome(), 0.15)
-        self.atualizar_meta()
+        self.atualizar_meta(bater=True)
         self._comemorar(antes, self._situacao())
 
     # ── metas de producao ────────────────────────────────────────────────
@@ -220,8 +226,15 @@ class TelaRegistro(Screen):
         md = metas.meta_diaria(alvo, sem, hj, hoje, cfg['pecas_sabado'])
         return sem, hj, md['hoje_meta'], metas.faixa_de(sem, cfg)[0]
 
-    def atualizar_meta(self):
-        """A faixa do topo: o que saiu hoje, a meta do dia, o ritmo e quanto falta."""
+    def atualizar_meta(self, bater=False):
+        """A faixa do topo: o que saiu hoje, a meta do dia, o ritmo e quanto falta.
+        bater=True: a faixa da uma batida (mudou com um lote novo)."""
+        if bater:
+            try:
+                from animacoes_ui import pulso
+                pulso(self.ids.lbl_meta_hoje, 1.04, 0.3)
+            except Exception:
+                pass
         try:
             app = App.get_running_app()
             cfg = metas.completar_cfg(app.config_ganhos)
@@ -309,10 +322,10 @@ class TelaRegistro(Screen):
             tatil.forte()
             # o Yoru corta o lote com o saque relampago e depois vem a explosao de cacos
             from cenas import kirito_fatiar
-            kirito_fatiar(btn, lambda: self.deletar(dado), tipo='iai')
+            kirito_fatiar(btn, lambda: self.deletar(dado, btn), tipo='iai')
         popup_delete_engracado(_fazer)
 
-    def deletar(self, dado):
+    def deletar(self, dado, btn=None):
         app = App.get_running_app()
         try:
             app.registros.remove(dado)
@@ -320,7 +333,19 @@ class TelaRegistro(Screen):
             app.salvar_dados()
         except ValueError:
             pass
-        self.atualizar()
+        cont = self.ids.lista_container
+        if btn is not None and btn in cont.children and app.registros:      # (ids e um atalho: 'is' nunca bate)
+            # tira so o lote apagado: os de baixo sobem escorregando para o
+            # lugar (antes a lista inteira sumia e entrava de novo)
+            filhos = list(cont.children)                 # (o de baixo primeiro)
+            i = filhos.index(btn)
+            abaixo = filhos[:i]
+            passo = btn.height + cont.spacing[1] if hasattr(cont.spacing, '__getitem__') else btn.height
+            cont.remove_widget(btn)
+            from animacoes_ui import deslizar
+            deslizar(abaixo, -passo)
+        else:
+            self.atualizar()
         self.atualizar_meta()
 
     def finalizar_dia(self):

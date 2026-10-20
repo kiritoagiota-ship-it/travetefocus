@@ -349,6 +349,20 @@ def _abrir_popup(caixa, pop):
         except Exception as e:
             print(f"[popup] soltar foco: {e}")
     pop.bind(on_dismiss=_on_dismiss)
+
+    def _ao_fechar(*_):
+        # a caixa encolhe e desce um pouco enquanto o fundo escuro some
+        try:
+            Animation.cancel_all(caixa)
+            Animation(opacity=0, pos_hint={'center_x': 0.5, 'center_y': 0.47},
+                      duration=0.14, transition='in_cubic').start(caixa)
+        except Exception as e:
+            print(f"[popup] fechar: {e}")
+    try:
+        pop._anim_duration = 0.16
+        pop.bind(on_pre_dismiss=_ao_fechar)
+    except Exception as e:
+        print(f"[popup] animacao de saida: {e}")
     pop.open()
 
 
@@ -362,10 +376,16 @@ def _caixa_do_popup(inp):
             continue
         conteudo = pop.content
         w = inp
-        while w is not None and w.parent is not None:
-            if w.parent is conteudo:
+        # para na janela e nunca passa de 60 niveis: a janela pode ser pai de
+        # si mesma, e o laco antigo ficava preso para sempre (o app congelava
+        # quando o teclado abria enquanto um aviso ainda fechava)
+        for _ in range(60):
+            pai = getattr(w, 'parent', None)
+            if pai is None or pai is w or w is Window:
+                break
+            if pai is conteudo:
                 return w
-            w = w.parent
+            w = pai
     return None
 
 
@@ -378,16 +398,17 @@ def _desviar_do_teclado(inp, kb, estado):
         caixa = _caixa_do_popup(inp)
         if caixa is not None:
             _, cy0 = caixa.to_window(caixa.x, caixa.y)
-            if caixa.height < Window.height - dp(18) - kb.top:
+            if caixa.height < Window.height - dp(18) - kb.height:
                 iy = cy0                      # cabe inteira: sobe a caixa toda
-        falta = (kb.top + dp(12)) - iy
+        topo_kb = kb.height                   # (ele termina com y = 0)
+        falta = (topo_kb + dp(12)) - iy
         if falta <= 0:
             return
         if caixa is not None:
             _, cy = caixa.to_window(caixa.x, caixa.y)
             topo_max = Window.height - dp(6)
             novo_cy = cy + falta + caixa.height / 2.0
-            novo_cy = min(novo_cy, topo_max - caixa.height / 2.0) if caixa.height < topo_max - kb.top else novo_cy
+            novo_cy = min(novo_cy, topo_max - caixa.height / 2.0) if caixa.height < topo_max - kb.height else novo_cy
             estado['alvo'], estado['orig'] = caixa, dict(caixa.pos_hint)
             dica = dict(caixa.pos_hint)
             # pos_hint e relativo ao conteudo do popup (menor que a janela)
@@ -445,6 +466,7 @@ def anexar_teclado(inp, tipo='letras', decimal=False, sugestoes=None):
         kb = ref[0]
         if not kb:
             return
+        ref[0] = None              # ja livre: tocar no campo durante a descida reabre na hora
         _voltar_do_teclado(desvio)
         # Remover listener de toque fora
         try:
@@ -458,11 +480,11 @@ def anexar_teclado(inp, tipo='letras', decimal=False, sugestoes=None):
                 Window.remove_widget(kb)
             except Exception:
                 pass
-            ref[0] = None
 
         # bind() devolve None: encadear .bind(...).start(...) derrubava o app
         # toda vez que o teclado fechava (OK, toque fora, popup fechando)
-        anim = _Anim(opacity=0, duration=0.10, transition='in_expo')
+        _Anim.cancel_all(kb)
+        anim = _Anim(opacity=0, y=-kb.height * 0.35, duration=0.14, transition='in_cubic')
         anim.bind(on_complete=_rm)
         anim.start(kb)
 
@@ -487,11 +509,11 @@ def anexar_teclado(inp, tipo='letras', decimal=False, sugestoes=None):
                   else Kls(target=inst, fechar=_esconder, sugestoes=sugestoes))
             larg       = largura_coluna()
             kb.size    = (larg, kb.height)
-            kb.pos     = ((Window.width - larg) / 2.0, 0)
+            kb.pos     = ((Window.width - larg) / 2.0, -kb.height * 0.5)
             kb.opacity = 0
             Window.add_widget(kb)
             ref[0] = kb
-            _Anim(opacity=1, duration=0.14, transition='out_expo').start(kb)
+            _Anim(opacity=1, y=0, duration=0.20, transition='out_cubic').start(kb)
             Clock.schedule_once(lambda dt: _desviar_do_teclado(inst, kb, desvio), 0)
 
             # Registrar listener para fechar ao tocar fora
