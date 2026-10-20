@@ -496,6 +496,9 @@ def roteiro_meta():
               (0.8, lote), (0.8, lambda: setattr(campo_do_popup(), 'text', '3')),
               (0.3, lambda: apertar('CONFIRMAR')), (1.0, soltar_foco), (2.5, lambda: foto('m3-registro-depois')),
               (0.6, ir('ganhos')), (2.4, soltar_foco), (0.5, lambda: foto('m4-ganhos')),
+              (0.3, lambda: tela().alternar_ajustes(True)), (0.6, lambda: foto('m4b-ajustes-abertos')),
+              (0.3, lambda: setattr(tela().ids.rolagem, 'scroll_y', 0)), (0.6, lambda: foto('m4c-rolou-ate-o-fim')),
+              (0.3, lambda: tela().alternar_ajustes(False)), (0.3, lambda: setattr(tela().ids.rolagem, 'scroll_y', 1)),
               # fechar com pecas nao finalizadas: o aviso; finaliza o dia e ai fecha
               (0.3, lambda: tela().fechar_periodo()), (1.0, lambda: foto('m5-aviso-finalizar')),
               (0.3, fechar_popups), (0.4, ir('registro')), (2.0, lambda: tela().finalizar_dia()),

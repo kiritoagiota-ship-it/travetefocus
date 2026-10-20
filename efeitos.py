@@ -207,6 +207,20 @@ class InputHolografico(TextInput):
         kwargs.setdefault('multiline', False)
         super().__init__(**kwargs)
         self.bind(focus=self._ao_focar)
+        # o fundo do campo vai na PRIMEIRA posicao do canvas.before: o Kivy
+        # desenha o texto no canvas.before e, desenhado depois, o fundo cobria
+        # o texto (os numeros ficavam apagados)
+        from kivy.graphics import InstructionGroup
+        g = InstructionGroup()
+        g.add(Color(0.04, 0.04, 0.12, 1))
+        self._fundo_rr = RoundedRectangle(pos=self.pos, size=self.size, radius=[8])
+        g.add(self._fundo_rr)
+        self.canvas.before.insert(0, g)
+        self.bind(pos=self._mover_fundo, size=self._mover_fundo)
+
+    def _mover_fundo(self, *_):
+        self._fundo_rr.pos = self.pos
+        self._fundo_rr.size = self.size
 
     def _bind_keyboard(self):
         """

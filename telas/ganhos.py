@@ -66,6 +66,10 @@ def _reais(v):
 class TelaGanhos(Screen):
 
     def on_enter(self):
+        try:
+            self.ids.rolagem.scroll_y = 1            # sempre abre no topo
+        except Exception:
+            pass
         self._atualizar_config_ui()
         self._atualizar_periodo_atual()
         self._atualizar_historico()
@@ -155,14 +159,17 @@ class TelaGanhos(Screen):
             self.ids.lbl_periodo_status.text = "[color=#8c96aa]--  Nenhum período aberto  --[/color]"
             self.ids.lbl_periodo_pecas.text  = ""
             self.ids.lbl_periodo_ganho.text  = ""
-            self.ids.lbl_periodo_bonus.text  = "[color=#8c96aa]Configure abaixo e toque em ABRIR PERÍODO[/color]"
+            self.ids.lbl_periodo_bonus.text  = "[color=#8c96aa]Toque em ABRIR PERÍODO para acompanhar o pagamento[/color]"
+            self._pecas_periodo = None
             self._mostrar_botao(self.ids.btn_abrir_periodo, True)
             self._mostrar_botao(self.ids.btn_fechar_periodo, False)
+            self._atualizar_semana()
             return
 
         cfg      = self._cfg()
         pecas    = self._pecas_no_periodo(aberto['data_inicio'], excluir=self._ja_contadas(aberto))
         pecas   += self._lotes_nao_finalizados(aberto['data_inicio'])
+        self._pecas_periodo = pecas
         ganho    = self._calcular_ganho(pecas)
         tipo     = aberto.get('tipo', 'período').capitalize()
         prox     = metas.proxima_faixa(pecas, cfg)
@@ -223,9 +230,21 @@ class TelaGanhos(Screen):
                 sem, maximo=topo * 1.12, cor=(1, 0.88, 0.1, 1) if prox is None else (0, 0.9, 1, 1),
                 marcas=[(ini, f"R$ {fmt_br(v, 2)}", (1, 0.88, 0.1, 1) if k == len(fx) - 1
                          else (0, 1, 0.55, 1)) for k, (ini, v, _n) in enumerate(fx) if ini > 0])
-            contar(self.ids.lbl_semana_pecas, sem,
-                   lambda v: f"[color=#9aa6bd]Semana[/color]  [color=#00e5ff][b]{fmt_br(v)}[/b][/color]"
-                             f"[color=#9aa6bd] peças  ·  [/color][color=#00ff88]{_reais(metas.ganho(sem, cfg))}[/color]")
+            aberto = next((p for p in reversed(app.periodos_ganhos) if not p.get('data_fim')), None)
+            if aberto is None:
+                # sem periodo aberto: os numeros grandes mostram a semana
+                contar(self.ids.lbl_periodo_pecas, sem,
+                       lambda v: f"[color=#9aa6bd]Peças na semana[/color]\n[color=#00e5ff][b]{fmt_br(v)}[/b][/color]")
+                contar(self.ids.lbl_periodo_ganho, metas.ganho(sem, cfg),
+                       lambda v: f"[color=#9aa6bd]Projeção[/color]\n[color=#00ff88][b]R$ {fmt_br(v, 2)}[/b][/color]",
+                       inteiro=False)
+                self.ids.lbl_semana_pecas.text = ""
+            elif getattr(self, '_pecas_periodo', None) != sem:
+                self.ids.lbl_semana_pecas.text = (
+                    f"[color=#9aa6bd]Esta semana (seg a sáb):[/color] [color=#00e5ff][b]{fmt_br(sem)}[/b][/color]"
+                    f"[color=#9aa6bd] peças  ·  [/color][color=#00ff88]{_reais(metas.ganho(sem, cfg))}[/color]")
+            else:
+                self.ids.lbl_semana_pecas.text = ""
             linhas = []
             sab = int(cfg['pecas_sabado'])
             for ini, v, _n in fx:
@@ -341,6 +360,22 @@ class TelaGanhos(Screen):
 
             btn_del.bind(on_release=lambda *_, f=_fazer_delete: f())
         entrada_cascata(linhas)
+
+    def alternar_ajustes(self, abrir=None):
+        """Mostra/esconde as configuracoes do calculo (ficam recolhidas)."""
+        bloco = self.ids.bloco_config
+        abrir = (bloco.height == 0) if abrir is None else abrir
+        Animation.cancel_all(bloco)
+        if abrir:
+            bloco.disabled = False
+            Animation(height=dp(220), opacity=1, duration=0.22, transition='out_quad').start(bloco)
+            self.ids.btn_ajustes.text = "AJUSTES DO CÁLCULO   [color=#00e5ff88]^[/color]"
+            som.tocar_click()
+        else:
+            bloco.disabled = True
+            Animation(height=0, opacity=0, duration=0.18, transition='out_quad').start(bloco)
+            self.ids.btn_ajustes.text = "AJUSTES DO CÁLCULO   [color=#00e5ff88]v[/color]"
+        tatil.botao()
 
     def _ciclar_tipo(self):
         tipos  = ["Semanal", "Quinzenal", "Mensal"]

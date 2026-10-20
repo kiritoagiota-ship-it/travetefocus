@@ -149,13 +149,9 @@
     foreground_color:  0, 0.9, 1, 1
     cursor_color:      0, 0.9, 1, 1
     padding:           [dp(14), max(0, (self.height - self.line_height) / 2.0)]
-    canvas.before:
-        Color:
-            rgba: 0.04, 0.04, 0.12, 1
-        RoundedRectangle:
-            pos:    self.pos
-            size:   self.size
-            radius: [8]
+    # o FUNDO escuro e posto por baixo de tudo pela classe (InputHolografico):
+    # aqui no canvas.before ele ficava POR CIMA do texto e o numero aparecia apagado
+    canvas.after:
         Color:
             rgba: self.borda_color
         Line:
@@ -1103,326 +1099,322 @@
             valign:      "middle"
             text_size:   self.size
 
-        # ══ BLOCO 1: STATUS DO PERÍODO ATUAL ════════════════
-        BoxLayout:
-            orientation: 'vertical'
-            size_hint_y: None
-            height:      dp(190)
-            spacing:     dp(6)
-            padding:     [dp(14), dp(10), dp(14), dp(10)]
-            canvas.before:
-                Color:
-                    rgba: rgba("#07071ccc")
-                Rectangle:
-                    pos:  self.pos
-                    size: self.size
-                Color:
-                    rgba: rgba("#00ff8866")
-                Line:
-                    points: [self.x+dp(12), self.y, self.right-dp(12), self.y, self.right, self.y+dp(12), self.right, self.top-dp(12), self.right-dp(12), self.top, self.x+dp(12), self.top, self.x, self.top-dp(12), self.x, self.y+dp(12), self.x+dp(12), self.y]
-                    width:  1.5
-
-            Label:
-                id:          lbl_periodo_status
-                text:        "[color=#444444]--  Nenhum período aberto  --[/color]"
-                markup:      True
-                font_name:   "orbitron.ttf"
-                font_size:   "11sp"
-                size_hint_y: None
-                height:      dp(22)
-                halign:      "center"
-                valign:      "middle"
-                text_size:   self.size
-
-            BoxLayout:
-                size_hint_y: None
-                height:      dp(52)
-                spacing:     dp(8)
-                Label:
-                    id:        lbl_periodo_pecas
-                    text:      ""
-                    markup:    True
-                    font_name: "rajdhani.ttf"
-                    font_size: "15sp"
-                    halign:    "center"
-                    valign:    "middle"
-                    text_size: self.size
-                Label:
-                    id:        lbl_periodo_ganho
-                    text:      ""
-                    markup:    True
-                    font_name: "rajdhani.ttf"
-                    font_size: "15sp"
-                    halign:    "center"
-                    valign:    "middle"
-                    text_size: self.size
-
-            Label:
-                id:          lbl_periodo_bonus
-                text:        ""
-                markup:      True
-                font_name:   "rajdhani.ttf"
-                font_size:   "14sp"
-                size_hint_y: None
-                height:      dp(38)
-                halign:      "center"
-                valign:      "middle"
-                text_size:   self.size
-
-            BoxLayout:
-                size_hint_y: None
-                height:      dp(46)
-                spacing:     0              # so um dos dois aparece de cada vez
-                BotaoAngular:
-                    id:           btn_abrir_periodo
-                    text:         ">>  ABRIR PERÍODO"
-                    font_size:    "13sp"
-                    cor_borda:    [0, 1, 0.55, 0.9]
-                    cor_borda_kv: [0, 1, 0.55, 0.9]
-                    cor_texto:    [0, 1, 0.55, 1]
-                    on_release:   root.abrir_periodo()
-                BotaoAngular:
-                    id:           btn_fechar_periodo
-                    text:         ">>  FECHAR E CALCULAR"
-                    font_size:    "13sp"
-                    cor_borda:    [1, 0.65, 0, 0.9]
-                    cor_borda_kv: [1, 0.65, 0, 0.9]
-                    cor_texto:    [1, 0.80, 0, 1]
-                    opacity:      0
-                    disabled:     True
-                    on_release:   root.fechar_periodo()
-
-        # ══ BLOCO 1b: META DA SEMANA (seg a sáb) ════════════
-        BoxLayout:
-            orientation: 'vertical'
-            size_hint_y: None
-            height:      dp(132)
-            spacing:     dp(4)
-            padding:     [dp(14), dp(8), dp(14), dp(8)]
-            canvas.before:
-                Color:
-                    rgba: rgba("#07071ccc")
-                Rectangle:
-                    pos:  self.pos
-                    size: self.size
-                Color:
-                    rgba: rgba("#ffcc0055")
-                Line:
-                    points: [self.x+dp(12), self.y, self.right-dp(12), self.y, self.right, self.y+dp(12), self.right, self.top-dp(12), self.right-dp(12), self.top, self.x+dp(12), self.top, self.x, self.top-dp(12), self.x, self.y+dp(12), self.x+dp(12), self.y]
-                    width:  1.3
-            Label:
-                id:          lbl_semana_pecas
-                text:        ""
-                markup:      True
-                font_name:   "rajdhani.ttf"
-                font_size:   "15sp"
-                size_hint_y: None
-                height:      dp(20)
-                halign:      "center"
-                valign:      "middle"
-                text_size:   self.size
-            BarraMeta:
-                id:          barra_semana
-                size_hint_y: None
-                height:      dp(32)
-            Label:
-                id:          lbl_semana_metas
-                text:        ""
-                markup:      True
-                font_name:   "rajdhani.ttf"
-                font_size:   "13sp"
-                halign:      "center"
-                valign:      "middle"
-                text_size:   self.size
-
-        # ══ BLOCO 2: CONFIGURAÇÕES ══════════════════════════
-        BoxLayout:
-            orientation: 'vertical'
-            size_hint_y: None
-            height:      dp(222)
-            spacing:     dp(4)
-            padding:     [dp(12), dp(10), dp(12), dp(10)]
-            canvas.before:
-                Color:
-                    rgba: rgba("#04040e99")
-                Rectangle:
-                    pos:  self.pos
-                    size: self.size
-                Color:
-                    rgba: rgba("#00e5ff22")
-                Line:
-                    rounded_rectangle: [self.x, self.y, self.width, self.height, 8]
-                    width: 1
-
-            Label:
-                text:        "CONFIGURAÇÕES DO CÁLCULO"
-                font_name:   "orbitron.ttf"
-                font_size:   "10sp"
-                color:       rgba("#00e5ffb0")
-                size_hint_y: None
-                height:      dp(18)
-                halign:      "center"
-                text_size:   self.size
-
-            BoxLayout:
-                size_hint_y: None
-                height:      dp(44)
-                spacing:     dp(8)
-                Label:
-                    text:        "Base R$"
-                    font_name:   "rajdhani.ttf"
-                    font_size:   "14sp"
-                    color:       rgba("#b4bed2")
-                    size_hint_x: 0.22
-                    halign:      "right"
-                    valign:      "middle"
-                    text_size:   self.size
-                InputHolografico:
-                    id:           inp_valor_base
-                    text:         "0,25"
-                    input_filter: root.filtro_reais
-                    font_size:    "16sp"
-                    halign:       "center"
-                    size_hint_x:  0.28
-                Label:
-                    text:        "Bônus R$"
-                    font_name:   "rajdhani.ttf"
-                    font_size:   "14sp"
-                    color:       rgba("#b4bed2")
-                    size_hint_x: 0.22
-                    halign:      "right"
-                    valign:      "middle"
-                    text_size:   self.size
-                InputHolografico:
-                    id:           inp_valor_bonus
-                    text:         "0,30"
-                    input_filter: root.filtro_reais
-                    font_size:    "16sp"
-                    halign:       "center"
-                    size_hint_x:  0.28
-
-            # faixa do meio: valor e a partir de quantas pecas; a de cima: a partir de quantas
-            BoxLayout:
-                size_hint_y: None
-                height:      dp(44)
-                spacing:     dp(6)
-                Label:
-                    text:        "Meio R$"
-                    font_name:   "rajdhani.ttf"
-                    font_size:   "14sp"
-                    color:       rgba("#b4bed2")
-                    size_hint_x: 0.20
-                    halign:      "right"
-                    valign:      "middle"
-                    text_size:   self.size
-                InputHolografico:
-                    id:           inp_valor_meio
-                    text:         "0,27"
-                    input_filter: root.filtro_reais
-                    font_size:    "15sp"
-                    halign:       "center"
-                    size_hint_x:  0.22
-                Label:
-                    text:        "a partir"
-                    font_name:   "rajdhani.ttf"
-                    font_size:   "13sp"
-                    color:       rgba("#b4bed2")
-                    size_hint_x: 0.18
-                    halign:      "right"
-                    valign:      "middle"
-                    text_size:   self.size
-                InputHolografico:
-                    id:           inp_meta_meio
-                    text:         "2500"
-                    input_filter: 'int'
-                    font_size:    "15sp"
-                    halign:       "center"
-                    size_hint_x:  0.22
-                Label:
-                    text:        "pç"
-                    font_name:   "rajdhani.ttf"
-                    font_size:   "13sp"
-                    color:       rgba("#b4bed2")
-                    size_hint_x: 0.08
-                    halign:      "left"
-                    valign:      "middle"
-                    text_size:   self.size
-
-            BoxLayout:
-                size_hint_y: None
-                height:      dp(44)
-                spacing:     dp(6)
-                Label:
-                    text:        "Bônus a partir"
-                    font_name:   "rajdhani.ttf"
-                    font_size:   "13sp"
-                    color:       rgba("#b4bed2")
-                    size_hint_x: 0.30
-                    halign:      "right"
-                    valign:      "middle"
-                    text_size:   self.size
-                InputHolografico:
-                    id:           inp_meta_bonus
-                    text:         "3000"
-                    input_filter: 'int'
-                    font_size:    "15sp"
-                    halign:       "center"
-                    size_hint_x:  0.22
-                Label:
-                    text:        "Sábado"
-                    font_name:   "rajdhani.ttf"
-                    font_size:   "13sp"
-                    color:       rgba("#b4bed2")
-                    size_hint_x: 0.22
-                    halign:      "right"
-                    valign:      "middle"
-                    text_size:   self.size
-                InputHolografico:
-                    id:           inp_sabado
-                    text:         "200"
-                    input_filter: 'int'
-                    font_size:    "15sp"
-                    halign:       "center"
-                    size_hint_x:  0.20
-
-            BoxLayout:
-                size_hint_y: None
-                height:      dp(40)
-                spacing:     dp(8)
-                BotaoAngular:
-                    id:          spin_tipo
-                    text:        "Semanal"
-                    font_size:   "12sp"
-                    size_hint_x: 0.30
-                    on_release:  root._ciclar_tipo()
-                BotaoAngular:
-                    text:         ">>  OK"
-                    font_size:    "13sp"
-                    size_hint_x:  0.32
-                    cor_borda:    [0, 1, 0.55, 0.9]
-                    cor_borda_kv: [0, 1, 0.55, 0.9]
-                    cor_texto:    [0, 1, 0.55, 1]
-                    on_release:   root.salvar_config()
-
-        # ══ BLOCO 3: HISTÓRICO ═══════════════════════════════
-        Label:
-            text:        "HISTÓRICO DE PERÍODOS FECHADOS"
-            font_name:   "orbitron.ttf"
-            font_size:   "10sp"
-            color:       rgba("#00e5ffb0")
-            size_hint_y: None
-            height:      dp(20)
-            halign:      "center"
-            text_size:   self.size
-
+        # a PAGINA INTEIRA rola (antes so o historico rolava e, em celular
+        # com a barra de navegacao, ele ficava espremido ate sumir)
         ScrollView:
-            GridLayout:
-                id:            historico_container
-                cols:          1
-                size_hint_y:   None
-                height:        self.minimum_height
-                spacing:       dp(7)
-                padding:       [0, dp(2), 0, dp(2)]
+            id:              rolagem
+            do_scroll_x:     False
+            bar_width:       dp(3)
+            bar_color:       0, 0.9, 1, 0.55
+            bar_inactive_color: 0, 0.9, 1, 0.18
+            scroll_type:     ['bars', 'content']
+            BoxLayout:
+                orientation: 'vertical'
+                size_hint_y: None
+                height:      self.minimum_height
+                spacing:     dp(10)
+                padding:     [0, 0, 0, dp(10)]
+
+                # ══ CARD: PERÍODO + SEMANA (um quadro só) ════════════
+                BoxLayout:
+                    orientation: 'vertical'
+                    size_hint_y: None
+                    height:      self.minimum_height
+                    spacing:     dp(6)
+                    padding:     [dp(14), dp(10), dp(14), dp(12)]
+                    canvas.before:
+                        Color:
+                            rgba: rgba("#07071ccc")
+                        Rectangle:
+                            pos:  self.pos
+                            size: self.size
+                        Color:
+                            rgba: rgba("#00ff8866")
+                        Line:
+                            points: [self.x+dp(12), self.y, self.right-dp(12), self.y, self.right, self.y+dp(12), self.right, self.top-dp(12), self.right-dp(12), self.top, self.x+dp(12), self.top, self.x, self.top-dp(12), self.x, self.y+dp(12), self.x+dp(12), self.y]
+                            width:  1.5
+
+                    Label:
+                        id:          lbl_periodo_status
+                        text:        "[color=#444444]--  Nenhum período aberto  --[/color]"
+                        markup:      True
+                        font_name:   "orbitron.ttf"
+                        font_size:   "11sp"
+                        size_hint_y: None
+                        height:      dp(22)
+                        halign:      "center"
+                        valign:      "middle"
+                        text_size:   self.size
+
+                    BoxLayout:
+                        size_hint_y: None
+                        height:      dp(50)
+                        spacing:     dp(8)
+                        Label:
+                            id:        lbl_periodo_pecas
+                            text:      ""
+                            markup:    True
+                            font_name: "rajdhani.ttf"
+                            font_size: "15sp"
+                            halign:    "center"
+                            valign:    "middle"
+                            text_size: self.size
+                        Label:
+                            id:        lbl_periodo_ganho
+                            text:      ""
+                            markup:    True
+                            font_name: "rajdhani.ttf"
+                            font_size: "15sp"
+                            halign:    "center"
+                            valign:    "middle"
+                            text_size: self.size
+
+                    # so aparece quando a semana (seg a sab) e diferente do periodo aberto
+                    Label:
+                        id:          lbl_semana_pecas
+                        text:        ""
+                        markup:      True
+                        font_name:   "rajdhani.ttf"
+                        font_size:   "14sp"
+                        size_hint_y: None
+                        height:      self.texture_size[1] + dp(4) if self.text else 0
+                        opacity:     1 if self.text else 0
+                        halign:      "center"
+                        valign:      "middle"
+                        text_size:   self.width, None
+
+                    BarraMeta:
+                        id:          barra_semana
+                        size_hint_y: None
+                        height:      dp(34)
+
+                    Label:
+                        id:          lbl_periodo_bonus
+                        text:        ""
+                        markup:      True
+                        font_name:   "rajdhani.ttf"
+                        font_size:   "14sp"
+                        size_hint_y: None
+                        height:      self.texture_size[1] + dp(6)
+                        halign:      "center"
+                        valign:      "middle"
+                        text_size:   self.width, None
+
+                    Label:
+                        id:          lbl_semana_metas
+                        text:        ""
+                        markup:      True
+                        font_name:   "rajdhani.ttf"
+                        font_size:   "14sp"
+                        size_hint_y: None
+                        height:      self.texture_size[1] + dp(6)
+                        line_height: 1.15
+                        halign:      "center"
+                        valign:      "middle"
+                        text_size:   self.width, None
+
+                    BoxLayout:
+                        size_hint_y: None
+                        height:      dp(48)
+                        spacing:     0              # so um dos dois aparece de cada vez
+                        BotaoAngular:
+                            id:           btn_abrir_periodo
+                            text:         ">>  ABRIR PERÍODO"
+                            font_size:    "13sp"
+                            cor_borda:    [0, 1, 0.55, 0.9]
+                            cor_borda_kv: [0, 1, 0.55, 0.9]
+                            cor_texto:    [0, 1, 0.55, 1]
+                            on_release:   root.abrir_periodo()
+                        BotaoAngular:
+                            id:           btn_fechar_periodo
+                            text:         ">>  FECHAR E CALCULAR"
+                            font_size:    "13sp"
+                            cor_borda:    [1, 0.65, 0, 0.9]
+                            cor_borda_kv: [1, 0.65, 0, 0.9]
+                            cor_texto:    [1, 0.80, 0, 1]
+                            opacity:      0
+                            disabled:     True
+                            on_release:   root.fechar_periodo()
+
+                # ══ AJUSTES (recolhidos: abrem num toque) ══════════
+                BotaoAngular:
+                    id:          btn_ajustes
+                    text:        "AJUSTES DO CÁLCULO   [color=#00e5ff88]v[/color]"
+                    font_size:   "12sp"
+                    size_hint_y: None
+                    height:      dp(44)
+                    on_release:  root.alternar_ajustes()
+
+                BoxLayout:
+                    id:          bloco_config
+                    orientation: 'vertical'
+                    size_hint_y: None
+                    height:      0
+                    opacity:     0
+                    disabled:    True
+                    spacing:     dp(6)
+                    padding:     [dp(12), dp(10), dp(12), dp(10)]
+                    canvas.before:
+                        Color:
+                            rgba: rgba("#04040e99")
+                        Rectangle:
+                            pos:  self.pos
+                            size: self.size
+                        Color:
+                            rgba: rgba("#00e5ff22")
+                        Line:
+                            rounded_rectangle: [self.x, self.y, self.width, self.height, 8]
+                            width: 1
+
+                    BoxLayout:
+                        size_hint_y: None
+                        height:      dp(44)
+                        spacing:     dp(8)
+                        Label:
+                            text:        "Base R$"
+                            font_name:   "rajdhani.ttf"
+                            font_size:   "14sp"
+                            color:       rgba("#b4bed2")
+                            size_hint_x: 0.22
+                            halign:      "right"
+                            valign:      "middle"
+                            text_size:   self.size
+                        InputHolografico:
+                            id:           inp_valor_base
+                            text:         "0,25"
+                            input_filter: root.filtro_reais
+                            font_size:    "16sp"
+                            halign:       "center"
+                            size_hint_x:  0.28
+                        Label:
+                            text:        "Bônus R$"
+                            font_name:   "rajdhani.ttf"
+                            font_size:   "14sp"
+                            color:       rgba("#b4bed2")
+                            size_hint_x: 0.22
+                            halign:      "right"
+                            valign:      "middle"
+                            text_size:   self.size
+                        InputHolografico:
+                            id:           inp_valor_bonus
+                            text:         "0,30"
+                            input_filter: root.filtro_reais
+                            font_size:    "16sp"
+                            halign:       "center"
+                            size_hint_x:  0.28
+
+                    BoxLayout:
+                        size_hint_y: None
+                        height:      dp(44)
+                        spacing:     dp(6)
+                        Label:
+                            text:        "Meio R$"
+                            font_name:   "rajdhani.ttf"
+                            font_size:   "14sp"
+                            color:       rgba("#b4bed2")
+                            size_hint_x: 0.22
+                            halign:      "right"
+                            valign:      "middle"
+                            text_size:   self.size
+                        InputHolografico:
+                            id:           inp_valor_meio
+                            text:         "0,27"
+                            input_filter: root.filtro_reais
+                            font_size:    "16sp"
+                            halign:       "center"
+                            size_hint_x:  0.28
+                        Label:
+                            text:        "a partir de"
+                            font_name:   "rajdhani.ttf"
+                            font_size:   "14sp"
+                            color:       rgba("#b4bed2")
+                            size_hint_x: 0.22
+                            halign:      "right"
+                            valign:      "middle"
+                            text_size:   self.size
+                        InputHolografico:
+                            id:           inp_meta_meio
+                            text:         "2500"
+                            input_filter: 'int'
+                            font_size:    "16sp"
+                            halign:       "center"
+                            size_hint_x:  0.28
+
+                    BoxLayout:
+                        size_hint_y: None
+                        height:      dp(44)
+                        spacing:     dp(6)
+                        Label:
+                            text:        "Bônus a partir"
+                            font_name:   "rajdhani.ttf"
+                            font_size:   "14sp"
+                            color:       rgba("#b4bed2")
+                            size_hint_x: 0.22
+                            halign:      "right"
+                            valign:      "middle"
+                            text_size:   self.size
+                        InputHolografico:
+                            id:           inp_meta_bonus
+                            text:         "3000"
+                            input_filter: 'int'
+                            font_size:    "16sp"
+                            halign:       "center"
+                            size_hint_x:  0.28
+                        Label:
+                            text:        "Sábado (pç)"
+                            font_name:   "rajdhani.ttf"
+                            font_size:   "14sp"
+                            color:       rgba("#b4bed2")
+                            size_hint_x: 0.22
+                            halign:      "right"
+                            valign:      "middle"
+                            text_size:   self.size
+                        InputHolografico:
+                            id:           inp_sabado
+                            text:         "200"
+                            input_filter: 'int'
+                            font_size:    "16sp"
+                            halign:       "center"
+                            size_hint_x:  0.28
+
+                    BoxLayout:
+                        size_hint_y: None
+                        height:      dp(44)
+                        spacing:     dp(8)
+                        BotaoAngular:
+                            id:          spin_tipo
+                            text:        "Semanal"
+                            font_size:   "12sp"
+                            size_hint_x: 0.42
+                            on_release:  root._ciclar_tipo()
+                        BotaoAngular:
+                            text:         ">>  SALVAR"
+                            font_size:    "13sp"
+                            size_hint_x:  0.58
+                            cor_borda:    [0, 1, 0.55, 0.9]
+                            cor_borda_kv: [0, 1, 0.55, 0.9]
+                            cor_texto:    [0, 1, 0.55, 1]
+                            on_release:   root.salvar_config()
+
+                # ══ HISTÓRICO (todos, rolando com a página) ══════════
+                Label:
+                    text:        "HISTÓRICO DE PERÍODOS FECHADOS"
+                    font_name:   "orbitron.ttf"
+                    font_size:   "10sp"
+                    color:       rgba("#00e5ffb0")
+                    size_hint_y: None
+                    height:      dp(22)
+                    halign:      "center"
+                    valign:      "middle"
+                    text_size:   self.size
+
+                GridLayout:
+                    id:            historico_container
+                    cols:          1
+                    size_hint_y:   None
+                    height:        self.minimum_height
+                    spacing:       dp(7)
+                    padding:       [0, dp(2), 0, dp(2)]
 
         BotaoAngular:
             text:        "<<  Voltar"
