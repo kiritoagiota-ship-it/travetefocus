@@ -467,17 +467,24 @@
                 height:      dp(40)
                 spacing:     dp(10)
                 BotaoAngular:
-                    text:        "VIBRAÇÃO: LIGADA" if app.vibracao else "VIBRAÇÃO: DESLIGADA"
+                    text:        "VIBRAR: SIM" if app.vibracao else "VIBRAR: NÃO"
                     font_name:   "orbitron.ttf"
-                    font_size:   "10sp"
-                    size_hint_x: 0.56
+                    font_size:   "9sp"
+                    size_hint_x: 0.34
                     cor_texto:   [0.0, 0.9, 1.0, 1.0] if app.vibracao else [0.45, 0.5, 0.56, 1.0]
                     on_release:  app.alternar_vibracao()
                 BotaoAngular:
-                    text:        "TROCAR SENHA"
+                    text:        "AVISOS: SIM" if app.lembretes else "AVISOS: NÃO"
                     font_name:   "orbitron.ttf"
-                    font_size:   "10sp"
-                    size_hint_x: 0.44
+                    font_size:   "9sp"
+                    size_hint_x: 0.34
+                    cor_texto:   [0.0, 0.9, 1.0, 1.0] if app.lembretes else [0.45, 0.5, 0.56, 1.0]
+                    on_release:  app.alternar_lembretes()
+                BotaoAngular:
+                    text:        "SENHA"
+                    font_name:   "orbitron.ttf"
+                    font_size:   "9sp"
+                    size_hint_x: 0.32
                     cor_texto:   [0.0, 0.9, 1.0, 1.0]
                     on_release:  app.trocar_senha()
 

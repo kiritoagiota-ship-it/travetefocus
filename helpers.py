@@ -196,9 +196,15 @@ def _soltar_foco(tela):
         print(f"[transicao] soltar foco: {e}")
 
 
+# cor do corte = cor do botao da tela de destino
+_COR_DESTINO = {'registro': (0.0, 0.9, 1.0), 'memorias': (0.62, 0.3, 1.0), 'progresso': (0.2, 0.75, 1.0),
+                'ganhos': (0.1, 1.0, 0.55), 'calculadora': (1.0, 0.62, 0.1)}
+
+
 def transicao_tela(app, destino):
-    """Troca de tela com um corte de espada atravessando a janela
-    (espadachim.golpe_tela). O sentido alterna entre ida e volta."""
+    """Troca de tela: a espada corta e a tela antiga se parte em duas metades
+    que escorregam (na cor do botao do destino); Voltar ao menu e um deslize
+    mais leve. Se algo falhar, cai no corte antigo (espadachim.golpe_tela)."""
     try:
         sm = app.root.ids.sm
     except Exception as e:
@@ -228,16 +234,26 @@ def transicao_tela(app, destino):
         _transicao['ativa'] = False
         _trocar()          # pedido feito depois do pico do corte
 
+    _transicao['ativa'] = True
+    sentido = _transicao['sentido']
+    _transicao['sentido'] = -sentido
+    try:
+        som.tocar('transicao')
+    except Exception:
+        pass
+    try:
+        from animacoes_ui import corte_parte_tela, deslize_voltar
+        if destino == 'menu':
+            deslize_voltar(on_meio=_trocar, on_fim=_fim)
+        else:
+            corte_parte_tela(cor=_COR_DESTINO.get(destino, (0.0, 0.9, 1.0)), sentido=sentido,
+                             on_meio=_trocar, on_fim=_fim)
+        return
+    except Exception as e:
+        print(f"[transicao_tela] corte novo: {e}")
     try:
         from espadachim import golpe_tela
-        _transicao['ativa'] = True
-        sentido = _transicao['sentido']
-        _transicao['sentido'] = -sentido
         cor = (0.0, 0.9, 1.0) if sentido > 0 else (0.6, 0.25, 1.0)
-        try:
-            som.tocar('transicao')
-        except Exception:
-            pass
         golpe_tela(on_meio=_trocar, on_fim=_fim, cor=cor, sentido=sentido)
     except Exception as e:
         print(f"[transicao_tela] erro: {e}")

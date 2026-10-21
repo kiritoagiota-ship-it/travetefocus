@@ -19,6 +19,8 @@ Animacoes de interface usadas por todas as telas:
   icone_pixel(botao, nome)       icone de pixel art animado no botao (menu)
   tunel_link_start(centro, ...)  o tunel de aneis do Link Start (entrar no Registro)
   pacotes_de_luz(botao)          pacotes de luz correndo por dentro do botao
+  corte_parte_tela(cor, ...)     troca de tela: a espada corta e a tela se parte
+  deslize_voltar(...)            Voltar: a tela escorrega e some (mais leve)
 
 Regras: nada de .bind(...).start(...) encadeado (bind devolve None) e nenhum
 callback de Clock/Animation deixa excecao escapar.
@@ -885,6 +887,235 @@ def pacotes_de_luz(botao, cor=(0, 0.9, 1), periodo=2.4):
     _onde()
     luz_na_linha(linhas[0], cor, periodo=periodo, atraso=0.3, duracao=1.1, larg=dp(46))
     luz_na_linha(linhas[1], cor, periodo=periodo, atraso=0.3 + periodo / 2.0, duracao=1.1, larg=dp(46))
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  TROCA DE TELA: O CORTE QUE PARTE A TELA (e o deslize do Voltar)
+# ═══════════════════════════════════════════════════════════════════
+def foto_da_tela():
+    """(textura, fbo) com o que o app mostra agora (a tela inteira)."""
+    from kivy.app import App
+    from kivy.core.window import Window
+    from kivy.graphics import Fbo, ClearColor, ClearBuffers
+    root = App.get_running_app().root
+    W, H = Window.size
+    fbo = Fbo(size=(int(W), int(H)), with_stencilbuffer=True)
+    with fbo:
+        ClearColor(0.02, 0.02, 0.05, 1)
+        ClearBuffers()
+    fbo.add(root.canvas)
+    fbo.draw()
+    fbo.remove(root.canvas)
+    return fbo.texture, fbo
+
+
+def _poligono_textura(pts, W, H):
+    """Vertices de um triangle_fan com a textura da tela cheia (uv = x/W, y/H)."""
+    vs = []
+    for x, y in pts:
+        vs += [x, y, x / float(W), y / float(H)]
+    return vs
+
+
+def corte_parte_tela(cor=(0.0, 0.9, 1.0), sentido=1, on_meio=None, on_fim=None, dur=0.42):
+    """A espada (em pixel) corta a tela numa diagonal; a tela antiga se parte
+    na linha do corte e as duas metades escorregam para lados opostos,
+    sumindo - a tela nova ja esta por baixo (on_meio troca no fim do corte)."""
+    from kivy.core.window import Window
+    from kivy.uix.widget import Widget
+
+    class _Sobre(Widget):
+        def on_touch_down(self, touch):
+            return True
+
+        def on_touch_move(self, touch):
+            return True
+
+        def on_touch_up(self, touch):
+            return True
+    estado = {'meio': False, 'fim': False, 'fbo': None}
+
+    def _meio():
+        if not estado['meio']:
+            estado['meio'] = True
+            if on_meio:
+                try:
+                    on_meio()
+                except Exception as e:
+                    print(f"[corte] meio: {e}")
+
+    def _fim(ov=None):
+        _meio()
+        if not estado['fim']:
+            estado['fim'] = True
+            try:
+                if ov is not None and ov.parent is not None:
+                    Window.remove_widget(ov)
+            except Exception:
+                pass
+            estado['fbo'] = None
+            if on_fim:
+                try:
+                    on_fim()
+                except Exception as e:
+                    print(f"[corte] fim: {e}")
+    try:
+        tex, fbo = foto_da_tela()
+        estado['fbo'] = fbo
+        W, H = Window.size
+        # a linha do corte: diagonal rasa de um lado ao outro da tela
+        dy = W * 0.36 * (1 if sentido > 0 else -1)
+        A = (0.0, H * 0.5 - dy / 2.0)
+        B = (float(W), H * 0.5 + dy / 2.0)
+        comp = math.hypot(B[0] - A[0], B[1] - A[1])
+        tx, ty = (B[0] - A[0]) / comp, (B[1] - A[1]) / comp          # ao longo do corte
+        nx, ny = -ty, tx                                              # para o lado de cima
+        cima = [A, B, (float(W), float(H)), (0.0, float(H))]
+        baixo = [(0.0, 0.0), (float(W), 0.0), B, A]
+        ov = _Sobre(size_hint=(None, None), size=(W, H), pos=(0, 0))
+        u = max(2, int(round(dp(3))))
+        with ov.canvas:
+            metades = []
+            for pts in (cima, baixo):
+                PushMatrix()
+                trm = Translate(0, 0)
+                Color(1, 1, 1, 1)
+                m = Mesh(mode='triangle_fan', texture=tex, indices=list(range(len(pts))),
+                         vertices=_poligono_textura(pts, W, H))
+                c_beira = Color(cor[0], cor[1], cor[2], 0)
+                l_beira = Line(points=[A[0], A[1], B[0], B[1]], width=dp(1.6))
+                PopMatrix()
+                metades.append((trm, m, c_beira, l_beira))
+            # a espada: brilho colorido + nucleo branco em blocos de pixel
+            c_brilho = Color(cor[0], cor[1], cor[2], 0)
+            l_brilho = Line(points=[A[0], A[1], A[0], A[1]], width=dp(7))
+            c_nucleo = Color(1, 1, 1, 0)
+            blocos = [Rectangle(pos=(0, 0), size=(0, 0)) for _ in range(int(comp // (u * 2)) + 2)]
+        Window.add_widget(ov)
+    except Exception as e:
+        print(f"[corte] {e}")
+        _fim()
+        return
+    T_CORTE = 0.13           # a espada atravessa
+    T_ABRE0 = 0.11           # as metades comecam a se separar
+    t = [0.0]
+
+    def _q(dt):
+        try:
+            t[0] += dt
+            k = t[0]
+            # a espada: um traco de blocos de pixel que nasce em A e corre ate B
+            kc = min(1.0, k / T_CORTE)
+            if k < T_CORTE + 0.14:
+                ponta = comp * (1 - (1 - kc) ** 2)
+                cauda = max(0.0, ponta - comp * 0.55) if kc < 1 else comp * min(1.0, (k - T_CORTE) / 0.14)
+                n = 0
+                s = cauda
+                while s < ponta and n < len(blocos):
+                    x = A[0] + tx * s
+                    y = A[1] + ty * s
+                    blocos[n].pos = (int(x // u) * u, int(y // u) * u)
+                    blocos[n].size = (u * 2, u)
+                    n += 1
+                    s += u * 2
+                for r in blocos[n:]:
+                    r.size = (0, 0)
+                l_brilho.points = [A[0] + tx * cauda, A[1] + ty * cauda, A[0] + tx * ponta, A[1] + ty * ponta]
+                c_brilho.a = 0.55
+                c_nucleo.a = 1.0
+            else:
+                c_brilho.a = 0
+                c_nucleo.a = 0
+                for r in blocos:
+                    r.size = (0, 0)
+            if k >= T_CORTE and not estado['meio']:
+                _meio()                                     # a tela nova fica por baixo
+            # as metades se separam: cada uma para o seu lado, acelerando, e somem
+            ka = max(0.0, (k - T_ABRE0) / (dur - T_ABRE0))
+            if ka > 0:
+                d = (ka ** 1.7) * H * 0.55
+                desliza = (ka ** 2) * W * 0.10
+                alfa = 1.0 - max(0.0, (ka - 0.45) / 0.55)
+                for i, (trm, m, c_beira, l_beira) in enumerate(metades):
+                    sgn = 1 if i == 0 else -1
+                    trm.x = nx * d * sgn + tx * desliza * sgn
+                    trm.y = ny * d * sgn + ty * desliza * sgn
+                    c_beira.a = 0.9 * alfa
+                ov.opacity = alfa
+            if k >= dur:
+                _fim(ov)
+                return False
+        except Exception as ex:
+            print(f"[corte] quadro: {ex}")
+            _fim(ov)
+            return False
+    Clock.schedule_interval(_q, 1 / 60.)
+
+
+def deslize_voltar(on_meio=None, on_fim=None, dur=0.24):
+    """Voltar: a tela de agora escorrega para a direita e some (a do menu ja
+    esta por baixo). Mais leve que o corte - e o caminho mais usado."""
+    from kivy.core.window import Window
+    from kivy.uix.widget import Widget
+
+    class _Sobre(Widget):
+        def on_touch_down(self, touch):
+            return True
+
+        def on_touch_up(self, touch):
+            return True
+    guarda = {}
+    try:
+        tex, fbo = foto_da_tela()
+        guarda['fbo'] = fbo                               # a textura vive enquanto o deslize anda
+        W, H = Window.size
+        ov = _Sobre(size_hint=(None, None), size=(W, H), pos=(0, 0))
+        with ov.canvas:
+            PushMatrix()
+            tr = Translate(0, 0)
+            Color(1, 1, 1, 1)
+            Rectangle(texture=tex, pos=(0, 0), size=(W, H))
+            Color(0, 0.9, 1, 0.5)
+            beira = Rectangle(pos=(-dp(2), 0), size=(dp(2), H))
+            PopMatrix()
+        Window.add_widget(ov)
+    except Exception as e:
+        print(f"[voltar] {e}")
+        if on_meio:
+            on_meio()
+        if on_fim:
+            on_fim()
+        return
+    if on_meio:
+        try:
+            on_meio()
+        except Exception as e:
+            print(f"[voltar] meio: {e}")
+    t = [0.0]
+
+    def _q(dt):
+        try:
+            t[0] += dt
+            k = min(1.0, t[0] / dur)
+            e = k * k * (3 - 2 * k)
+            tr.x = W * 0.55 * e
+            ov.opacity = 1.0 - k ** 1.5
+            if k >= 1:
+                Window.remove_widget(ov)
+                guarda.clear()
+                if on_fim:
+                    on_fim()
+                return False
+        except Exception as ex:
+            print(f"[voltar] quadro: {ex}")
+            try:
+                Window.remove_widget(ov)
+            except Exception:
+                pass
+            if on_fim:
+                on_fim()
+            return False
+    Clock.schedule_interval(_q, 1 / 60.)
 
 
 def pulso(widget, fator=1.08, duracao=0.28):

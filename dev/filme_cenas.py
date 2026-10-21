@@ -85,7 +85,7 @@ if CENA == 'meta':                     # a regra real: 2.500 / 3.000 por semana
     dados['config_ganhos'] = {'valor_base': 0.25, 'valor_bonus': 0.30, 'meta_bonus': 3000, 'tipo_periodo': 'semanal'}
 with open(os.path.join(pasta_app, 'dados.json'), 'w', encoding='utf-8') as f:
     json.dump(dados, f, ensure_ascii=False)
-if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas', 'mem', 'link', 'ajustes', 'toques'):
+if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas', 'mem', 'link', 'ajustes', 'toques', 'trans'):
     with open(os.path.join(pasta_app, '.tf_session'), 'w') as f:
         f.write(str(time.time()))
 
@@ -417,7 +417,7 @@ def roteiro_telas():
         (0.2, fechar_popups), (0.9, lambda: foto('16-ganhos-fechado')),
         (0.3, _x_periodo), (0.9, lambda: foto('17-aviso-apagar-periodo')), (0.2, lambda: apertar('CANCELAR')),
         (0.6, ir('calculadora')), (1.6, _calc), (0.6, lambda: foto('18-calculadora')),
-        (0.3, ir('menu')), (1.6, lambda: apertar('TROCAR SENHA')), (0.9, lambda: foto('19-aviso-trocar-senha')),
+        (0.3, ir('menu')), (1.6, lambda: apertar('SENHA')), (0.9, lambda: foto('19-aviso-trocar-senha')),
         (0.3, fechar_popups), (0.6, fim),
     ]
     Roteiro(passos).rodar()
@@ -884,6 +884,19 @@ def roteiro_toques():
     Roteiro(passos).rodar()
 
 
+def roteiro_trans():
+    """So as trocas de tela: o corte que parte a tela (ida, na cor de cada
+    destino) e o deslize do Voltar."""
+    def ir(nome):
+        return lambda: app().mudar_tela(nome)
+    passos = [(0.8, lambda: fase('menu')), (0.01, lambda: None)]
+    for t in ('memorias', 'ganhos', 'calculadora', 'progresso'):
+        passos += [(0.6, lambda t=t: fase('vai ' + t)), (0.01, ir(t)), (1.4, lambda t=t: fase('volta de ' + t)),
+                   (0.01, ir('menu')), (0.9, lambda: None)]
+    passos.append((0.5, fim))
+    Roteiro(passos).rodar()
+
+
 def roteiro_meta():
     """As telas das METAS: a faixa HOJE do registro, o painel da meta, um
     lote novo (com a festa se passar da meta) e a tela de ganhos."""
@@ -947,7 +960,7 @@ def esperar_menu(dt):
     Clock.schedule_once(lambda dt: {'telas': roteiro_telas, 'zap': roteiro_zap, 'varre': roteiro_varre, 'meta': roteiro_meta,
               'anim': roteiro_anim, 'vivo': roteiro_vivo, 'novas': roteiro_novas,
               'mem': roteiro_mem, 'link': roteiro_link,
-              'ajustes': roteiro_ajustes, 'toques': roteiro_toques}.get(CENA, roteiro_app)(), 1.0)
+              'ajustes': roteiro_ajustes, 'toques': roteiro_toques, 'trans': roteiro_trans}.get(CENA, roteiro_app)(), 1.0)
 
 
 def roteiro_pin():

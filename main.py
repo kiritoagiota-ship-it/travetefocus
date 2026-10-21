@@ -17,6 +17,7 @@ from kivy.core.window import Window
 from kivy.properties import NumericProperty, ListProperty, StringProperty, BooleanProperty
 from kivy.metrics import dp
 from kivy.utils import platform
+from kivy.clock import Clock
 from kivy.resources import resource_add_path, resource_find
 
 import som
@@ -139,6 +140,7 @@ class TraveteApp(App):
     periodos_ganhos = ListProperty([])
     versao          = StringProperty("dev")
     vibracao        = BooleanProperty(True)     # resposta tatil (tatil.py)
+    lembretes       = BooleanProperty(True)     # avisos na barra do celular (lembretes.py)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -172,6 +174,17 @@ class TraveteApp(App):
         # botao VOLTAR do Android (ESC no PC): antes jogava o app para o fundo
         # na hora, ate com um popup aberto ou no meio de uma tela
         Window.bind(on_keyboard=self._tecla_voltar)
+        # avisos na barra do celular: pede a permissao (Android 13+) e agenda
+        if self.lembretes:
+            Clock.schedule_once(lambda dt: self._iniciar_lembretes(), 6.0)
+
+    def _iniciar_lembretes(self):
+        try:
+            import lembretes
+            lembretes.pedir_permissao()
+            lembretes.replanejar(self)
+        except Exception as e:
+            print(f"[lembretes] {e}")
 
     def _tecla_voltar(self, window, key, *args):
         if key != 27:
@@ -235,6 +248,19 @@ class TraveteApp(App):
             import tatil
             tatil.confirmar()
 
+    def alternar_lembretes(self):
+        """Botao do menu: liga/desliga os avisos na barra do celular (fica salvo)."""
+        self.lembretes = not self.lembretes
+        self.salvar_dados()                      # (gravar ja reagenda ou cancela tudo)
+        import tatil
+        tatil.confirmar() if self.lembretes else tatil.botao()
+        if self.lembretes:
+            try:
+                import lembretes
+                lembretes.pedir_permissao()
+            except Exception as e:
+                print(f"[lembretes] {e}")
+
     def trocar_senha(self):
         """Botao do menu: abre a janela de trocar a senha."""
         from helpers import popup_trocar_senha
@@ -293,8 +319,16 @@ class TraveteApp(App):
             "ultima_data":     self.ultima_data,
             "periodos_ganhos": list(self.periodos_ganhos),
             "config_ganhos":   dict(self.config_ganhos),
-            "config_app":      {"vibracao": bool(self.vibracao)},
+            "config_app":      {"vibracao": bool(self.vibracao),
+                                "lembretes": bool(getattr(self, 'lembretes', True))},
         }, ensure_ascii=False))
+        # os avisos na barra do celular acompanham os dados (lote novo cancela o
+        # lembrete de hoje, meta batida cancela o aviso da meta...)
+        try:
+            import lembretes
+            lembretes.replanejar(self)
+        except Exception as e:
+            print(f"[lembretes] {e}")
         data_dir = self.user_data_dir
         if sincrono:
             self._salvar_bg(snapshot, data_dir)
@@ -403,6 +437,7 @@ class TraveteApp(App):
                 self.periodos_ganhos = d.get("periodos_ganhos",  [])
                 self.config_ganhos.update(d.get("config_ganhos", {}))
                 self.vibracao        = bool(d.get("config_app", {}).get("vibracao", True))
+                self.lembretes       = bool(d.get("config_app", {}).get("lembretes", True))
                 self.recalcular_totais()
                 return
             except Exception as e:

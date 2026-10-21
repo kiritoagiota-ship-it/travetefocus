@@ -126,6 +126,7 @@ jobs:
           s = s.replace(old, "        shutil.rmtree('venv', ignore_errors=True)" + chr(10) + old)
           open(p, "w", encoding="utf-8").write(s)
           PY
+          python .github/manifest_lembrete.py "$GITHUB_WORKSPACE/p4a-src"
           sed -i '/^p4a.branch/d' buildozer.spec
           sed -i "/^p4a.hook/a p4a.source_dir = $GITHUB_WORKSPACE/p4a-src" buildozer.spec
           grep -n "^p4a" buildozer.spec
@@ -162,7 +163,14 @@ jobs:
       - name: Build APK (debug, verbose)
         run: |
           set -o pipefail
+          # o recebedor dos lembretes tambem nos moldes ja guardados no cache
+          python .github/manifest_lembrete.py .buildozer || true
           buildozer -v android debug 2>&1 | tee build.log
+          if grep -rqs "org.travetefocus.Lembrete" --include=AndroidManifest.xml .buildozer; then
+            echo "::notice::Lembretes: o recebedor esta no AndroidManifest."
+          else
+            echo "::warning::Lembretes: o recebedor NAO entrou no AndroidManifest (os avisos nao vao aparecer)."
+          fi
         timeout-minutes: 75
 
       # ── 10b. ASSINATURA FIXA ───────────────────────────────────────────────

@@ -21,6 +21,7 @@ r toques 540 1158 1.3125 CENA=toques CADA=0 TOUR_PY=dev/filme_cenas.py
 r perf 720 1560 1.75 FOTOS=0
 python dev/teste_metas.py 2>&1 | tail -1
 python dev/teste_dados.py 2>&1 | tail -1
+python dev/teste_lembretes.py 2>&1 | tail -1
 for f in $S/b_*/filme.json $S/b_*/log.json; do python -c "
 import json,sys;e=json.load(open(sys.argv[1],encoding='utf-8')).get('erros') or []
 print('ERROS', sys.argv[1], e[:3]) if e else None" "$f"; done
