@@ -99,7 +99,7 @@ outro jeito. Sugestões e correções são bem-vindas pelas *Issues*.
 | `efeitos.py`, `animacoes_ui.py` | Botões, cartões, gráficos, barras, ícones de pixel e as animações da interface |
 | `helpers.py` | Avisos (popups), o teclado do app e as trocas de tela |
 | `metas.py` | As contas: semana, faixas de pagamento e meta do dia |
-| `lembretes.py` + `java/` + `res_notif/` + `res_layout/` | Avisos na barra do celular (AlarmManager + recebedor em Java que monta o card) |
+| `lembretes.py` + `java/` + `res_notif/`, `res_yoru/`, `res_layout/` | Avisos na barra do celular (AlarmManager + recebedor em Java que monta o card) |
 | `kirito.py`, `cenas.py`, `yoru_*`, `bankai/` | O Yoru: desenho em pixel art, poses e as cenas animadas |
 | `chefe*.py`, `chefe/`, `espadachim.py`, `infinito.py` | A abertura (a luta contra o chefe) e os efeitos de espada |
 | `notificacoes.py`, `som.py`, `tatil.py` | LEVEL UP, sons e vibração |
