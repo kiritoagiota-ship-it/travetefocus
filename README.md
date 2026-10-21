@@ -70,7 +70,7 @@ outro jeito. Sugestões e correções são bem-vindas pelas *Issues*.
 | **Progresso** | Nível, XP, título, sequência de dias trabalhados e recordes. |
 | **Ganhos** | O período aberto, a projeção em R$ e as **faixas de pagamento** da semana (ex.: R$ 0,25 → 0,27 a partir de 2.500 peças → 0,30 a partir de 3.000): quanto falta para a próxima e quanto por dia, com o sábado como **previsão** de meio período. |
 | **Calculadora** | Contas rápidas com histórico. |
-| **Avisos** | Cards no visual do app, com o Yoru, uma fala dele e a barra de progresso: lembrete para começar o dia (7h), sequência em risco (15h), meta do dia (16h), fechamento do dia (20h), faixa nova na hora em que a semana sobe de faixa, faixa ao alcance e resumo da semana (sábado). O botão **AVISOS** mostra o que pode estar bloqueando e tem um **teste**. |
+| **Avisos** | Cards no visual do app, com o Yoru, uma fala dele e a barra de progresso: lembrete para começar o dia (7h), sequência de dias (17h, lembra de tocar em FINALIZAR DIA para o dia contar), meta do dia (16h), fechamento do dia (20h), faixa nova na hora em que a semana sobe de faixa, faixa ao alcance e resumo da semana (sábado). O botão **AVISOS** mostra o que pode estar bloqueando e tem um **teste**. |
 | **Senha** | PIN guardado só como impressão digital (PBKDF2 com sal) no celular; errar 3 vezes bloqueia por um tempo crescente. |
 
 ## Instalar

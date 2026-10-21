@@ -2,8 +2,13 @@
 lembretes.py — TraveteFocus
 Avisos na barra do celular, com o app fechado (escolha do usuario):
 
-  lancar      seg a sab, 7h (a hora de chegar no trabalho): se ainda nao saiu nenhum lote no dia, o Yoru lembra
-  risco       seg a sab, 15h: nenhum lote hoje e a sequencia (2+ dias) vai quebrar
+  lancar      seg a sab, 7h (a hora de chegar no trabalho): bom dia, se ainda
+              nao saiu nenhum lote no dia
+  sequencia   seg a sex 17h / sabado 11h30: o dia de hoje ainda nao foi
+              finalizado (FINALIZAR DIA) e ha uma sequencia (2+ dias) - o dia so conta na
+              sequencia com o FINALIZAR DIA. Com lotes lancados: "finaliza
+              e vira N+1 dias"; sem nenhum lote: "a sequencia esta em risco".
+              Avisa quando o dia bate o recorde de dias seguidos.
   meta        seg a sex, 16h: se a meta do dia ainda nao foi batida, quanto falta
   fechamento  seg a sex 20h / sabado 13h: o dia (pecas, XP) e a faixa da semana
   faixa       sabado, 8h: se a proxima faixa da semana (2.500 / 3.000) cabe no
@@ -27,22 +32,25 @@ from datetime import datetime, timedelta
 import metas
 
 HORA_LANCAR = (7, 0)
-HORA_RISCO = (15, 0)
+HORA_SEQ = (17, 0)
+HORA_SEQ_SAB = (11, 30)
 HORA_META = (16, 0)
 HORA_FECHAMENTO = (20, 0)
 HORA_FECHAMENTO_SAB = (13, 0)
 HORA_FAIXA = (8, 0)
 HORA_RESUMO = (14, 0)
-IDS = {'lancar': 7101, 'meta': 7102, 'faixa': 7103, 'resumo': 7104, 'risco': 7105, 'fechamento': 7106}
+IDS = {'lancar': 7101, 'meta': 7102, 'faixa': 7103, 'resumo': 7104, 'sequencia': 7105, 'fechamento': 7106}
 ID_FAIXA_NOVA = 7107
 
 # o que o Yoru fala em cada aviso (uma por dia, sorteada)
 FALAS = {
-    'lancar': ("Bora, a meta não se bate sozinha!", "Primeiro lote do dia: o resto vem junto.",
-               "A espada está afiada. E a agulha?", "Um lote de cada vez, como um golpe de cada vez.",
-               "Hoje é dia de subir de nível."),
-    'risco': ("Não deixa a sequência cair agora!", "Um lote só já salva a sequência.",
+    'lancar': ("Bom dia! A espada está afiada. E a agulha?", "Chegou? Então bora, a meta não se bate sozinha.",
+               "Primeiro lote do dia: o resto vem junto.", "Um lote de cada vez, como um golpe de cada vez.",
+               "Café tomado? Hoje é dia de subir de nível."),
+    'risco': ("Não deixa a sequência cair agora!", "Um lote e o dia finalizado já salvam a sequência.",
               "Eu seguro a linha, você lança o lote.", "Dias seguidos valem mais que um dia gigante."),
+    'seq_fim': ("Não deixa o dia de hoje de fora!", "Um toque em FINALIZAR DIA e hoje entra para a conta.",
+                "Dias seguidos valem mais que um dia gigante.", "O trabalho está feito. Só falta guardar."),
     'meta': ("Falta pouco. Último esforço!", "Respira e vai: a meta está logo ali.",
              "Cada peça agora conta em dobro na cabeça.", "Mais um pouco e a meta cai."),
     'fechamento': ("Bom trabalho hoje. Descansa a espada.", "Mais um dia no placar.",
@@ -54,7 +62,7 @@ FALAS = {
     'faixa_nova': ("Subiu de faixa! Cada peça vale mais agora.", "Faixa nova desbloqueada!",
                    "Isso! A semana inteira ficou mais cara."),
 }
-POSES = {'lancar': 'guarda', 'risco': 'susto', 'meta': 'meta', 'fechamento': 'vitoria',
+POSES = {'lancar': 'guarda', 'risco': 'susto', 'seq_fim': 'meta', 'meta': 'meta', 'fechamento': 'vitoria',
          'faixa': 'meta', 'resumo': 'vitoria', 'faixa_nova': 'vitoria'}
 
 
@@ -98,16 +106,40 @@ def _xp_hoje(memorias, registros, hoje):
     return xp
 
 
+def _dias_com_turno(memorias):
+    dias = set()
+    for m in memorias or ():
+        d = metas._dia_de(m.get('data', ''))
+        if d is not None:
+            dias.add(d)
+    return dias
+
+
+def _melhor_seq(dias):
+    """A maior sequencia de dias seguidos (com a regra do app: o domingo de
+    folga nao quebra)."""
+    melhor = n = 0
+    ant = None
+    for d in sorted(dias):
+        if ant is not None and ((d - ant).days == 1 or
+                                ((d - ant).days == 2 and (ant + timedelta(days=1)).weekday() == 6)):
+            n += 1
+        else:
+            n = 1
+        melhor = max(melhor, n)
+        ant = d
+    return melhor
+
+
 def _card(tipo, dia, prog=0, prog_max=0, rotulo='', semana=''):
     return {'pose': POSES.get(tipo, 'guarda'), 'fala': _fala(tipo, dia), 'prog': int(max(0, prog)),
             'prog_max': int(max(0, prog_max)), 'rotulo': rotulo, 'semana': semana}
 
 
-def planejar(agora, memorias, registros, cfg, seq=0):
+def planejar(agora, memorias, registros, cfg):
     """[{'id', 'tipo', 'quando' (datetime), 'titulo', 'texto', + o card: 'pose',
     'fala', 'prog', 'prog_max', 'rotulo', 'semana'}] - os avisos que valem a
-    partir de `agora`, com os numeros de agora. `seq`: a sequencia de dias
-    que ainda vale (para o aviso de sequencia em risco)."""
+    partir de `agora`, com os numeros de agora."""
     cfg = metas.completar_cfg(cfg)
     hoje = agora.date()
     sem, hj = metas.pecas_da_semana(memorias or [], registros or [], hoje)
@@ -127,19 +159,39 @@ def planejar(agora, memorias, registros, cfg, seq=0):
         dia = _dia_util(hoje + timedelta(days=1))
     meta_l = md_hoje['hoje_meta'] if dia == hoje else 0
     p = {'id': IDS['lancar'], 'tipo': 'lancar', 'quando': _as(dia, HORA_LANCAR),
-         'titulo': "⚔ Hora de lançar",
-         'texto': "O Yoru está esperando os lotes de hoje. Abre o TraveteFocus e lança o primeiro!"}
+         'titulo': "⚔ Bom dia! Bora começar",
+         'texto': "Chegou no trabalho? O Yoru já está de guarda. Assim que sair o primeiro lote, "
+                  "lança no TraveteFocus!"}
     p.update(_card('lancar', dia, 0, meta_l, f"Meta de hoje: 0 / {_br(meta_l)}" if meta_l else '', linha_semana))
     planos.append(p)
 
-    # 2) sequencia em risco (seg a sab, 15h): nada lancado hoje e 2+ dias seguidos
-    if hoje.weekday() <= 5 and hj == 0 and int(seq or 0) >= 2 and agora < _as(hoje, HORA_RISCO):
-        p = {'id': IDS['risco'], 'tipo': 'risco', 'quando': _as(hoje, HORA_RISCO),
-             'titulo': f"🔥 Sequência de {int(seq)} dias em risco",
-             'texto': f"Se hoje passar em branco, a sequência de {int(seq)} dias quebra. "
-                      "Um lote já salva!"}
-        p.update(_card('risco', hoje, 0, 0, '', linha_semana))
-        planos.append(p)
+    # 2) sequencia (seg a sex 17h, sabado 11h30): o dia so entra na sequencia
+    #    com o turno FINALIZADO - avisa se hoje ainda nao tem turno salvo
+    dias = _dias_com_turno(memorias)
+    hora_s = HORA_SEQ_SAB if hoje.weekday() == 5 else HORA_SEQ
+    if hoje.weekday() <= 5 and dias and hoje not in dias and agora < _as(hoje, hora_s):
+        seq = metas.sequencia(dias) if metas.sequencia_vale(max(dias), hoje) else 0
+        if seq >= 2:
+            melhor = _melhor_seq(dias)
+            novo = seq + 1
+            bate = novo > melhor
+            rot = f"Sequência: {seq} → {novo} dias"
+            fim = f"Recorde: {melhor} dias"
+            if hj > 0:
+                p = {'id': IDS['sequencia'], 'tipo': 'seq_fim', 'quando': _as(hoje, hora_s),
+                     'titulo': f"🔥 Finaliza o dia: {novo} dias seguidos",
+                     'texto': f"Você já lançou {_br(hj)} peças hoje, mas hoje só entra na sequência "
+                              f"quando você toca em FINALIZAR DIA. Finaliza e ela vai de {seq} para {novo} dias"
+                              + (", o seu novo recorde!" if bate else ".")}
+                p.update(_card('seq_fim', hoje, seq, max(melhor, novo), rot, fim))
+            else:
+                p = {'id': IDS['sequencia'], 'tipo': 'risco', 'quando': _as(hoje, hora_s),
+                     'titulo': f"🔥 Sequência de {seq} dias em risco",
+                     'texto': f"Ainda não saiu nenhum lote hoje. Lança e toca em FINALIZAR DIA para não "
+                              f"perder os {seq} dias seguidos."
+                              + (f" Fechando hoje, bate o recorde: {novo} dias!" if bate else "")}
+                p.update(_card('risco', hoje, seq, max(melhor, novo), rot, fim))
+            planos.append(p)
 
     # 3) meta do dia (seg a sex), as 16h de hoje, se ainda falta
     if hoje.weekday() <= 4 and agora < _as(hoje, HORA_META):
@@ -161,10 +213,13 @@ def planejar(agora, memorias, registros, cfg, seq=0):
             falta_txt = f"faltam {_br(prox['falta'])} para R$ {_br(prox['valor'], 2)}"
         else:
             falta_txt = "já está na faixa máxima"
+        # so fala em finalizar se ainda tem lote de hoje fora de um turno salvo
+        pendente = any((metas._dia_de(r[3]) if len(r) > 3 and r[3] else hoje) == hoje
+                       for r in registros or () if len(r) > 1)
+        fim_txt = "Não esquece de tocar em FINALIZAR DIA." if pendente else "Dia finalizado. Bom descanso!"
         p = {'id': IDS['fechamento'], 'tipo': 'fechamento', 'quando': _as(hoje, hora_f),
              'titulo': "📊 Fechamento do dia",
-             'texto': f"Hoje: {_br(hj)} peças · +{_br(xp)} XP. Na semana, {falta_txt}. "
-                      "Não esquece de finalizar o turno."}
+             'texto': f"Hoje: {_br(hj)} peças · +{_br(xp)} XP. Na semana, {falta_txt}. " + fim_txt}
         p.update(_card('fechamento', hoje, sem, alvo, f"Semana: {_br(sem)} / {_br(alvo)}",
                        f"R$ {_br(ganho_sem, 2)}"))
         planos.append(p)
@@ -380,21 +435,10 @@ def replanejar(app):
         return
     try:
         ligado = bool(getattr(app, 'lembretes', True))
-        planos = planejar(datetime.now(), app.memorias, app.registros, app.config_ganhos,
-                          _seq(app)) if ligado else []
+        planos = planejar(datetime.now(), app.memorias, app.registros, app.config_ganhos) if ligado else []
         aplicar(planos, ligado)
     except Exception as e:
         print(f"[lembretes] {e}")
-
-
-def _seq(app, hoje=None):
-    """A sequencia de dias do app, se ainda vale hoje (senao 0)."""
-    try:
-        hoje = hoje or datetime.now().date()
-        ultimo = metas._dia_de(getattr(app, 'ultima_data', ''))
-        return int(getattr(app, 'streak', 0)) if metas.sequencia_vale(ultimo, hoje) else 0
-    except Exception:
-        return 0
 
 
 def avisar_agora(plano):
@@ -536,7 +580,7 @@ def proximos(app, agora=None):
     """[(quando 'qua 16:00', titulo)] dos avisos agendados com os dados de agora."""
     agora = agora or datetime.now()
     try:
-        planos = planejar(agora, app.memorias, app.registros, app.config_ganhos, _seq(app, agora.date()))
+        planos = planejar(agora, app.memorias, app.registros, app.config_ganhos)
     except Exception as ex:
         print(f"[lembretes] proximos: {ex}")
         return []

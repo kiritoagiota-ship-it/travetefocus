@@ -24,8 +24,8 @@ def turno(data, total):
     return {'data': f'{data}  17:00', 'total': total, 'xp': total * 3}
 
 
-def plano(agora, memorias=(), registros=(), seq=0):
-    return {p['tipo']: p for p in lembretes.planejar(agora, list(memorias), list(registros), CFG, seq)}
+def plano(agora, memorias=(), registros=()):
+    return {p['tipo']: p for p in lembretes.planejar(agora, list(memorias), list(registros), CFG)}
 
 
 # 20/10/2026 e terca-feira (segunda = 19/10, sabado = 24/10, domingo = 25/10)
@@ -92,17 +92,37 @@ caso('semana vazia: sem resumo', 'resumo' not in p)
 todos = lembretes.planejar(datetime(2026, 10, 23, 7, 0), [turno('19/10/2026', 2300)], [], CFG)
 caso('ids conhecidos', all(x['id'] in lembretes.IDS.values() for x in todos))
 
-# 12) sequencia em risco: terca 9h, nada hoje, 4 dias seguidos -> 15h
-p = plano(datetime(2026, 10, 20, 9, 0), seq=4)
-caso('risco 15h', 'risco' in p and p['risco']['quando'] == datetime(2026, 10, 20, 15, 0), p.get('risco'))
-caso('risco: texto com os dias', 'risco' in p and '4 dias' in p['risco']['titulo'], p.get('risco', {}).get('titulo'))
+# 12) sequencia: o dia so conta com o turno finalizado
+# turnos qua 14 a seg 19 (o domingo 18 e folga): 5 dias seguidos ate ontem
+SEQ5 = [turno(f'{d}/10/2026', 300) for d in (14, 15, 16, 17, 19)]
+LOTE_HOJE = [['Camisa', '50', 150, '', datetime(2026, 10, 20, 8, 30).timestamp()]]
+p = plano(datetime(2026, 10, 20, 9, 0), SEQ5)
+caso('risco 17h', 'risco' in p and p['risco']['quando'] == datetime(2026, 10, 20, 17, 0), p.get('risco'))
+caso('risco: texto com os dias', 'risco' in p and '5 dias' in p['risco']['titulo'], p.get('risco', {}).get('titulo'))
 caso('risco: Yoru assustado', p.get('risco', {}).get('pose') == 'susto')
-caso('risco: sequencia curta nao avisa', 'risco' not in plano(datetime(2026, 10, 20, 9, 0), seq=1))
-caso('risco: ja lancou nao avisa', 'risco' not in plano(
-    datetime(2026, 10, 20, 9, 0), registros=[['Camisa', '50', 150, '', datetime(2026, 10, 20, 8, 30).timestamp()]], seq=4))
-caso('risco: passou das 15h nao avisa', 'risco' not in plano(datetime(2026, 10, 20, 15, 30), seq=4))
-caso('risco: domingo nao avisa', 'risco' not in plano(datetime(2026, 10, 25, 9, 0), seq=4))
-caso('risco: sabado avisa', 'risco' in plano(datetime(2026, 10, 24, 9, 0), seq=4))
+caso('risco: recorde (6 > 5)', 'risco' in p and 'bate o recorde: 6 dias' in p['risco']['texto']
+     and p['risco']['semana'] == 'Recorde: 5 dias', p.get('risco'))
+caso('risco: barra 5 de 6', p.get('risco', {}).get('prog') == 5 and p['risco']['prog_max'] == 6, p.get('risco'))
+# lancou mas nao finalizou: o aviso vira "finaliza o turno"
+p = plano(datetime(2026, 10, 20, 9, 0), SEQ5, LOTE_HOJE)
+caso('lancou: finaliza o turno', 'seq_fim' in p and 'risco' not in p and '6 dias' in p['seq_fim']['titulo'], p.keys())
+caso('lancou: texto com as pecas', 'seq_fim' in p and '50 peças' in p['seq_fim']['texto'], p.get('seq_fim', {}).get('texto'))
+caso('lancou: mesmo id', p.get('seq_fim', {}).get('id') == lembretes.IDS['sequencia'])
+# turno de hoje ja finalizado: nada
+caso('finalizado: sem aviso', not ({'risco', 'seq_fim'} & set(plano(datetime(2026, 10, 20, 9, 0), SEQ5 + [turno(ter, 400)]))))
+caso('sequencia curta nao avisa', not ({'risco', 'seq_fim'} & set(plano(datetime(2026, 10, 20, 9, 0), [turno(seg, 300)]))))
+caso('sequencia quebrada nao avisa', not ({'risco', 'seq_fim'} & set(plano(datetime(2026, 10, 20, 9, 0),
+                                                                     [turno(f'{d}/10/2026', 300) for d in (14, 15, 16)]))))
+caso('passou das 17h nao avisa', 'risco' not in plano(datetime(2026, 10, 20, 17, 30), SEQ5))
+caso('domingo nao avisa', 'risco' not in plano(datetime(2026, 10, 25, 9, 0), SEQ5 + [turno(f'{d}/10/2026', 300) for d in (20, 21, 22, 23, 24)]))
+p = plano(datetime(2026, 10, 24, 9, 0), SEQ5 + [turno(f'{d}/10/2026', 300) for d in (20, 21, 22, 23)])
+caso('sabado 11h30', 'risco' in p and p['risco']['quando'] == datetime(2026, 10, 24, 11, 30), p.get('risco'))
+# recorde antigo maior: nao fala em recorde
+velho = [turno(f'{d:02d}/09/2026', 300) for d in (1, 2, 3, 4, 5, 7, 8, 9, 10)]
+p = plano(datetime(2026, 10, 20, 9, 0), velho + SEQ5)
+caso('recorde antigo: sem "recorde" no texto', 'risco' in p and 'recorde' not in p['risco']['texto']
+     and p['risco']['semana'] == 'Recorde: 9 dias', p.get('risco'))
+caso('melhor sequencia pula o domingo', lembretes._melhor_seq(lembretes._dias_com_turno(velho)) == 9)
 
 # 13) fechamento do dia: terca 13h com 600 hoje -> 20h; sabado -> 13h
 mems = [turno(seg, 600)]
@@ -113,13 +133,17 @@ caso('fechamento: pecas e XP de hoje', 'fechamento' in p and '600 peças' in p['
      and '+1.800 XP' in p['fechamento']['texto'], p.get('fechamento', {}).get('texto'))
 caso('fechamento: barra da semana ate a faixa', p.get('fechamento', {}).get('prog') == 1200
      and p['fechamento']['prog_max'] == 2500, p.get('fechamento'))
+caso('fechamento: lote pendente lembra de finalizar', 'FINALIZAR DIA' in p['fechamento']['texto'])
+p2 = plano(datetime(2026, 10, 20, 13, 0), mems + [turno(ter, 500)])
+caso('fechamento: turno salvo', 'fechamento' in p2 and 'Dia finalizado' in p2['fechamento']['texto'],
+     p2.get('fechamento', {}).get('texto'))
 caso('fechamento: sem lote nao avisa', 'fechamento' not in plano(datetime(2026, 10, 20, 13, 0), mems))
 regs_sab = [['Calca', '150', 450, '', datetime(2026, 10, 24, 8, 0).timestamp()]]
 p = plano(datetime(2026, 10, 24, 9, 0), mems, regs_sab)
 caso('fechamento sabado 13h', 'fechamento' in p and p['fechamento']['quando'] == datetime(2026, 10, 24, 13, 0))
 
 # 14) o card: todo aviso tem pose, fala e numeros coerentes
-todos = lembretes.planejar(datetime(2026, 10, 20, 9, 0), [turno(seg, 1200)], [], CFG, 3)
+todos = lembretes.planejar(datetime(2026, 10, 20, 6, 0), SEQ5, [], CFG)
 caso('todos com o card', all(x.get('pose') in ('guarda', 'meta', 'vitoria', 'susto') and x.get('fala')
                              and 0 <= x['prog'] and x['prog_max'] >= 0 for x in todos), todos)
 caso('fala igual o dia todo', lembretes._fala('meta', datetime(2026, 10, 20).date())
