@@ -91,6 +91,10 @@ def planejar(agora, memorias, registros, cfg):
 
 
 # ── Android ──────────────────────────────────────────────────────────────
+ID_TESTE = 7199
+RECEBEDOR = 'org.travetefocus.Lembrete'
+
+
 def _android():
     try:
         from kivy.utils import platform
@@ -99,14 +103,17 @@ def _android():
         return False
 
 
+def _sdk():
+    from jnius import autoclass
+    return autoclass('android.os.Build$VERSION').SDK_INT
+
+
 def pedir_permissao():
     """Android 13+: pede a permissao de mostrar avisos (uma vez)."""
     if not _android():
         return
     try:
-        from jnius import autoclass
-        sdk = autoclass('android.os.Build$VERSION').SDK_INT
-        if sdk < 33:
+        if _sdk() < 33:
             return
         from android.permissions import request_permissions, check_permission
         p = 'android.permission.POST_NOTIFICATIONS'
@@ -116,42 +123,50 @@ def pedir_permissao():
         print(f"[lembretes] permissao: {e}")
 
 
+def _agendar(nid, titulo, texto, quando_ms, cancelar_so=False):
+    """Agenda (ou so cancela) o aviso `nid` no AlarmManager -> o recebedor
+    org.travetefocus.Lembrete mostra o aviso na hora, com o app fechado."""
+    from jnius import autoclass, cast
+    PA = autoclass('org.kivy.android.PythonActivity')
+    Context = autoclass('android.content.Context')
+    Intent = autoclass('android.content.Intent')
+    PendingIntent = autoclass('android.app.PendingIntent')
+    AlarmManager = autoclass('android.app.AlarmManager')
+    sdk = _sdk()
+    ctx = PA.mActivity
+    am = cast('android.app.AlarmManager', ctx.getSystemService(Context.ALARM_SERVICE))
+    flags = PendingIntent.FLAG_UPDATE_CURRENT
+    if sdk >= 23:
+        flags |= PendingIntent.FLAG_IMMUTABLE
+    it = Intent()
+    it.setClassName(ctx.getPackageName(), RECEBEDOR)
+    it.setAction('org.travetefocus.LEMBRETE_%d' % nid)
+    if not cancelar_so:
+        it.putExtra('id', str(nid))
+        it.putExtra('titulo', str(titulo))
+        it.putExtra('texto', str(texto))
+    pi = PendingIntent.getBroadcast(ctx, nid, it, flags)
+    am.cancel(pi)
+    if cancelar_so:
+        return
+    if sdk >= 23:
+        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, int(quando_ms), pi)
+    else:
+        am.set(AlarmManager.RTC_WAKEUP, int(quando_ms), pi)
+
+
 def aplicar(planos, ligado=True):
     """Agenda os avisos de `planos` e cancela os outros (ligado=False: cancela tudo)."""
     if not _android():
         return
     try:
-        from jnius import autoclass, cast
-        PA = autoclass('org.kivy.android.PythonActivity')
-        Context = autoclass('android.content.Context')
-        Intent = autoclass('android.content.Intent')
-        PendingIntent = autoclass('android.app.PendingIntent')
-        AlarmManager = autoclass('android.app.AlarmManager')
-        sdk = autoclass('android.os.Build$VERSION').SDK_INT
-        ctx = PA.mActivity
-        am = cast('android.app.AlarmManager', ctx.getSystemService(Context.ALARM_SERVICE))
-        flags = PendingIntent.FLAG_UPDATE_CURRENT
-        if sdk >= 23:
-            flags |= PendingIntent.FLAG_IMMUTABLE
         por_id = {p['id']: p for p in (planos if ligado else [])}
         for nid in IDS.values():
-            it = Intent()
-            it.setClassName(ctx.getPackageName(), 'org.travetefocus.Lembrete')
-            it.setAction('org.travetefocus.LEMBRETE_%d' % nid)
             p = por_id.get(nid)
-            if p is not None:
-                it.putExtra('id', str(nid))
-                it.putExtra('titulo', str(p['titulo']))
-                it.putExtra('texto', str(p['texto']))
-            pi = PendingIntent.getBroadcast(ctx, nid, it, flags)
-            am.cancel(pi)
             if p is None:
-                continue
-            quando = int(p['quando'].timestamp() * 1000)
-            if sdk >= 23:
-                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, quando, pi)
+                _agendar(nid, '', '', 0, cancelar_so=True)
             else:
-                am.set(AlarmManager.RTC_WAKEUP, quando, pi)
+                _agendar(nid, p['titulo'], p['texto'], p['quando'].timestamp() * 1000)
     except Exception as e:
         print(f"[lembretes] agendar: {e}")
 
@@ -166,3 +181,112 @@ def replanejar(app):
         aplicar(planos, ligado)
     except Exception as e:
         print(f"[lembretes] {e}")
+
+
+# ── diagnostico (o painel AVISOS do menu) ────────────────────────────────
+def estado():
+    """O que pode impedir os avisos, conferido no proprio celular:
+    {'android', 'permissao', 'ativadas', 'recebedor', 'sdk', 'erro'}
+    (None = nao deu para conferir)."""
+    e = {'android': _android(), 'permissao': None, 'ativadas': None, 'recebedor': None, 'sdk': None, 'erro': ''}
+    if not e['android']:
+        return e
+    try:
+        from jnius import autoclass, cast
+        PA = autoclass('org.kivy.android.PythonActivity')
+        Context = autoclass('android.content.Context')
+        ctx = PA.mActivity
+        sdk = _sdk()
+        e['sdk'] = sdk
+        if sdk >= 33:
+            from android.permissions import check_permission
+            e['permissao'] = bool(check_permission('android.permission.POST_NOTIFICATIONS'))
+        else:
+            e['permissao'] = True
+        nm = cast('android.app.NotificationManager', ctx.getSystemService(Context.NOTIFICATION_SERVICE))
+        if sdk >= 24:
+            e['ativadas'] = bool(nm.areNotificationsEnabled())
+        try:
+            ComponentName = autoclass('android.content.ComponentName')
+            ctx.getPackageManager().getReceiverInfo(ComponentName(ctx.getPackageName(), RECEBEDOR), 0)
+            e['recebedor'] = True
+        except Exception:
+            e['recebedor'] = False
+    except Exception as ex:
+        e['erro'] = str(ex)[:120]
+    return e
+
+
+def testar(seg=4):
+    """Manda um aviso de teste daqui a `seg` segundos pelo MESMO caminho dos
+    avisos de verdade (AlarmManager -> recebedor). Devolve '' ou o erro."""
+    if not _android():
+        return 'Os avisos só funcionam no celular.'
+    try:
+        import time
+        _agendar(ID_TESTE, "⚔ Teste do TraveteFocus",
+                 "Funcionou! É assim que os lembretes vão aparecer aqui na barra.",
+                 (time.time() + seg) * 1000)
+        return ''
+    except Exception as ex:
+        return str(ex)[:160]
+
+
+def apareceu(nid=ID_TESTE):
+    """O aviso `nid` esta na barra agora? (None = nao deu para conferir)"""
+    if not _android():
+        return None
+    try:
+        from jnius import autoclass, cast
+        PA = autoclass('org.kivy.android.PythonActivity')
+        Context = autoclass('android.content.Context')
+        if _sdk() < 23:
+            return None
+        nm = cast('android.app.NotificationManager',
+                  PA.mActivity.getSystemService(Context.NOTIFICATION_SERVICE))
+        return any(int(sb.getId()) == nid for sb in nm.getActiveNotifications())
+    except Exception as ex:
+        print(f"[lembretes] apareceu: {ex}")
+        return None
+
+
+def abrir_config():
+    """Abre a tela do Android com as notificacoes do app (para liberar)."""
+    if not _android():
+        return
+    try:
+        from jnius import autoclass
+        PA = autoclass('org.kivy.android.PythonActivity')
+        Intent = autoclass('android.content.Intent')
+        Settings = autoclass('android.provider.Settings')
+        ctx = PA.mActivity
+        if _sdk() >= 26:
+            it = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            it.putExtra(Settings.EXTRA_APP_PACKAGE, ctx.getPackageName())
+        else:
+            Uri = autoclass('android.net.Uri')
+            it = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse('package:' + ctx.getPackageName()))
+        it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        ctx.startActivity(it)
+    except Exception as ex:
+        print(f"[lembretes] abrir config: {ex}")
+
+
+_DIAS = ('seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom')
+
+
+def proximos(app, agora=None):
+    """[(quando 'qua 16:00', titulo)] dos avisos agendados com os dados de agora."""
+    agora = agora or datetime.now()
+    try:
+        planos = planejar(agora, app.memorias, app.registros, app.config_ganhos)
+    except Exception as ex:
+        print(f"[lembretes] proximos: {ex}")
+        return []
+    out = []
+    for p in sorted(planos, key=lambda q: q['quando']):
+        q = p['quando']
+        dia = 'hoje' if q.date() == agora.date() else (
+            'amanhã' if (q.date() - agora.date()).days == 1 else _DIAS[q.weekday()])
+        out.append((f"{dia} {q.strftime('%H:%M')}", p['titulo']))
+    return out

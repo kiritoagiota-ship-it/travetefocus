@@ -85,7 +85,7 @@ if CENA == 'meta':                     # a regra real: 2.500 / 3.000 por semana
     dados['config_ganhos'] = {'valor_base': 0.25, 'valor_bonus': 0.30, 'meta_bonus': 3000, 'tipo_periodo': 'semanal'}
 with open(os.path.join(pasta_app, 'dados.json'), 'w', encoding='utf-8') as f:
     json.dump(dados, f, ensure_ascii=False)
-if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas', 'mem', 'link', 'ajustes', 'toques', 'trans', 'perfil', 'polir'):
+if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas', 'mem', 'link', 'ajustes', 'toques', 'trans', 'perfil', 'polir', 'avisos'):
     with open(os.path.join(pasta_app, '.tf_session'), 'w') as f:
         f.write(str(time.time()))
 
@@ -957,6 +957,44 @@ def roteiro_polir():
     Roteiro(passos).rodar()
 
 
+def roteiro_avisos():
+    """O painel do botao AVISOS com toques de verdade: abre, TESTAR AGORA,
+    DESLIGAR (confere que desligou), LIGAR de novo, FECHAR."""
+    from kivy.uix.popup import Popup
+    toque = {}
+
+    def tocar_txt(txt):
+        def _f():
+            w = achar(txt)
+            if w is None:
+                LOG['erros'].append('botao nao achado: ' + txt)
+                return
+            toque['t'] = dedo_desce(*no_meio(w))
+        return _f
+
+    def soltar():
+        if 't' in toque:
+            dedo_sobe(toque.pop('t'))
+
+    def confere(nome, cond):
+        def _f():
+            ok = cond()
+            fase(f'{nome}: {ok}')
+            if not ok:
+                LOG['erros'].append('falhou: ' + nome)
+        return _f
+    aberto = lambda: any(isinstance(w, Popup) for w in Window.children)
+    passos = [(1.2, lambda: fase('abre avisos')), (0.01, tocar_txt('AVISOS')), (0.1, soltar),
+              (0.9, confere('painel aberto', aberto)), (0.2, lambda: foto('avisos-painel')),
+              (0.2, tocar_txt('TESTAR AGORA')), (0.1, soltar), (0.6, lambda: foto('avisos-testar')),
+              (0.2, tocar_txt('DESLIGAR')), (0.1, soltar), (0.4, confere('desligou', lambda: not app().lembretes)),
+              (0.2, lambda: foto('avisos-desligado')),
+              (0.2, tocar_txt('LIGAR')), (0.1, soltar), (0.4, confere('ligou', lambda: app().lembretes)),
+              (0.2, tocar_txt('FECHAR')), (0.1, soltar), (0.6, confere('fechou', lambda: not aberto())),
+              (0.3, fim)]
+    Roteiro(passos).rodar()
+
+
 def roteiro_trans():
     """So as trocas de tela: o corte que parte a tela (ida, na cor de cada
     destino) e o deslize do Voltar."""
@@ -1180,7 +1218,8 @@ def esperar_menu(dt):
               'anim': roteiro_anim, 'vivo': roteiro_vivo, 'novas': roteiro_novas,
               'mem': roteiro_mem, 'link': roteiro_link,
               'ajustes': roteiro_ajustes, 'toques': roteiro_toques, 'trans': roteiro_trans,
-              'perfil': roteiro_perfil, 'polir': roteiro_polir}.get(CENA, roteiro_app)(), 1.0)
+              'perfil': roteiro_perfil, 'polir': roteiro_polir,
+              'avisos': roteiro_avisos}.get(CENA, roteiro_app)(), 1.0)
 
 
 def roteiro_pin():

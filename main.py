@@ -296,6 +296,16 @@ class TraveteApp(App):
             except Exception as e:
                 print(f"[lembretes] {e}")
 
+    def abrir_avisos(self):
+        """Botao AVISOS do menu: o painel dos avisos (liga/desliga, o que pode
+        estar impedindo no celular, os proximos avisos e um teste)."""
+        try:
+            from helpers import popup_avisos
+            popup_avisos(self)
+        except Exception as e:
+            print(f"[avisos] {e}")
+            self.alternar_lembretes()
+
     def trocar_senha(self):
         """Botao do menu: abre a janela de trocar a senha."""
         from helpers import popup_trocar_senha
