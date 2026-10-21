@@ -593,6 +593,58 @@ def popup_pedir_xp(nome: str, quantidade: int, on_save, titulo=">> LOTE DETECTAD
     # teclado customizado SAO — sem teclado Android
 
 
+def popup_editar_qtd(nome, qtd, xp_un, on_save):
+    """Corrigir a quantidade de um lote (segurou o dedo nele)."""
+    pop, layout = _make_popup()
+    h = min(dp(290), int(Window.height * 0.52))
+    caixa = BoxLayout(
+        orientation='vertical', padding=[dp(26), dp(20), dp(26), dp(20)],
+        spacing=dp(10), size_hint=(0.88, None), height=h)
+    aplicar_fundo_holografico(caixa, (0.0, 0.85, 1.0, 0.9))
+    lbl_info = Label(
+        text=(f"[color=#00e5ff]>> CORRIGIR LOTE[/color]\n"
+              f"[color=#00e5ff][b]{nome}[/b][/color]   [color=#555555]era {qtd} un.[/color]\n"
+              f"[color=#444444]Quantidade certa:[/color]"),
+        markup=True, font_name="orbitron.ttf", font_size="12sp",
+        halign="center", size_hint_y=None, height=dp(72))
+    inp = InputHolografico(
+        input_filter='int', font_name="orbitron.ttf", font_size="30sp",
+        background_color=(0, 0, 0, 0), foreground_color=(0, 0.9, 1, 1),
+        cursor_color=(0, 0.9, 1, 1), halign="center", text=str(qtd),
+        size_hint_y=None, height=dp(64))
+    lbl_preview = Label(markup=True, font_name="rajdhani.ttf", font_size="16sp",
+                        halign="center", size_hint_y=None, height=dp(32))
+
+    def _preview(inst, valor):
+        try:
+            q = max(0, int(valor or 0))
+        except ValueError:
+            q = 0
+        lbl_preview.text = (f"XP DO LOTE:  [color=#00ff88][b]{int(round(xp_un * q))} XP[/b][/color]"
+                            f"   [color=#555555](era {int(round(xp_un * qtd))})[/color]")
+    inp.bind(text=_preview)
+    _preview(inp, inp.text)
+    btn = BotaoAngular(text=">>  CORRIGIR  <<", size_hint_y=None, height=dp(52))
+    for w in [lbl_info, inp, lbl_preview, btn]:
+        caixa.add_widget(w)
+    layout.add_widget(caixa)
+    caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+
+    @uma_vez
+    def _confirmar(*_):
+        try:
+            q = int(inp.text or 0)
+        except ValueError:
+            q = 0
+        pop.dismiss()
+        on_save(q)
+    btn.bind(on_release=_confirmar)
+    inp.bind(on_text_validate=_confirmar)
+    anexar_teclado(inp, 'numeros')
+    _abrir_popup(caixa, pop)
+    _bind_teclado(caixa, pop)
+
+
 def ler_area_de_transferencia():
     """O texto que esta copiado no celular ('' se nao der para ler)."""
     try:

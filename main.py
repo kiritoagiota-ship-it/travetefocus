@@ -51,6 +51,16 @@ class MenuPrincipal(Screen):
             luz_na_linha(self.ids.linha_menu_3, (0, 0.9, 1), periodo=5.0, atraso=3.8)
         except Exception as e:
             print(f"[menu] vida: {e}")
+        try:
+            from animacoes_ui import icone_pixel
+            for w in self.walk(restrict=True):
+                txt = str(getattr(w, 'text', ''))
+                for chave, nome in (('MEMÓRIAS', 'memorias'), ('PROGRESSO', 'progresso'),
+                                    ('GANHOS', 'ganhos'), ('CALCULADORA', 'calculadora')):
+                    if isinstance(w, BotaoAngular) and chave in txt:
+                        icone_pixel(w, nome)
+        except Exception as e:
+            print(f"[menu] icones: {e}")
 
 LARGURA_COLUNA = 560     # dp: largura maxima do app em janela larga (PC/tablet)
 

@@ -47,6 +47,9 @@ ANIMACAO QUADRO A QUADRO (relogio simulado: 60 quadros/s exatos, a foto nao atra
                     CENA=vivo CADA=2: brilho do menu, faixa de aviso, HOJE contando,
                     borda acesa no fim da lista, grafico crescendo/trocando de mes,
                     barra de ganhos, anel do progresso, historico da calculadora
+                    CENA=novas CADA=2: LEVEL UP (normal e titulo novo), segurar/arrastar o
+                    lote (toques de verdade: dedo_desce/dedo_move/dedo_sobe), cartao das
+                    Memorias abrindo, barra do grafico tocada, teclas, anel e chamas, icones
   analisa_filme.py  PASTA [quadros]: por trecho, desenhos novos x deslizando x
                     girando; desenhos por segundo do corpo, sobretudo e cabeca
                     (alvo desde 20/10/2026: 24 por segundo - kirito.DESENHOS; efeitos 30 a 60)

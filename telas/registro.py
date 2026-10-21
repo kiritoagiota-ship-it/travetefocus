@@ -4,7 +4,7 @@ from kivy.app import App
 from kivy.animation import Animation
 from kivy.clock import Clock
 from kivy.metrics import dp
-from efeitos import ListaItem, explodir_estilhacos, tremer_tela
+from efeitos import ListaItem, ItemGesto, explodir_estilhacos, tremer_tela
 from helpers import (popup_pedir_xp, popup_delete_engracado, popup_resumo_dia, animar_ganho_xp,
                      anexar_teclado, sugestoes_pecas, popup_importar_zap, popup_aviso,
                      ler_area_de_transferencia)
@@ -12,6 +12,7 @@ from datetime import datetime
 import som
 import tatil
 from animacoes_ui import entrada_cascata, fmt_br, contar
+from notificacoes import conferir_level
 import time
 import metas
 
@@ -55,9 +56,16 @@ class TelaRegistro(Screen):
         except Exception:
             pass
 
-    def _make_item(self, text):
-        """Cria ListaItem com altura e alinhamento corretos."""
-        btn = ListaItem(text=text)
+    def _make_item(self, text, dado=None):
+        """Cria o item da lista (altura e alinhamento certos). Com `dado`:
+        arrastar para o lado apaga (com a pergunta de sempre) e segurar o
+        dedo corrige a quantidade."""
+        if dado is not None:
+            btn = ItemGesto(text=text,
+                            ao_arrastar=lambda w, d=dado: self.confirmar_delete(d, w),
+                            ao_segurar=lambda w, d=dado: self.editar_lote(d, w))
+        else:
+            btn = ListaItem(text=text)
         btn.height  = dp(52)   # mais compacto que dp(68)
         btn.valign = 'middle' # texto centralizado verticalmente
         return btn
@@ -86,7 +94,7 @@ class TelaRegistro(Screen):
 
         novos = []
         for r in registros:
-            btn = self._make_item(self._texto_item(r))
+            btn = self._make_item(self._texto_item(r), r)
             btn.bind(on_release=lambda x, dado=r, w=btn: self.confirmar_delete(dado, w))
             self.ids.lista_container.add_widget(btn)
             novos.append(btn)
@@ -136,6 +144,7 @@ class TelaRegistro(Screen):
 
     def _salvar_lote(self, itens, xp):
         app = App.get_running_app()
+        xp_antes = app.total_xp
         ganho = 0
         for it in itens:
             xp_total = max(0, int(xp)) * int(it['qtd'])
@@ -149,6 +158,7 @@ class TelaRegistro(Screen):
         self.atualizar_meta()
         if ganho:
             Clock.schedule_once(lambda dt: animar_ganho_xp(ganho), 0.3)
+            conferir_level(xp_antes, app.total_xp, atraso=1.4)
 
     def adicionar_item(self):
         n = self.ids.nome_input.text.strip()
@@ -186,9 +196,11 @@ class TelaRegistro(Screen):
         except (ValueError, TypeError):
             xp_total = 0
         antes = self._situacao()
+        xp_antes = app.total_xp
         # [nome, qtd, xp, dia ('' = hoje), hora do lancamento] - a hora mede o ritmo
         app.registros.append([n, q, xp_total, '', round(time.time(), 1)])
         app.total_xp += xp_total
+        self._subiu = conferir_level(xp_antes, app.total_xp, atraso=2.4)
         app.salvar_dados()
         self.ids.nome_input.text = ""
         self.ids.qtd_input.text  = ""
@@ -197,7 +209,7 @@ class TelaRegistro(Screen):
         self.ids.empty_state.opacity = 0
         self.ids.empty_state.height  = 0
         dado = app.registros[-1]
-        btn = self._make_item(self._texto_item(dado))
+        btn = self._make_item(self._texto_item(dado), dado)
         btn.bind(on_release=lambda x, d=dado, w=btn: self.confirmar_delete(d, w))
         self.ids.lista_container.add_widget(btn)
         entrada_cascata([btn], dy=dp(30))
@@ -213,7 +225,7 @@ class TelaRegistro(Screen):
         Clock.schedule_once(_carimbo, 0.42)
         Clock.schedule_once(lambda _: self._focar_nome(), 0.15)
         self.atualizar_meta(bater=True)
-        self._comemorar(antes, self._situacao())
+        self._comemorar(antes, self._situacao(), atraso=7.0 if self._subiu else 2.6)
 
     # ── metas de producao ────────────────────────────────────────────────
     def _situacao(self):
@@ -275,7 +287,7 @@ class TelaRegistro(Screen):
         except Exception as e:
             print(f"[registro] meta: {e}")
 
-    def _comemorar(self, antes, depois):
+    def _comemorar(self, antes, depois, atraso=2.6):
         """Passou da meta do dia ou de faixa da semana com este lote: festa."""
         try:
             sem0, hj0, meta0, fx0 = antes
@@ -284,10 +296,10 @@ class TelaRegistro(Screen):
                 cfg = metas.completar_cfg(App.get_running_app().config_ganhos)
                 v = metas.faixas(cfg)[fx1][1]
                 Clock.schedule_once(lambda dt: self._festa(
-                    "FAIXA NOVA!", f"Todas as peças da semana valem R$ {fmt_br(v, 2)}", True), 2.6)
+                    "FAIXA NOVA!", f"Todas as peças da semana valem R$ {fmt_br(v, 2)}", True), atraso)
             elif meta0 > 0 and hj0 < meta0 <= hj1:
                 Clock.schedule_once(lambda dt: self._festa(
-                    "META DE HOJE BATIDA!", f"{fmt_br(hj1)} peças hoje", False), 2.6)
+                    "META DE HOJE BATIDA!", f"{fmt_br(hj1)} peças hoje", False), atraso)
         except Exception as e:
             print(f"[registro] comemorar: {e}")
 
@@ -316,6 +328,41 @@ class TelaRegistro(Screen):
             popup_meta_producao()
         except Exception as e:
             print(f"[registro] painel da meta: {e}")
+
+    def editar_lote(self, dado, btn):
+        """Segurou o dedo no lote: corrige a quantidade (o XP do lote acompanha)."""
+        from helpers import popup_editar_qtd
+        try:
+            q0 = int(dado[1])
+        except (TypeError, ValueError, IndexError):
+            return
+        xp_un = (dado[2] / float(q0)) if q0 > 0 else 0.0
+
+        def _salvar(q):
+            try:
+                if q <= 0 or q == q0:
+                    return
+                app = App.get_running_app()
+                if dado not in app.registros:
+                    return
+                antes = self._situacao()
+                xp_antes = app.total_xp
+                novo_xp = int(round(xp_un * q))
+                app.total_xp = max(0, app.total_xp + novo_xp - int(dado[2]))
+                dado[1] = str(q)
+                dado[2] = novo_xp
+                app.salvar_dados()
+                som.tocar_add()
+                tatil.confirmar()
+                btn.text = self._texto_item(dado)
+                from animacoes_ui import pulso
+                pulso(btn, 1.05, 0.3)
+                subiu = conferir_level(xp_antes, app.total_xp, atraso=0.5)
+                self.atualizar_meta(bater=True)
+                self._comemorar(antes, self._situacao(), atraso=5.0 if subiu else 0.6)
+            except Exception as e:
+                print(f"[registro] corrigir lote: {e}")
+        popup_editar_qtd(dado[0], q0, xp_un, _salvar)
 
     def confirmar_delete(self, dado, btn):
         def _fazer():

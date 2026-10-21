@@ -18,6 +18,7 @@ from kivy.uix.label import Label
 from kivy.uix.boxlayout import BoxLayout
 from kivy.app import App
 from kivy.animation import Animation
+from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.metrics import dp
 from datetime import datetime
@@ -70,6 +71,7 @@ class TelaGanhos(Screen):
             self.ids.rolagem.scroll_y = 1            # sempre abre no topo
         except Exception:
             pass
+        self.ids.barra_semana.ao_cruzar = self._passou_faixa
         self._atualizar_config_ui()
         self._atualizar_periodo_atual()
         self._atualizar_historico()
@@ -200,6 +202,30 @@ class TelaGanhos(Screen):
         self._atualizar_semana()
         self._mostrar_botao(self.ids.btn_abrir_periodo, False)   # ja tem um aberto
         self._mostrar_botao(self.ids.btn_fechar_periodo, True)
+
+    def _passou_faixa(self, k, x, y):
+        """A barra da semana passou da marca de uma faixa: estoura em faiscas
+        douradas e o valor da projecao da uma batida."""
+        try:
+            import kirito as K
+            f = getattr(self, '_faiscas', None)
+            if f is None or f.parent is None:
+                f = self._faiscas = K.Faiscas(n_max=60)
+                Window.add_widget(f)
+            f.estourar(x, y, (1.0, 0.85, 0.2), n=26, forca=dp(300), tam=dp(3), gravidade=dp(300))
+            f.estourar(x, y, (1.0, 1.0, 0.75), n=10, forca=dp(160), tam=dp(2), gravidade=dp(200))
+            from animacoes_ui import pulso
+            pulso(self.ids.lbl_periodo_ganho, 1.1, 0.3)
+            import tatil
+            tatil.tecla()
+            som.tocar_add()
+        except Exception as e:
+            print(f"[ganhos] faixa: {e}")
+
+    def on_leave(self, *_):
+        f = getattr(self, '_faiscas', None)
+        if f is not None and f.parent is not None:
+            Clock.schedule_once(lambda dt: f.parent and f.parent.remove_widget(f), 1.0)
 
     @staticmethod
     def _lotes_nao_finalizados(inicio_str):

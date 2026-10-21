@@ -83,7 +83,7 @@ if CENA == 'meta':                     # a regra real: 2.500 / 3.000 por semana
     dados['config_ganhos'] = {'valor_base': 0.25, 'valor_bonus': 0.30, 'meta_bonus': 3000, 'tipo_periodo': 'semanal'}
 with open(os.path.join(pasta_app, 'dados.json'), 'w', encoding='utf-8') as f:
     json.dump(dados, f, ensure_ascii=False)
-if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo'):
+if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas'):
     with open(os.path.join(pasta_app, '.tf_session'), 'w') as f:
         f.write(str(time.time()))
 
@@ -568,6 +568,157 @@ def roteiro_vivo():
     Roteiro(passos).rodar()
 
 
+_DEDO = [100]
+
+
+def _toque_cls():
+    from kivy.input.motionevent import MotionEvent
+
+    class _Toque(MotionEvent):
+        def depack(self, args):
+            self.sx, self.sy = args
+            self.profile = ['pos']
+            super().depack(args)
+    return _Toque
+
+
+def dedo_desce(x, y):
+    """Um dedo de verdade encostando na tela (passa pela janela)."""
+    from kivy.base import EventLoop
+    _DEDO[0] += 1
+    t = _toque_cls()('teste', _DEDO[0], (x / float(Window.width), y / float(Window.height)),
+                     is_touch=True, type_id='touch')
+    EventLoop.post_dispatch_input('begin', t)
+    return t
+
+
+def dedo_move(t, x, y):
+    from kivy.base import EventLoop
+    t.move((x / float(Window.width), y / float(Window.height)))
+    EventLoop.post_dispatch_input('update', t)
+
+
+def dedo_sobe(t):
+    from kivy.base import EventLoop
+    EventLoop.post_dispatch_input('end', t)
+
+
+def no_meio(w):
+    return w.to_window(*w.center)
+
+
+def roteiro_novas():
+    """As animacoes novas com toques de verdade: LEVEL UP (e o titulo novo
+    a cada 10 niveis), segurar o lote para corrigir, arrastar o lote para
+    apagar, o cartao das Memorias abrindo, a barra do grafico tocada, a barra
+    de Ganhos passando de faixa, o anel de luz das teclas, o anel do
+    Progresso tocado, as chamas da sequencia e os icones do menu."""
+    from datetime import datetime
+    from helpers import calcular_level
+    est = {}
+
+    def ir(nome):
+        return lambda: app().mudar_tela(nome)
+
+    def perto_do_nivel(alvo_nivel=None):
+        a = app()
+        if alvo_nivel is None:
+            _lv, at, nec = calcular_level(a.total_xp)
+            a.total_xp += nec - at - 10
+        else:
+            soma = sum(int(800 * (l ** 1.5)) for l in range(1, alvo_nivel))
+            a.total_xp = soma - 10
+        LOG.setdefault('xp_antes', []).append(a.total_xp)
+
+    def lote():
+        t = tela()
+        t.ids.nome_input.text = 'Short'
+        t.ids.qtd_input.text = '40'
+        soltar_foco()
+        t.adicionar_item()
+
+    def item_registro(i=0):
+        itens = list(reversed(tela().ids.lista_container.children))
+        return itens[min(i, len(itens) - 1)]
+
+    def segura_ini():
+        est['w'] = item_registro(1)
+        est['t'] = dedo_desce(*no_meio(est['w']))
+
+    def segura_fim():
+        dedo_sobe(est['t'])
+
+    def arrasta_ini():
+        est['w'] = item_registro(0)
+        x, y = no_meio(est['w'])
+        est['xy'] = (x, y)
+        est['t'] = dedo_desce(x, y)
+
+    def arrasta(k):
+        def _f():
+            x, y = est['xy']
+            dedo_move(est['t'], x + est['w'].width * 0.42 * k, y + 2 * k)
+        return _f
+
+    def toca(w_fn, segura=0.08):
+        def _f():
+            w = w_fn()
+            t = dedo_desce(*no_meio(w))
+            Clock.schedule_once(lambda dt: dedo_sobe(t), segura)
+        return _f
+
+    def toca_xy(fn, segura=0.08):
+        def _f():
+            t = dedo_desce(*fn())
+            Clock.schedule_once(lambda dt: dedo_sobe(t), segura)
+        return _f
+
+    def item_memoria():
+        return list(reversed(tela().ids.memorias_container.children))[2]
+
+    def barra_grafico():
+        g = tela().ids.grafico_barras
+        n = len(g.dados)
+        px, esp = 14, 7
+        larg = (g.width - px * 2 - esp * (n - 1)) / float(n)
+        return g.to_window(g.x + px + 2 * (larg + esp) + larg / 2.0, g.y + g.height * 0.3)
+
+    def tecla(txt):
+        return lambda: next(w for w in tela().walk()
+                            if hasattr(w, 'tatil') and str(getattr(w, 'text', '')).strip() == txt)
+
+    def sequencia_longa():
+        a = app()
+        a.streak = 7
+        a.ultima_data = datetime.now().strftime('%d/%m/%Y')
+
+    passos = [(0.3, ir('registro')), (2.2, soltar_foco),
+              (0.2, lambda: fase('level up')), (0.01, perto_do_nivel), (0.01, lote),
+              (0.8, lambda: setattr(campo_do_popup(), 'text', '3')), (0.2, lambda: apertar('CONFIRMAR')),
+              (0.9, soltar_foco), (2.0, lambda: foto('n1-level-up')), (3.0, lambda: fase('titulo novo')),
+              (0.01, lambda: perto_do_nivel(11)), (0.01, lote),
+              (0.8, lambda: setattr(campo_do_popup(), 'text', '3')), (0.2, lambda: apertar('CONFIRMAR')),
+              (0.9, soltar_foco), (2.9, lambda: foto('n2-titulo-novo')), (4.5, lambda: fase('segurar lote')),
+              (0.01, segura_ini), (0.4, lambda: foto('n3-segurando')), (0.5, segura_fim),
+              (0.6, lambda: foto('n4-corrigir')), (0.1, lambda: setattr(campo_do_popup(), 'text', '55')),
+              (0.2, lambda: apertar('CORRIGIR')), (1.2, soltar_foco),
+              (0.4, lambda: fase('arrastar lote')), (0.01, arrasta_ini), (0.12, arrasta(0.1)), (0.12, arrasta(0.4)), (0.08, arrasta(0.7)),
+              (0.08, arrasta(1.0)), (0.08, arrasta(1.2)), (0.03, lambda: foto('n5-arrastando')),
+              (0.05, lambda: dedo_sobe(est['t'])), (0.7, lambda: foto('n6-apagar')), (0.2, lambda: apertar('CANCELAR')),
+              (0.8, lambda: fase('memorias')), (0.01, ir('memorias')),
+              (2.2, lambda: fase('abre o dia')), (0.01, toca(item_memoria)), (0.12, lambda: foto('n7-abrindo')),
+              (0.9, lambda: foto('n8-dia')), (0.3, fechar_popups),
+              (0.8, lambda: fase('barra do grafico')), (0.01, toca_xy(barra_grafico)), (0.5, lambda: foto('n9-balao')),
+              (2.4, lambda: fase('ganhos')), (0.01, ir('ganhos')), (2.6, lambda: foto('n10-ganhos')),
+              (0.6, lambda: fase('teclas')), (0.01, ir('calculadora')), (1.6, toca(tecla('7'))),
+              (0.08, lambda: foto('n11-tecla')), (0.3, toca(tecla('8'))), (0.4, toca(tecla('='))),
+              (0.6, lambda: fase('progresso')), (0.01, sequencia_longa), (0.01, ir('progresso')),
+              (2.4, lambda: foto('n12-chamas')), (0.3, lambda: fase('toca o anel')),
+              (0.01, toca(lambda: tela().ids.barra_circular)), (0.7, lambda: foto('n13-anel')),
+              (3.0, lambda: fase('menu')), (0.01, ir('menu')), (3.2, lambda: foto('n14-menu')), (1.0, fim)]
+    Roteiro(passos).rodar()
+
+
 def roteiro_meta():
     """As telas das METAS: a faixa HOJE do registro, o painel da meta, um
     lote novo (com a festa se passar da meta) e a tela de ganhos."""
@@ -629,7 +780,7 @@ def esperar_menu(dt):
         return
     fase('menu')
     Clock.schedule_once(lambda dt: {'telas': roteiro_telas, 'zap': roteiro_zap, 'varre': roteiro_varre, 'meta': roteiro_meta,
-              'anim': roteiro_anim, 'vivo': roteiro_vivo}.get(CENA, roteiro_app)(), 1.0)
+              'anim': roteiro_anim, 'vivo': roteiro_vivo, 'novas': roteiro_novas}.get(CENA, roteiro_app)(), 1.0)
 
 
 def roteiro_pin():

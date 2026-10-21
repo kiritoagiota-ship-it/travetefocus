@@ -72,6 +72,7 @@ class TelaMemorias(Screen):
         self._ancora = None
         self._carregando = False
         self.ids.lista_scroll.bind(scroll_y=self._ao_rolar)
+        self.ids.grafico_barras.bind(on_barra=self._tocou_barra)
         self.ids.memorias_container.bind(height=self._manter_ancora)
 
     def on_enter(self):
@@ -202,8 +203,128 @@ class TelaMemorias(Screen):
             btn.cor_borda_kv = [1.0, 0.82, 0.0, 1.0]
             btn.cor_fundo    = [0.10, 0.08, 0.0, 0.92]
             btn.cor_texto    = [1.0, 0.88, 0.1, 1.0]
-        btn.bind(on_release=lambda x, mem=m: self.abrir_detalhes_memoria(mem))
+            self._brilho_recorde(btn)
+        btn._data_mem = m.get('data', '')
+        btn.bind(on_release=lambda x, mem=m: self._abrir_do_item(x, mem))
         return btn
+
+    @staticmethod
+    def _brilho_recorde(btn):
+        """O dia recorde: a borda dourada respira devagar (para quando sai da lista)."""
+        a = (Animation(cor_borda=[1.0, 0.95, 0.6, 1.0], duration=0.9, transition='in_out_sine') +
+             Animation(cor_borda=[0.85, 0.62, 0.0, 0.9], duration=0.9, transition='in_out_sine'))
+        a.repeat = True
+        a.start(btn)
+
+        def _solto(w, pai):
+            if pai is None:
+                a.stop(w)
+        btn.fbind('parent', _solto)
+
+    def _abrir_do_item(self, btn, mem):
+        """O cartao do dia cresce ate virar o detalhe."""
+        try:
+            from animacoes_ui import expandir_de
+            larg = Window.width * 0.93
+            if Window.width > dp(640):
+                larg = min(larg, dp(520))
+            alt = min(int(dp(500)), int(Window.height * 0.82))
+            expandir_de(btn, larg, alt, lambda: self.abrir_detalhes_memoria(mem))
+        except Exception as e:
+            print(f"[memorias] abrir: {e}")
+            self.abrir_detalhes_memoria(mem)
+
+    def _tocou_barra(self, grafico, i):
+        """Tocou numa barra do grafico: balao com o dia e as pecas, e a lista
+        rola ate esse dia, que pisca."""
+        try:
+            item = grafico.dados[i]
+        except (IndexError, AttributeError):
+            return
+        try:
+            import tatil
+            tatil.tecla()
+            som.tocar_click()
+        except Exception:
+            pass
+        try:
+            from animacoes_ui import faixa_aviso
+            n = len(grafico.dados)
+            px, esp = 14, 7
+            larg = (grafico.width - px * 2 - esp * (n - 1)) / float(n)
+            bx = grafico.x + px + i * (larg + esp) + larg / 2.0
+            self._balao(f"{item.get('data_curta', item.get('label', ''))}  ·  [b]{item.get('valor', 0)}[/b] peças",
+                        *grafico.to_window(bx, grafico.top - dp(40)))
+        except Exception as e:
+            print(f"[memorias] balao: {e}")
+        data = item.get('data', '')
+        cont = self.ids.memorias_container
+        alvo = next((w for w in cont.children if getattr(w, '_data_mem', None) == data), None)
+        if alvo is None:
+            return
+        try:
+            self.ids.lista_scroll.scroll_to(alvo, padding=dp(40), animate={'d': 0.35, 't': 'out_cubic'})
+        except Exception as e:
+            print(f"[memorias] rolar: {e}")
+
+        def _pisca(dt):
+            try:
+                from animacoes_ui import pulso
+                pulso(alvo, 1.05, 0.3)
+                orig = list(alvo.cor_borda_kv)
+                Animation.cancel_all(alvo, 'cor_borda')
+                (Animation(cor_borda=[1, 1, 1, 1], duration=0.1) + Animation(cor_borda=orig, duration=0.25) +
+                 Animation(cor_borda=[1, 1, 1, 1], duration=0.1) + Animation(cor_borda=orig, duration=0.35)).start(alvo)
+            except Exception:
+                pass
+        Clock.schedule_once(_pisca, 0.38)
+
+    def _balao(self, texto, x, y):
+        """Balaozinho chanfrado em cima da barra tocada (some sozinho)."""
+        from kivy.uix.label import Label
+        from kivy.graphics import Color, Mesh, Line
+        from animacoes_ui import _chanfro, _matriz
+        ant = getattr(self, '_balao_w', None)
+        if ant is not None and ant.parent is not None:
+            ant.parent.remove_widget(ant)
+        lbl = Label(text=texto, markup=True, font_name='rajdhani.ttf', font_size='14sp',
+                    color=(1, 1, 1, 1), size_hint=(None, None))
+        lbl.texture_update()
+        w, h = lbl.texture_size[0] + dp(22), dp(28)
+        x0 = max(dp(6), min(Window.width - w - dp(6), x - w / 2.0))
+        y0 = min(Window.height - h - dp(4), y + dp(6))
+        lbl.size, lbl.pos = (w, h), (x0, y0)
+        pts = _chanfro(x0, y0, w, h, dp(7))
+        vs = [x0 + w / 2.0, y0 + h / 2.0, 0, 0]
+        for k in range(0, len(pts), 2):
+            vs += [pts[k], pts[k + 1], 0, 0]
+        vs += [pts[0], pts[1], 0, 0]
+        with lbl.canvas.before:
+            Color(0.07, 0.02, 0.16, 0.95)
+            Mesh(mode='triangle_fan', vertices=vs, indices=list(range(len(vs) // 4)))
+            Color(0.62, 0.3, 1.0, 1)
+            Line(points=pts, width=dp(1.1), close=True)
+        Window.add_widget(lbl)
+        self._balao_w = lbl
+        tr, sc = _matriz(lbl)
+        tr.y = -dp(8)
+        lbl.opacity = 0
+        Animation(opacity=1, duration=0.15).start(lbl)
+        t = [0.0]
+
+        def _p(dt):
+            try:
+                t[0] += dt
+                tr.y = -dp(8) * max(0.0, 1 - t[0] / 0.18) ** 3
+                if t[0] > 1.9:
+                    lbl.opacity = max(0.0, 1 - (t[0] - 1.9) / 0.3)
+                if t[0] > 2.2 or lbl.parent is None:
+                    if lbl.parent is not None:
+                        lbl.parent.remove_widget(lbl)
+                    return False
+            except Exception:
+                return False
+        Clock.schedule_interval(_p, 1 / 60.)
 
     def _cancelar_lote(self):
         ev, self._lote_ev = getattr(self, '_lote_ev', None), None
@@ -307,7 +428,8 @@ class TelaMemorias(Screen):
 
         hoje = datetime.now().strftime("%d/%m/%Y")
         grafico.dados = [
-            {'label':  _label_dia(m['data']), 'valor': m['total'],
+            {'label':  _label_dia(m['data']), 'valor': m['total'], 'data': m.get('data', ''),
+             'data_curta': m['data'].strip().split(' ')[0],
              'record': m['total'] == max_t and max_t > 0,
              'hoje':   m['data'].strip().split(' ')[0] == hoje}
             for m in recentes

@@ -14,11 +14,15 @@ Animacoes de interface usadas por todas as telas:
   luz_na_linha(linha)            ponto de luz correndo pela linha decorativa
   decifrar(label, final)         digitos rolando ate parar no numero certo
   EfeitoBordaAcesa               rolagem sem quique: a borda acende no fim da lista
+  expandir_de(origem, l, a)      o item cresce ate virar o detalhe (Memorias)
+  chamas_em_volta(label)         chamas de pixel subindo (sequencia de 5+ dias)
+  icone_pixel(botao, nome)       icone de pixel art animado no botao (menu)
 
 Regras: nada de .bind(...).start(...) encadeado (bind devolve None) e nenhum
 callback de Clock/Animation deixa excecao escapar.
 """
 import math
+import random
 
 from kivy.animation import Animation
 from kivy.clock import Clock
@@ -26,6 +30,7 @@ from kivy.graphics import (Color, Line, Mesh, PushMatrix, PopMatrix,
                            Translate, Scale, Rectangle)
 from kivy.graphics.texture import Texture
 from kivy.metrics import dp
+from kivy.uix.widget import Widget
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -219,7 +224,9 @@ def aplicar_brilho_toque(botao, cor=None):
             m_faixa = Mesh(mode='triangle_fan', indices=[0, 1, 2, 3],
                            vertices=[0] * 16)
             c_pulso = Color(0, 0.9, 1, 0)
-            l_pulso = Line(width=dp(1.4))
+            l_pulso = Line(width=dp(1.4), close=True)
+            c_pulso2 = Color(0, 0.9, 1, 0)
+            l_pulso2 = Line(width=dp(1.1), close=True)
         try:
             m_faixa.texture = _textura_faixa_luz()
         except Exception as e:
@@ -259,20 +266,32 @@ def aplicar_brilho_toque(botao, cor=None):
             m_faixa.vertices = vs
             c_faixa.rgba = (0.6 + 0.4 * r, 0.6 + 0.4 * g, 0.6 + 0.4 * b,
                             0.42 * math.sin(math.pi * k))
-            # pulso do contorno: expande dp(0 -> 7) e some em 0.4s
+            # anel de luz no formato do botao (chanfrado): expande e some.
+            # Nas teclas (calculadora, teclado) sao dois aneis, maiores.
+            tecla = getattr(botao, 'tatil', '') == 'tecla'
+            ch = min(dp(18), w / 3.0, h / 3.0)
             kp = min(1.0, t / 0.40)
-            ex = dp(7) * (1 - (1 - kp) ** 3)
-            l_pulso.rectangle = (x - ex, y - ex, w + 2 * ex, h + 2 * ex)
-            c_pulso.rgba = (r, g, b, 0.55 * (1 - kp))
-            if k >= 1 and kp >= 1:
+            ex = (dp(12) if tecla else dp(7)) * (1 - (1 - kp) ** 3)
+            l_pulso.points = _chanfro(x - ex, y - ex, w + 2 * ex, h + 2 * ex, ch + ex * 0.4)
+            c_pulso.rgba = (min(1, r + 0.3), min(1, g + 0.3), min(1, b + 0.3), (0.8 if tecla else 0.55) * (1 - kp))
+            kp2 = max(0.0, min(1.0, (t - 0.07) / 0.42)) if tecla else 1.0
+            if tecla and 0 < kp2 < 1:
+                ex2 = dp(20) * (1 - (1 - kp2) ** 3)
+                l_pulso2.points = _chanfro(x - ex2, y - ex2, w + 2 * ex2, h + 2 * ex2, ch + ex2 * 0.4)
+                c_pulso2.rgba = (r, g, b, 0.45 * (1 - kp2))
+            else:
+                c_pulso2.a = 0
+            if k >= 1 and kp >= 1 and kp2 >= 1:
                 c_faixa.a = 0
                 c_pulso.a = 0
+                c_pulso2.a = 0
                 estado['ev'] = None
                 return False
         except Exception as e:
             print(f"[anim_ui] brilho frame: {e}")
             c_faixa.a = 0
             c_pulso.a = 0
+            c_pulso2.a = 0
             estado['ev'] = None
             return False
 
@@ -294,6 +313,7 @@ def aplicar_brilho_toque(botao, cor=None):
             estado['ev'] = None
             c_faixa.a = 0
             c_pulso.a = 0
+            c_pulso2.a = 0
     botao.fbind('parent', _parar)
 
 
@@ -336,6 +356,324 @@ def entrada_tela(layout, pular=()):
         entrada_cascata(blocos, atraso=0.035, dy=dp(14), duracao=0.30, escala=False, atraso_max=0.28)
     except Exception as e:
         print(f"[anim_ui] entrada da tela: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  CARTAO QUE ABRE (Memorias: o item cresce ate virar o detalhe)
+# ═══════════════════════════════════════════════════════════════════
+def expandir_de(origem, larg, alt, on_fim=None, cor=(0.55, 0.1, 0.95), duracao=0.2):
+    """Uma moldura chanfrada sai do retangulo de `origem` e cresce ate o
+    tamanho (larg x alt) no meio da tela; ai chama on_fim (que abre o
+    detalhe por cima) e some."""
+    from kivy.core.window import Window
+    from kivy.uix.widget import Widget
+    feito = [False]
+
+    def _fim():
+        if not feito[0]:
+            feito[0] = True
+            if on_fim:
+                try:
+                    on_fim()
+                except Exception as e:
+                    print(f"[anim_ui] expandir fim: {e}")
+    try:
+        x0, y0 = origem.to_window(origem.x, origem.y)
+        w0, h0 = origem.width, origem.height
+        W, H = Window.size
+        x1, y1 = (W - larg) / 2.0, (H - alt) / 2.0
+        mold = Widget(size_hint=(None, None), size=(0, 0))
+        with mold.canvas:
+            c_f = Color(cor[0] * 0.12, cor[1] * 0.12, cor[2] * 0.12, 0.0)
+            m_f = Mesh(mode='triangle_fan', indices=list(range(10)), vertices=[0] * 40)
+            c_b = Color(cor[0], cor[1], cor[2], 1.0)
+            l_b = Line(width=dp(1.4), close=True)
+            c_l = Color(1, 1, 1, 0.0)
+            l_l = Line(width=dp(1), close=True)
+        Window.add_widget(mold)
+    except Exception as e:
+        print(f"[anim_ui] expandir: {e}")
+        _fim()
+        return
+    t = [0.0]
+
+    def _p(dt):
+        try:
+            t[0] += dt
+            k = min(1.0, t[0] / duracao)
+            e = 1 - (1 - k) ** 3
+            x = x0 + (x1 - x0) * e
+            y = y0 + (y1 - y0) * e
+            w = w0 + (larg - w0) * e
+            h = h0 + (alt - h0) * e
+            c = dp(10) + dp(8) * e
+            pts = _chanfro(x, y, w, h, c)
+            vs = [x + w / 2.0, y + h / 2.0, 0, 0]
+            for i in range(0, len(pts), 2):
+                vs += [pts[i], pts[i + 1], 0, 0]
+            vs += [pts[0], pts[1], 0, 0]
+            m_f.vertices = vs
+            c_f.a = 0.92 * e
+            l_b.points = pts
+            l_l.points = _chanfro(x + dp(4), y + dp(4), w - dp(8), h - dp(8), c - dp(3))
+            c_l.a = 0.25 * e
+            if k >= 1:
+                _fim()
+                # some por baixo do detalhe que ja abriu por cima
+                Clock.schedule_once(lambda _d: Window.remove_widget(mold), 0.25)
+                return False
+        except Exception as ex:
+            print(f"[anim_ui] expandir quadro: {ex}")
+            try:
+                Window.remove_widget(mold)
+            except Exception:
+                pass
+            _fim()
+            return False
+    Clock.schedule_interval(_p, 1 / 60.)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  CHAMAS EM PIXEL (sequencia de 5+ dias no Progresso)
+# ═══════════════════════════════════════════════════════════════════
+def chamas_em_volta(alvo, forca=1.0):
+    """Chamas de pixel subindo em volta de `alvo` (um Label) enquanto ele
+    esta na tela: brasas que nascem embaixo, sobem tremendo e mudam de cor
+    (amarelo -> laranja -> vermelho escuro) ate apagar. Devolve parar()."""
+    import random
+    from kivy.uix.widget import Widget
+    cores = [(1.0, 0.95, 0.55), (1.0, 0.78, 0.2), (1.0, 0.5, 0.05), (0.85, 0.22, 0.04), (0.45, 0.08, 0.04)]
+    w = Widget(size_hint=(None, None), size=(0, 0))
+    grupos = []
+    with w.canvas:
+        for c in cores:
+            cc = Color(c[0], c[1], c[2], 1)
+            grupos.append((cc, []))
+    pool = []
+    estado = {'ev': None, 'acc': 0.0}
+    u = max(2.0, round(dp(2.5)))
+
+    def _quadro(dt):
+        try:
+            if alvo.get_root_window() is None:
+                return True
+            if w.parent is None:
+                janela = alvo.get_root_window()
+                janela.add_widget(w)
+            x0, y0 = alvo.to_window(alvo.x, alvo.y)
+            tw = alvo.texture_size[0] if alvo.texture_size[0] > 0 else alvo.width
+            cx = x0 + alvo.width / 2.0
+            esq, dir_ = cx - tw / 2.0 - dp(10), cx + tw / 2.0 + dp(10)
+            estado['acc'] += dt * 70 * forca
+            while estado['acc'] >= 1 and len(pool) < 70:
+                estado['acc'] -= 1
+                pool.append([random.uniform(esq, dir_), y0 + random.uniform(-dp(2), dp(6)),
+                             random.uniform(dp(30), dp(70)), random.uniform(0.35, 0.8), 0.0,
+                             random.uniform(0, 6.28)])
+            vivos = []
+            pontos = [[] for _ in cores]
+            for p in pool:
+                p[4] += dt
+                if p[4] >= p[3]:
+                    continue
+                k = p[4] / p[3]
+                p[1] += p[2] * dt
+                xx = p[0] + math.sin(p[5] + p[4] * 9) * dp(2.5)
+                ci = min(len(cores) - 1, int(k * len(cores)))
+                tam = u * (2 if k < 0.35 else 1)
+                pontos[ci].append((math.floor(xx / u) * u, math.floor(p[1] / u) * u, tam))
+                vivos.append(p)
+            pool[:] = vivos
+            for (cc, rects), pts in zip(grupos, pontos):
+                while len(rects) < len(pts):
+                    r = Rectangle(pos=(0, 0), size=(0, 0))
+                    w.canvas.insert(w.canvas.indexof(cc) + 1, r)
+                    rects.append(r)
+                for i, r in enumerate(rects):
+                    if i < len(pts):
+                        r.pos = (pts[i][0], pts[i][1])
+                        r.size = (pts[i][2], pts[i][2])
+                    else:
+                        r.size = (0, 0)
+        except Exception as e:
+            print(f"[anim_ui] chamas: {e}")
+            return False
+
+    def parar():
+        if estado['ev'] is not None:
+            estado['ev'].cancel()
+            estado['ev'] = None
+        if w.parent is not None:
+            w.parent.remove_widget(w)
+    estado['ev'] = Clock.schedule_interval(_quadro, 1 / 60.)
+    return parar
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ICONES EM PIXEL ANIMADOS (botoes do menu)
+# ═══════════════════════════════════════════════════════════════════
+_ICONES = {
+    # cristal de memoria (roxo) com um reflexo descendo
+    'memorias': [
+        "....KK....",
+        "...KbbK...",
+        "..KbWbbK..",
+        ".KbWbbbbK.",
+        "KbWbbbbbBK",
+        "KbbbbbbbBK",
+        ".KbbbbbBK.",
+        "..KbbbBK..",
+        "...KbBK...",
+        "....KK....",
+    ],
+    # estrela (ciano) que pisca
+    'progresso': [
+        "....KK....",
+        "....KcK...",
+        "...KccK...",
+        "KKKKcWcKKK",
+        "KccccWcccK",
+        ".KcccccK..",
+        "..KccccK..",
+        ".KccKKccK.",
+        ".KcK..KcK.",
+        ".KK....KK.",
+    ],
+    # moeda (verde/ouro) - gira
+    'ganhos': [
+        "...KKKK...",
+        "..KyyyyK..",
+        ".KyYYYYyK.",
+        "KyYYyyYYyK",
+        "KyYyYYyYyK",
+        "KyYyYYyYyK",
+        "KyYYyyYYyK",
+        ".KyYYYYyK.",
+        "..KyyyyK..",
+        "...KKKK...",
+    ],
+    # calculadora (laranja) com o visor piscando
+    'calculadora': [
+        "KKKKKKKKK.",
+        "KoooooooK.",
+        "KoVVVVVoK.",
+        "KoVVVVVoK.",
+        "KoooooooK.",
+        "KoWoWoWoK.",
+        "KoooooooK.",
+        "KoWoWoWoK.",
+        "KoooooooK.",
+        "KKKKKKKKK.",
+    ],
+}
+_ICONE_CORES = {
+    'K': (0.02, 0.02, 0.06), 'W': (1.0, 1.0, 1.0),
+    'b': (0.62, 0.3, 1.0), 'B': (0.38, 0.12, 0.7),
+    'c': (0.0, 0.88, 1.0),
+    'y': (0.0, 0.62, 0.32), 'Y': (0.2, 1.0, 0.55),
+    'o': (0.55, 0.3, 0.0), 'V': (1.0, 0.72, 0.0),
+}
+
+
+def icone_pixel(botao, nome, u=None, margem=None):
+    """Um icone de pixel art animado no lado esquerdo do `botao` (30 quadros
+    por segundo, so com o botao na tela)."""
+    from kivy.uix.widget import Widget
+    mapa = _ICONES.get(nome)
+    if mapa is None or getattr(botao, '_icone_ok', False):
+        return
+    botao._icone_ok = True
+    u = u or max(2.0, round(dp(2.2)))
+    ic = Widget(size_hint=(None, None), size=(len(mapa[0]) * u, len(mapa) * u))
+    grupos = {}
+    with ic.canvas:
+        for ch, c in _ICONE_CORES.items():
+            grupos[ch] = (Color(c[0], c[1], c[2], 1), [])
+        c_luz = Color(1, 1, 1, 0)
+        r_luz = [Rectangle(pos=(0, 0), size=(0, 0)) for _ in range(3)]
+    botao.add_widget(ic)
+    estado = {'t': 0.0, 'q': -1}
+
+    def _onde(*_):
+        m = margem if margem is not None else dp(26)
+        ic.pos = (int(botao.x + m), int(botao.center_y - ic.height / 2.0))
+    botao.bind(pos=_onde, size=_onde)
+    _onde()
+
+    def _pinta(pixels):
+        usados = {ch: 0 for ch in grupos}
+        for (gx, gy, ch, larg) in pixels:
+            cc, rects = grupos[ch]
+            i = usados[ch]
+            if i >= len(rects):
+                r = Rectangle(pos=(0, 0), size=(0, 0))
+                ic.canvas.insert(ic.canvas.indexof(cc) + 1 + len(rects), r)
+                rects.append(r)
+            rects[i].pos = (ic.x + gx * u, ic.y + gy * u)
+            rects[i].size = (u * larg, u)
+            usados[ch] = i + 1
+        for ch, (cc, rects) in grupos.items():
+            for r in rects[usados[ch]:]:
+                r.size = (0, 0)
+
+    def _quadro(dt):
+        try:
+            if botao.get_root_window() is None:
+                return True
+            estado['t'] += dt
+            t = estado['t']
+            q = int(t * 30)
+            if q == estado['q']:
+                return True
+            estado['q'] = q
+            h = len(mapa)
+            pix = []
+            bob = 1 if (nome == 'memorias' and int(t * 2) % 2) else 0
+            if nome == 'ganhos':
+                # a moeda gira: a largura de cada linha encolhe e volta (|cos|)
+                f = abs(math.cos(t * 2.6))
+                f = max(0.18, round(f * 5) / 5.0)
+                for j, linha in enumerate(mapa):
+                    cheios = [i for i, ch in enumerate(linha) if ch != '.']
+                    if not cheios:
+                        continue
+                    c0, c1 = cheios[0], cheios[-1]
+                    meio = (c0 + c1 + 1) / 2.0
+                    for i in range(c0, c1 + 1):
+                        ch = linha[i]
+                        if ch == '.':
+                            continue
+                        xi = int(round(meio + (i - meio) * f))
+                        if f < 0.5 and ch not in 'Ky':
+                            ch = 'y'                               # de lado: so a borda
+                        pix.append((xi, h - 1 - j, ch, 1))
+            else:
+                for j, linha in enumerate(mapa):
+                    for i, ch in enumerate(linha):
+                        if ch == '.':
+                            continue
+                        if nome == 'calculadora' and ch == 'V' and int(t * 1.6) % 2:
+                            ch = 'o' if (i + j) % 2 else 'V'       # o visor pisca
+                        pix.append((i, h - 1 - j + bob, ch, 1))
+            _pinta(pix)
+            # brilho: uma faisca branca passa pelo icone a cada ~2,4 s
+            ciclo = t % 2.4
+            if ciclo < 0.3:
+                k = ciclo / 0.3
+                cx = ic.x + ic.width * k
+                cy = ic.y + ic.height * (1 - k)
+                c_luz.a = math.sin(math.pi * k)
+                r_luz[0].pos, r_luz[0].size = (int(cx), int(cy)), (u, u)
+                r_luz[1].pos, r_luz[1].size = (int(cx - u), int(cy)), (u, u)
+                r_luz[2].pos, r_luz[2].size = (int(cx), int(cy + u)), (u, u)
+                if nome == 'progresso':
+                    c_luz.a = 1.0
+            else:
+                c_luz.a = 0
+        except Exception as e:
+            print(f"[anim_ui] icone {nome}: {e}")
+            return False
+    Clock.schedule_interval(_quadro, 1 / 60.)
 
 
 def pulso(widget, fator=1.08, duracao=0.28):
@@ -524,11 +862,17 @@ def faixa_aviso(titulo, sub='', ancora=None, cor=(1, 0.88, 0.1), segura=2.4):
 # ═══════════════════════════════════════════════════════════════════
 def _repetir(widget, periodo, atraso, rodar):
     """Chama rodar() a cada `periodo` s, so enquanto o widget esta na tela
-    (fora dela nao gasta nada alem do relogio)."""
+    (fora dela nao gasta nada alem do relogio). Um widget que ja apareceu e
+    foi descartado (sem pai) para de repetir."""
+    visto = [False]
+
     def _vez(dt):
         try:
             if widget.get_root_window() is not None:
+                visto[0] = True
                 rodar()
+            elif visto[0] and widget.parent is None:
+                return                                   # descartado: acabou
         except Exception as e:
             print(f"[anim_ui] repetir: {e}")
         Clock.schedule_once(_vez, periodo)
@@ -561,7 +905,10 @@ def brilho_texto(label, periodo=6.0, atraso=1.4, duracao=0.75, forca=0.75):
             # proprio Label nao aparece: ela e trocada por baixo a cada ajuste)
             chave = (label.text, label.font_name, float(label.font_size), bool(label.bold))
             if estado.get('chave') != chave:
-                from kivy.core.text import Label as CoreLabel
+                if getattr(label, 'markup', False):              # [b]...[/b] vira negrito, nao texto
+                    from kivy.core.text.markup import MarkupLabel as CoreLabel
+                else:
+                    from kivy.core.text import Label as CoreLabel
                 cl = CoreLabel(text=label.text, font_name=label.font_name,
                                font_size=label.font_size, bold=label.bold)
                 cl.refresh()

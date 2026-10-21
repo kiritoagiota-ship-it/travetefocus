@@ -54,6 +54,70 @@ class TelaProgresso(Screen):
             self.ids.barra_circular.parar_animacoes()
         except Exception:
             pass
+        parar = getattr(self, '_parar_chamas', None)
+        if parar is not None:
+            parar()
+            self._parar_chamas = None
+
+    def on_kv_post(self, *_):
+        self.ids.barra_circular.bind(on_touch_down=self._toque_anel)
+
+    def _toque_anel(self, barra, touch):
+        """Tocou no anel: ele da uma volta rapida e mostra quanto falta para o
+        proximo nivel (em XP e, pela media, em pecas)."""
+        if not barra.collide_point(*touch.pos) or getattr(self, '_anel_ocupado', False):
+            return False
+        try:
+            from kivy.uix.label import Label
+            from kivy.metrics import sp
+            app = App.get_running_app()
+            level, xp_at, xp_nec = calcular_level(app.total_xp)
+            falta = max(0, xp_nec - xp_at)
+            pecas = int(app.total_geral or 0)
+            for r in app.registros:
+                try:
+                    pecas += int(r[1])
+                except (TypeError, ValueError, IndexError):
+                    pass
+            linhas = [f"[size=12sp][color=#8c96aa]FALTAM[/color][/size]",
+                      f"[b]{fmt_br(falta)} XP[/b]"]
+            if pecas > 0 and app.total_xp > 0:
+                por_peca = app.total_xp / float(pecas)
+                np_ = max(1, int(round(falta / por_peca)))
+                linhas.append(f"[size=14sp][color=#9aa6bd]~ {fmt_br(np_)} {'peça' if np_ == 1 else 'peças'}[/color][/size]")
+            linhas.append(f"[size=11sp][color=#8c96aa]para o LVL {level + 1}[/color][/size]")
+            pct = next((w for w in barra.children if isinstance(w, Label)), None)
+            lbl = Label(text="\n".join(linhas), markup=True, font_name='orbitron.ttf', font_size='22sp',
+                        color=barra.cor_anel, halign='center', valign='middle',
+                        size_hint=(None, None), size=barra.size, pos=barra.pos, opacity=0)
+            lbl.text_size = lbl.size
+            barra.add_widget(lbl)
+            self._anel_ocupado = True
+            som.tocar_click()
+            import tatil
+            tatil.tecla()
+            alvo = barra.angulo_preenchimento
+            Animation.cancel_all(barra, 'angulo_preenchimento')
+            barra.angulo_preenchimento = 0
+            Animation(angulo_preenchimento=alvo, duration=0.55, transition='out_cubic').start(barra)
+            if pct is not None:
+                Animation(opacity=0, duration=0.15).start(pct)
+            Animation(opacity=1, duration=0.25).start(lbl)
+
+            def _volta(dt):
+                try:
+                    a = Animation(opacity=0, duration=0.25)
+                    a.bind(on_complete=lambda *_: barra.remove_widget(lbl))
+                    a.start(lbl)
+                    if pct is not None:
+                        Animation(opacity=1, duration=0.3).start(pct)
+                finally:
+                    self._anel_ocupado = False
+            Clock.schedule_once(_volta, 2.8)
+        except Exception as e:
+            print(f"[progresso] anel: {e}")
+            self._anel_ocupado = False
+        return True
 
     def _cascata_cards(self):
         cards, vistos = [], set()
@@ -116,6 +180,12 @@ class TelaProgresso(Screen):
         barra.animar_progresso()
 
         if streak >= 5:
+            try:
+                from animacoes_ui import chamas_em_volta
+                if getattr(self, '_parar_chamas', None) is None:
+                    self._parar_chamas = chamas_em_volta(self.ids.lbl_streak, forca=min(2.0, 0.7 + streak / 15.0))
+            except Exception as e:
+                print(f"[progresso] chamas: {e}")
             barra.cor_anel = [1, 0.55, 0, 1]
             # em() renderiza o emoji com NotoEmoji se disponivel, senao usa texto
             self.ids.lbl_streak.text  = f"{em('🔥')}  STREAK  {streak}  {'DIA' if streak == 1 else 'DIAS'}"

@@ -908,6 +908,169 @@ class ListaItem(BotaoAngular):
     cor_texto    = ListProperty([0.0,  0.90, 1.0,  1.0])
 
 
+class ItemGesto(ListaItem):
+    """Item de lista com gestos (o toque normal continua igual):
+      arrastar para o lado  -> ao_arrastar(item): o item segue o dedo, a
+                               borda fica vermelha; passou do limite e soltou,
+                               ele volta escorregando e chama a funcao;
+      segurar o dedo        -> ao_segurar(item): uma linha de luz enche a base
+                               do item em 0,55 s e ai chama a funcao."""
+    SEGURAR = 0.55
+    LIMITE = 0.30                  # fracao da largura para o arrasto valer
+
+    def __init__(self, **kwargs):
+        self.ao_arrastar = kwargs.pop('ao_arrastar', None)
+        self.ao_segurar = kwargs.pop('ao_segurar', None)
+        super().__init__(**kwargs)
+        self._g = None
+        with self.canvas.after:
+            self._c_seg = Color(0.6, 1.0, 1.0, 0)
+            self._r_seg = Rectangle(pos=(0, 0), size=(0, 0))
+            self._c_lado = Color(1.0, 0.18, 0.28, 0)
+            self._l_lado = Line(width=dp(1.6))
+
+    def _solta_visual(self):
+        """O botao 'afundado' do toque volta ao tamanho (o soltar normal nao vem)."""
+        Animation.cancel_all(self, 'escala')
+        Animation(escala=1.0, duration=0.18, transition='out_quad').start(self)
+
+    def _matriz_x(self):
+        from animacoes_ui import _matriz
+        return _matriz(self)[0]
+
+    def on_touch_down(self, touch):
+        if self.disabled or not self.collide_point(*touch.pos) or (self.ao_arrastar is None
+                                                                  and self.ao_segurar is None):
+            return super().on_touch_down(touch)
+        r = super().on_touch_down(touch)
+        self._parar_seg()
+        # a lista so repassa o toque depois de um instante: o arrasto e o
+        # tempo de segurar contam de onde/quando o dedo encostou de verdade
+        # (medido na tela inteira: sx/osx nao mudam com a rolagem da lista)
+        try:
+            ja = max(0.0, Clock.get_time() - touch.time_start)
+        except Exception:
+            ja = 0.0
+        self._g = {'id': touch.uid, 'modo': None, 't': min(ja, 0.3), 'dx': 0.0,
+                   'aviso': False, 'ev': Clock.schedule_interval(self._segurando, 1 / 60.)
+                   if self.ao_segurar else None}
+        return r
+
+    def _parar_seg(self):
+        g = self._g
+        if g and g.get('ev') is not None:
+            g['ev'].cancel()
+            g['ev'] = None
+        self._c_seg.a = 0
+        self._r_seg.size = (0, 0)
+
+    def _segurando(self, dt):
+        try:
+            g = self._g
+            if g is None or g['modo'] is not None or self.parent is None:
+                self._c_seg.a = 0
+                return False
+            g['t'] += dt
+            k = min(1.0, g['t'] / self.SEGURAR)
+            if g['t'] > 0.12:                           # (um toque rapido nao acende nada)
+                self._r_seg.pos = (self.x + dp(4), self.y + dp(3))
+                self._r_seg.size = ((self.width - dp(8)) * k, dp(3))
+                self._c_seg.a = 0.9
+            if k >= 1:
+                g['modo'] = 'segurou'
+                g['ev'] = None
+                self._c_seg.a = 0
+                self.state = 'normal'
+                self._solta_visual()
+                try:
+                    import tatil
+                    tatil.confirmar()
+                except Exception:
+                    pass
+                from animacoes_ui import pulso
+                pulso(self, 1.04, 0.22)
+                fn = self.ao_segurar
+                Clock.schedule_once(lambda _d: fn(self), 0.05)
+                return False
+        except Exception as e:
+            print(f"[item] segurar: {e}")
+            return False
+
+    def on_touch_move(self, touch):
+        g = self._g
+        if g is None or touch.uid != g['id']:
+            return super().on_touch_move(touch)
+        dx = (touch.sx - touch.osx) * Window.width
+        dy = (touch.sy - touch.osy) * Window.height
+        if g['modo'] is None:
+            if self.ao_arrastar and abs(dx) > dp(12) and abs(dx) > abs(dy) * 1.4:
+                g['modo'] = 'arrasto'
+                self._parar_seg()
+                self.state = 'normal'
+                self._solta_visual()
+            elif abs(dy) > dp(10) or abs(dx) > dp(12):
+                g['modo'] = 'nada'                       # rolando a lista: nada de segurar
+                self._parar_seg()
+        if g['modo'] == 'arrasto':
+            lim = self.width * self.LIMITE
+            d = dx if abs(dx) <= lim else (lim + (abs(dx) - lim) * 0.35) * (1 if dx > 0 else -1)
+            g['dx'] = dx
+            tr = self._matriz_x()
+            tr.x = d
+            k = min(1.0, abs(dx) / lim)
+            self._c_lado.a = 0.25 + 0.75 * k
+            self._l_lado.rectangle = (self.x + dp(2), self.y + dp(2), self.width - dp(4), self.height - dp(4))
+            if k >= 1 and not g['aviso']:
+                g['aviso'] = True                        # passou do limite: tremidinha
+                try:
+                    import tatil
+                    tatil.tecla()
+                except Exception:
+                    pass
+            elif k < 1:
+                g['aviso'] = False
+            return True
+        return super().on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        g = self._g
+        if g is None or touch.uid != g['id']:
+            return super().on_touch_up(touch)
+        modo = g['modo']
+        if modo not in ('arrasto', 'segurou'):
+            self._parar_seg()
+            self._g = None
+            return super().on_touch_up(touch)
+        self._g = None
+        self._parar_seg()
+        touch.ungrab(self)
+        self.state = 'normal'
+        if modo == 'arrasto':
+            valeu = abs(g['dx']) >= self.width * self.LIMITE
+            tr = self._matriz_x()
+            x0 = tr.x
+            t = [0.0]
+
+            def _volta(dt):
+                try:
+                    t[0] += dt
+                    k = min(1.0, t[0] / 0.24)
+                    tr.x = x0 * (1 - k) ** 3
+                    self._c_lado.a = (1 - k) * (1.0 if valeu else 0.5)
+                    if k >= 1:
+                        tr.x = 0
+                        self._c_lado.a = 0
+                        return False
+                except Exception:
+                    tr.x = 0
+                    return False
+            Clock.schedule_interval(_volta, 1 / 60.)
+            if valeu and self.ao_arrastar:
+                fn = self.ao_arrastar
+                Clock.schedule_once(lambda _d: fn(self), 0.18)
+        return True
+
+
 # ═══════════════════════════════════════════════════════════
 #  GRÁFICO DE BARRAS HOLOGRÁFICO
 # ═══════════════════════════════════════════════════════════
@@ -919,8 +1082,37 @@ class GraficoBarras(Widget):
     titulo = StringProperty('PRODUÇÃO · ÚLTIMOS DIAS')
 
     ATRASO, DURACAO = 0.05, 0.5          # cascata entre barras / subida de cada uma
+    __events__ = ('on_barra',)
+
+    def on_barra(self, i):
+        """Tocaram na barra i (a tela decide o que mostrar)."""
+
+    def _barra_em(self, x):
+        n = len(self.dados)
+        if n == 0:
+            return None
+        px, esp = 14, 7
+        larg = (self.width - px * 2 - esp * (n - 1)) / float(n)
+        rel = x - self.x - px
+        i = int(rel // (larg + esp)) if rel >= 0 else -1
+        if 0 <= i < n and rel - i * (larg + esp) <= larg + esp * 0.5:
+            return i
+        return None
+
+    def on_touch_down(self, touch):
+        if not self.collide_point(*touch.pos) or not self.dados:
+            return super().on_touch_down(touch)
+        i = self._barra_em(touch.x)
+        if i is None:
+            return super().on_touch_down(touch)
+        self._destaque = [i, 0.0]
+        if self._ev is None:
+            self._ev = Clock.schedule_interval(self._passo, 1 / 60.)
+        self.dispatch('on_barra', i)
+        return True
 
     def __init__(self, **kwargs):
+        self._destaque = None
         super().__init__(**kwargs)
         self._tex_cache = {}   # {(text, size, cor): texture}
         self._vistas = []      # altura (0..0.9 do espaco) desenhada de cada barra agora
@@ -951,16 +1143,18 @@ class GraficoBarras(Widget):
 
     def _passo(self, dt):
         try:
-            if self._t is None:
-                self._ev = None
-                return False
-            self._t += dt
-            if self._t >= self.DURACAO + self.ATRASO * len(self.dados) + 0.05:
-                self._t = None
-                self._ev = None
-                self._draw()
-                return False
+            if self._destaque is not None:
+                self._destaque[1] += dt
+                if self._destaque[1] >= 0.7:
+                    self._destaque = None
+            if self._t is not None:
+                self._t += dt
+                if self._t >= self.DURACAO + self.ATRASO * len(self.dados) + 0.05:
+                    self._t = None
             self._draw()
+            if self._t is None and self._destaque is None:
+                self._ev = None
+                return False
         except Exception as e:
             print(f"[grafico] animacao: {e}")
             self._t = None
@@ -1056,6 +1250,13 @@ class GraficoBarras(Widget):
                 Color(1, 1, 1, 0.28)
                 Line(points=[bx + 1, by + alt, bx + larg - 1, by + alt], width=2)
 
+                if self._destaque is not None and self._destaque[0] == i:
+                    # a barra tocada acende e apaga
+                    a = 1 - self._destaque[1] / 0.7
+                    Color(1, 1, 1, 0.22 * a)
+                    Rectangle(pos=(bx, by), size=(larg, alt))
+                    Color(1, 1, 1, 0.95 * a)
+                    Line(rectangle=[bx - 2, by - 2, larg + 4, alt + 4], width=1.4)
                 if kb < 1:
                     # a ponta da barra subindo brilha
                     Color(bc[0], bc[1], bc[2], 0.5 * (1 - kb))
@@ -1901,6 +2102,13 @@ class BarraMeta(Widget):
             if self._ultimo < v <= self.valor:
                 self._flash[k] = 1.0
                 self._ligar()
+                fn = getattr(self, 'ao_cruzar', None)
+                if fn is not None and self.get_root_window() is not None:
+                    try:
+                        mx = self.x + self.width * min(1.0, v / max(1.0, self.maximo))
+                        fn(k, *self.to_window(mx, self.y + self.height * 0.4))
+                    except Exception as e:
+                        print(f"[barra meta] ao cruzar: {e}")
         self._ultimo = self.valor
         self._desenhar()
 
