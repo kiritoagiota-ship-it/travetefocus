@@ -60,8 +60,11 @@ def _chave_turno(m):
     return f"ts:{ts}" if ts is not None else f"{m.get('data', '')}|{m.get('total', 0)}"
 
 
+NB = '\u00a0'      # espaco que nao quebra a linha ("R$" nunca fica sozinho no fim)
+
+
 def _reais(v):
-    return f"R$ {fmt_br(v, 2)}"
+    return f"R${NB}{fmt_br(v, 2)}"
 
 
 class TelaGanhos(Screen):
@@ -193,7 +196,7 @@ class TelaGanhos(Screen):
             extra = ganho - pecas * float(cfg['valor_base'])
             self.ids.lbl_periodo_bonus.text = (
                 f"[color=#ffcc00]{em('🔥')} FAIXA MÁXIMA! Todas as peças valem {_reais(valor_agora)} "
-                f"(+{_reais(extra)} de bônus)[/color]")
+                f"(+{_reais(extra)}{NB}de{NB}bônus)[/color]")
         else:
             agora = f"Valendo {_reais(valor_agora)}  ·  " if pecas > 0 else ""
             self.ids.lbl_periodo_bonus.text = (
@@ -582,7 +585,7 @@ class TelaGanhos(Screen):
 
     def _popup_resultado(self, pecas, ganho, periodo):
         pop, layout = _make_popup()
-        h   = min(dp(340), int(Window.height * 0.62))
+        h   = min(dp(362), int(Window.height * 0.72))
         caixa = BoxLayout(
             orientation='vertical',
             padding=[dp(24), dp(18), dp(24), dp(18)],
@@ -602,13 +605,13 @@ class TelaGanhos(Screen):
         if n_bonus > 0:
             sem_meta = round(pecas * float(cfg['valor_base']), 2)
             icone = em('🔥') if prox is None else em('⭐')
-            linha_base = (f"[color=#ffcc00]{icone} FAIXA DE {_reais(valor)}: {fmt_br(pecas)} x "
-                          f"{_reais(valor)}   {_reais(total)}[/color]")
-            linha_bonus = (f"[color=#8c96aa]na base seriam {_reais(sem_meta)}  "
-                           f"(+{_reais(total - sem_meta)} de bônus)[/color]")
+            linha_base = (f"[color=#ffcc00]{icone} FAIXA DE {_reais(valor)}[/color]\n"
+                          f"[color=#ffcc00]{fmt_br(pecas)}{NB}×{NB}{_reais(valor)}{NB}={NB}{_reais(total)}[/color]")
+            linha_bonus = (f"[color=#8c96aa]na base seriam {_reais(sem_meta)} "
+                           f"(+{_reais(total - sem_meta)}{NB}de{NB}bônus)[/color]")
         else:
-            linha_base = (f"[color=#aab4c8]{fmt_br(pecas)} x {_reais(valor)}[/color]"
-                          f"   [color=#00e5ff]{_reais(total)}[/color]")
+            linha_base = (f"[color=#aab4c8]{fmt_br(pecas)}{NB}×{NB}{_reais(valor)}{NB}=[/color]"
+                          f"{NB}[color=#00e5ff]{_reais(total)}[/color]")
             linha_bonus = ""
         if prox is not None:
             linha_bonus += (("\n" if linha_bonus else "") +
@@ -624,7 +627,7 @@ class TelaGanhos(Screen):
                   f"[color=#aab4c8]Total a receber[/color]   "
                   f"[color=#00ff88][b]{_reais(total)}[/b][/color]"),
             markup=True, font_name="rajdhani.ttf", font_size="16sp",
-            halign="center", valign="middle", size_hint_y=None, height=dp(190)))
+            halign="center", valign="middle", size_hint_y=None, height=dp(210)))
         texto = caixa.children[0]
         texto.bind(size=lambda i, s: setattr(i, 'text_size', s))     # linha comprida quebra dentro da caixa
 

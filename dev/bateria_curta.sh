@@ -15,11 +15,11 @@ r vaza 720 1560 1.75 VAZA=1 TOUR_PY=dev/tela_teste.py
 r duplo 720 1560 1.75 DUPLO=1 TOUR_PY=dev/tela_teste.py
 r memrolar 720 1560 1.75 MEMORIAS=365 ABRIR=memorias ROLAR=1 TOUR_PY=dev/tela_teste.py
 r app 720 1560 1.75 CENA=app CADA=0 TOUR_PY=dev/filme_cenas.py
-r link 540 1158 1.3125 CENA=link CADA=0 TOUR_PY=dev/filme_cenas.py
-r ajustes 540 1158 1.3125 CENA=ajustes CADA=0 TOUR_PY=dev/filme_cenas.py
-r toques 540 1158 1.3125 CENA=toques CADA=0 TOUR_PY=dev/filme_cenas.py
-r trans 540 1158 1.3125 CENA=trans CADA=0 TOUR_PY=dev/filme_cenas.py
-r polir 540 1158 1.3125 CENA=polir CADA=0 TOUR_PY=dev/filme_cenas.py
+r link 540 1045 1.40625 CENA=link CADA=0 TOUR_PY=dev/filme_cenas.py
+r ajustes 540 1045 1.40625 CENA=ajustes CADA=0 TOUR_PY=dev/filme_cenas.py
+r toques 540 1045 1.40625 CENA=toques CADA=0 TOUR_PY=dev/filme_cenas.py
+r trans 540 1045 1.40625 CENA=trans CADA=0 TOUR_PY=dev/filme_cenas.py
+r polir 540 1045 1.40625 CENA=polir CADA=0 TOUR_PY=dev/filme_cenas.py
 r perf 720 1560 1.75 FOTOS=0
 python dev/teste_metas.py 2>&1 | tail -1
 python dev/teste_dados.py 2>&1 | tail -1

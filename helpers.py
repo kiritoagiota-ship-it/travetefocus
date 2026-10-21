@@ -713,25 +713,28 @@ def anexar_teclado(inp, tipo='letras', decimal=False, sugestoes=None):
 def popup_pedir_xp(nome: str, quantidade: int, on_save, titulo=">> LOTE DETECTADO",
                    pergunta="Valor de XP por peça:"):
     pop, layout = _make_popup()
-    h = min(dp(290), int(Window.height * 0.52))
+    h = min(dp(318), int(Window.height * 0.6))
     caixa = BoxLayout(
-        orientation='vertical', padding=[dp(26), dp(20), dp(26), dp(20)],
+        orientation='vertical', padding=[dp(24), dp(18), dp(24), dp(18)],
         spacing=dp(10), size_hint=(0.88, None), height=h)
     aplicar_fundo_holografico(caixa, (0.55, 0.05, 0.95, 0.9))
 
+    lbl_titulo = Label(
+        text=f"[b]{titulo}[/b]", markup=True, font_name="orbitron.ttf", font_size="13sp",
+        color=(0.72, 0.45, 1.0, 1), halign="center", size_hint_y=None, height=dp(22))
     lbl_info = Label(
-        text=(f"[color=#8a2be2]{titulo}[/color]\n"
-              f"[color=#00e5ff][b]{nome}[/b][/color]   "
-              f"[color=#555555]× {quantidade} un.[/color]\n"
-              f"[color=#444444]{pergunta}[/color]"),
-        markup=True, font_name="orbitron.ttf", font_size="12sp",
-        halign="center", size_hint_y=None, height=dp(72))
+        text=(f"[color=#00e5ff][b]{nome}[/b][/color]  [color=#8c96aa]× {quantidade} un.[/color]\n"
+              f"[size=14sp][color=#aab4c8]{pergunta}[/color][/size]"),
+        markup=True, font_name="rajdhani.ttf", font_size="18sp", shorten=False,
+        halign="center", valign="middle", size_hint_y=None, height=dp(52))
+    lbl_info.bind(size=lambda w, s: setattr(w, 'text_size', s))
 
     inp = InputHolografico(
         input_filter='int', font_name="orbitron.ttf", font_size="30sp",
         background_color=(0, 0, 0, 0), foreground_color=(0, 0.9, 1, 1),
         cursor_color=(0, 0.9, 1, 1), halign="center",
-        size_hint_y=None, height=dp(64))
+        hint_text="ex.: 3", hint_text_color=(0.0, 0.9, 1.0, 0.22),
+        size_hint_y=None, height=dp(60))
 
     lbl_preview = Label(
         text="TOTAL DO LOTE:  [color=#00ff88][b]0 XP[/b][/color]",
@@ -748,7 +751,7 @@ def popup_pedir_xp(nome: str, quantidade: int, on_save, titulo=">> LOTE DETECTAD
     inp.bind(text=_preview)
     btn = BotaoAngular(text=">>  CONFIRMAR  <<", size_hint_y=None, height=dp(52))
 
-    for w in [lbl_info, inp, lbl_preview, btn]:  # o teclado sobe a caixa inteira
+    for w in [lbl_titulo, lbl_info, inp, lbl_preview, btn]:  # o teclado sobe a caixa inteira
         caixa.add_widget(w)
     layout.add_widget(caixa)
     caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}

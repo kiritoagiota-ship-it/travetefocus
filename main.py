@@ -48,6 +48,9 @@ class MenuPrincipal(Screen):
         try:
             from animacoes_ui import brilho_texto, luz_na_linha
             brilho_texto(self.ids.titulo_menu, periodo=6.5, atraso=1.2)
+            if not getattr(self, '_logo_decodificado', False):       # 1a vez: o nome se decifra
+                self._logo_decodificado = True
+                self.ids.titulo_menu.decodificar()
             luz_na_linha(self.ids.linha_menu_1, (0, 0.9, 1), periodo=5.0, atraso=0.6)
             luz_na_linha(self.ids.linha_menu_2, (0.6, 0.25, 1), periodo=5.0, atraso=2.2)
             luz_na_linha(self.ids.linha_menu_3, (0, 0.9, 1), periodo=5.0, atraso=3.8)

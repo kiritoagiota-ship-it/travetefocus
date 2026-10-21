@@ -13,10 +13,11 @@ from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
+from kivy.uix.label import Label
 from kivy.graphics import (
     Color, Rectangle, RenderContext, Ellipse, Line,
     PushMatrix, PopMatrix, Rotate, Scale, Triangle, RoundedRectangle,
-    Translate, Mesh
+    Translate, Mesh, ScissorPush, ScissorPop
 )
 from kivy.properties import NumericProperty, ListProperty, StringProperty
 from kivy.metrics import dp
@@ -1778,6 +1779,165 @@ class PainelMenu(Widget):
             if app is not None and hasattr(app, 'mudar_tela'):
                 app.mudar_tela('progresso')
         return True
+
+
+# ═══════════════════════════════════════════════════════════
+#  LOGO DO MENU
+# ═══════════════════════════════════════════════════════════
+
+class TituloLogo(Label):
+    """O nome do app como logo: letras cromadas em dois tons (claro em cima,
+    ciano embaixo, com um corte fino no meio), profundidade (uma sombra azul
+    funda por baixo), um brilho suave em volta e cantoneiras HUD. O texto
+    do proprio Label nao aparece (color transparente): continua servindo de
+    medida e para o brilho_texto, que passa por cima. decodificar(): as
+    letras embaralham e vao se fixando da esquerda para a direita."""
+    COR_CIMA = (0.86, 1.0, 1.0)
+    COR_BAIXO = (0.0, 0.82, 1.0)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.color = (0, 0, 0, 0)
+        self._tex = None
+        self._chave = None
+        with self.canvas.before:
+            self._c_brilho2 = Color(0.0, 0.55, 1.0, 0.035)
+            self._r_brilho2 = [Rectangle() for _ in range(10)]
+            self._c_brilho = Color(0.0, 0.85, 1.0, 0.075)
+            self._r_brilho = [Rectangle() for _ in range(10)]
+            self._c_fundo = Color(0.0, 0.2, 0.34, 1)
+            self._r_fundo = [Rectangle() for _ in range(3)]
+            Color(*self.COR_BAIXO, 1)
+            self._r_baixo = Rectangle()
+            # metade de cima (clara) e o corte fino: a mesma textura recortada
+            # por uma tesoura (ScissorPush: coordenadas da janela)
+            self._sc_cima = ScissorPush(x=0, y=0, width=1, height=1)
+            Color(*self.COR_CIMA, 1)
+            self._r_cima = Rectangle()
+            ScissorPop()
+            self._sc_corte = ScissorPush(x=0, y=0, width=1, height=1)
+            Color(0.0, 0.42, 0.62, 1)
+            self._r_corte = Rectangle()
+            ScissorPop()
+            self._c_cantos = Color(0.0, 0.9, 1.0, 0.55)
+            self._l_cantos = [Line(width=dp(1.2)) for _ in range(4)]
+        self.bind(pos=self._desenhar, size=self._desenhar, text=self._desenhar,
+                  font_size=self._desenhar)
+
+    def _textura(self):
+        chave = (self.text, self.font_name, float(self.font_size), bool(self.bold))
+        if chave != self._chave:
+            self._chave = chave
+            cl = CoreLabel(text=self.text, font_name=self.font_name, font_size=self.font_size,
+                           bold=self.bold, color=(1, 1, 1, 1))
+            cl.refresh()
+            self._tex = cl.texture
+        return self._tex
+
+    def _desenhar(self, *_):
+        try:
+            if not self.text or self.width < 10:
+                return
+            tex = self._textura()
+            tw, th = tex.size
+            x = int(self.x + (self.width - tw) / 2.0)       # (center_x tem cache: pode vir velho)
+            y = int(self.y + (self.height - th) / 2.0)
+            for i, r in enumerate(self._r_brilho):
+                a = 2 * math.pi * i / len(self._r_brilho)
+                r.texture, r.size = tex, (tw, th)
+                r.pos = (x + math.cos(a) * dp(2.6), y + math.sin(a) * dp(2.6))
+            for i, r in enumerate(self._r_brilho2):
+                a = 2 * math.pi * (i + 0.5) / len(self._r_brilho2)
+                r.texture, r.size = tex, (tw, th)
+                r.pos = (x + math.cos(a) * dp(6), y + math.sin(a) * dp(6))
+            for i, r in enumerate(self._r_fundo):
+                r.texture, r.size = tex, (tw, th)
+                r.pos = (x + dp(0.5) * (i + 1), y - dp(1) * (i + 1))
+            self._r_baixo.texture, self._r_baixo.size, self._r_baixo.pos = tex, (tw, th), (x, y)
+            meio = int(th * 0.47)
+            corte = max(1, int(dp(1.4)))
+            for r in (self._r_cima, self._r_corte):
+                r.texture, r.size, r.pos = tex, (tw, th), (x, y)
+            wx, wy = self.to_window(x, y)
+            self._sc_cima.x, self._sc_cima.y = int(wx), int(wy + meio)
+            self._sc_cima.width, self._sc_cima.height = int(tw), int(th - meio)
+            self._sc_corte.x, self._sc_corte.y = int(wx), int(wy + meio - corte)
+            self._sc_corte.width, self._sc_corte.height = int(tw), corte
+            # cantoneiras (na largura do nome certo: nao pulam enquanto ele se decifra)
+            m, L = dp(10), dp(12)
+            lf = getattr(self, '_larg_final', None) or tw
+            xf = self.x + (self.width - lf) / 2.0
+            x0, y0, x1, y1 = xf - m, y - m * 0.5, xf + lf + m, y + th + m * 0.5
+            self._l_cantos[0].points = [x0, y1 - L, x0, y1, x0 + L, y1]
+            self._l_cantos[1].points = [x1 - L, y1, x1, y1, x1, y1 - L]
+            self._l_cantos[2].points = [x1, y0 + L, x1, y0, x1 - L, y0]
+            self._l_cantos[3].points = [x0 + L, y0, x0, y0, x0, y0 + L]
+        except Exception as e:
+            print(f"[logo] {e}")
+
+    def decodificar(self, duracao=0.9):
+        """As letras embaralham e vao se fixando da esquerda para a direita."""
+        final = self.text
+        idx = [i for i, ch in enumerate(final) if ch.strip()]
+        if not idx:
+            return
+        self._larg_final = self._textura().size[0]
+        sorteio = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&'
+        t, acc = [0.0], [1.0]
+
+        def _p(dt):
+            try:
+                t[0] += dt
+                acc[0] += dt
+                k = min(1.0, t[0] / duracao)
+                if k >= 1:
+                    self.text = final
+                    self._larg_final = None
+                    return False
+                if acc[0] < 1 / 24.:
+                    return True
+                acc[0] = 0.0
+                fixos = int(len(idx) * (k ** 0.8))
+                s = list(final)
+                for j, i in enumerate(idx):
+                    if j >= fixos:
+                        s[i] = random.choice(sorteio)
+                self.text = ''.join(s)
+            except Exception:
+                self.text = final
+                return False
+        Clock.schedule_interval(_p, 1 / 60.)
+
+
+class SubtituloHUD(Label):
+    """Subtitulo com um traco e um losango de cada lado do texto."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        with self.canvas.before:
+            self._c = Color(0.62, 0.36, 1.0, 0.55)
+            self._linhas = [Rectangle(), Rectangle()]
+            self._los = [Mesh(mode='triangle_fan', indices=[0, 1, 2, 3]),
+                         Mesh(mode='triangle_fan', indices=[0, 1, 2, 3])]
+        self.bind(pos=self._desenhar, size=self._desenhar, texture_size=self._desenhar)
+
+    def _desenhar(self, *_):
+        tw = self.texture_size[0]
+        cx0 = self.x + self.width / 2.0          # (center_x tem cache: pode vir velho aqui)
+        cy = self.y + self.height / 2.0
+        gap, comp, s = dp(10), min(dp(46), (self.width - tw) / 2.0 - dp(18)), dp(3)
+        if comp < dp(8):
+            for r in self._linhas:
+                r.size = (0, 0)
+            for m in self._los:
+                m.vertices = [0] * 16
+            return
+        xe = cx0 - tw / 2.0 - gap
+        xd = cx0 + tw / 2.0 + gap
+        self._linhas[0].pos, self._linhas[0].size = (xe - comp, cy - dp(0.5)), (comp - s * 2.5, dp(1))
+        self._linhas[1].pos, self._linhas[1].size = (xd + s * 2.5, cy - dp(0.5)), (comp - s * 2.5, dp(1))
+        for m, cx in ((self._los[0], xe - s), (self._los[1], xd + s)):
+            m.vertices = [cx, cy - s, 0, 0, cx + s, cy, 0, 0, cx, cy + s, 0, 0, cx - s, cy, 0, 0]
 
 
 # ═══════════════════════════════════════════════════════════

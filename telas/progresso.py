@@ -188,7 +188,7 @@ class TelaProgresso(Screen):
                 print(f"[progresso] chamas: {e}")
             barra.cor_anel = [1, 0.55, 0, 1]
             # em() renderiza o emoji com NotoEmoji se disponivel, senao usa texto
-            self.ids.lbl_streak.text  = f"{em('🔥')}  STREAK  {streak}  {'DIA' if streak == 1 else 'DIAS'}"
+            self.ids.lbl_streak.text  = f"{em('🔥')}  SEQUÊNCIA  {streak}  {'DIA' if streak == 1 else 'DIAS'}"
             self.ids.lbl_streak.color = (1, 0.5, 0, 1)
             fire = (Animation(cor_anel=[1, 0.42, 0, 1], duration=0.7,
                               transition='in_out_sine') +
@@ -199,6 +199,6 @@ class TelaProgresso(Screen):
             fire.start(barra)
         else:
             barra.cor_anel = [0, 0.9, 1, 1]
-            self.ids.lbl_streak.text  = f"STREAK  {streak}  {'DIA' if streak == 1 else 'DIAS'}"
+            self.ids.lbl_streak.text  = f"SEQUÊNCIA  {streak}  {'DIA' if streak == 1 else 'DIAS'}"
             self.ids.lbl_streak.color = (0, 0.9, 1, 0.7)
 
