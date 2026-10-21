@@ -66,7 +66,12 @@ public class Lembrete extends BroadcastReceiver {
         RemoteViews v = new RemoteViews(ctx.getPackageName(), lay);
         v.setTextViewText(recurso(ctx, "tf_titulo", "id"), titulo);
         v.setTextViewText(recurso(ctx, "tf_texto", "id"), texto);
-        int img = recurso(ctx, "yoru_" + (pose == null ? "guarda" : pose), "drawable");
+        String base = "yoru_" + (pose == null ? "guarda" : pose);
+        // o card fechado e pequeno: o rosto de perto; o aberto: meio corpo com a espada
+        int img = grande ? 0 : recurso(ctx, base + "_rosto", "drawable");
+        if (img == 0) {
+            img = recurso(ctx, base, "drawable");
+        }
         if (img == 0) {
             img = recurso(ctx, "yoru_guarda", "drawable");
         }

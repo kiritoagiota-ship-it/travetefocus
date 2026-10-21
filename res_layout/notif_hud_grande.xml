@@ -16,8 +16,8 @@
 
         <ImageView
             android:id="@+id/tf_yoru"
-            android:layout_width="72dp"
-            android:layout_height="72dp"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
             android:scaleType="fitCenter" />
 
         <LinearLayout
