@@ -179,6 +179,16 @@ class TraveteApp(App):
             Clock.schedule_once(lambda dt: self._iniciar_lembretes(), 6.0)
 
     def _iniciar_lembretes(self):
+        # so pede a permissao com o menu ja aberto e parado (nunca no meio da
+        # abertura ou de uma troca de tela)
+        try:
+            sm = self.root.ids.sm
+            from helpers import _transicao
+            if sm.current != 'menu' or _transicao.get('ativa'):
+                Clock.schedule_once(lambda dt: self._iniciar_lembretes(), 1.5)
+                return
+        except Exception:
+            pass
         try:
             import lembretes
             lembretes.pedir_permissao()

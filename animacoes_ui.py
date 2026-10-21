@@ -903,9 +903,22 @@ def foto_da_tela():
     with fbo:
         ClearColor(0.02, 0.02, 0.05, 1)
         ClearBuffers()
-    fbo.add(root.canvas)
-    fbo.draw()
-    fbo.remove(root.canvas)
+    # o canvas da tela sai do lugar so durante a foto e VOLTA para o mesmo
+    # lugar (como o export_as_image do Kivy). Sem devolver, ele ficava sem
+    # "pai": continuava sendo desenhado, mas mudancas nele nao pediam mais
+    # redesenho - no celular a tela CONGELAVA (o PC de teste redesenha todo
+    # quadro e escondia isso)
+    pai = root.parent.canvas if root.parent is not None else Window.canvas
+    idx = pai.indexof(root.canvas)
+    if idx > -1:
+        pai.remove(root.canvas)
+    try:
+        fbo.add(root.canvas)
+        fbo.draw()
+        fbo.remove(root.canvas)
+    finally:
+        if idx > -1 and pai.indexof(root.canvas) < 0:
+            pai.insert(idx, root.canvas)
     return fbo.texture, fbo
 
 

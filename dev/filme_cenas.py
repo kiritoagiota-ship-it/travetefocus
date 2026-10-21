@@ -889,10 +889,25 @@ def roteiro_trans():
     destino) e o deslize do Voltar."""
     def ir(nome):
         return lambda: app().mudar_tela(nome)
-    passos = [(0.8, lambda: fase('menu')), (0.01, lambda: None)]
+    def ligado(onde):
+        # a tela continua sendo redesenhada sozinha? (o menu tem particulas
+        # animando: em 0,5 s tem que haver varios quadros novos; se o canvas
+        # da tela perdeu a ligacao com a janela, quase nenhum)
+        def _f():
+            q0 = Q[0]
+
+            def _conta(dt):
+                n = Q[0] - q0
+                fase(f'quadros redesenhados em 0,5 s depois de {onde}: {n}')
+                if n < 8 and not onde.startswith('ir para'):      # (o menu sempre anima)
+                    LOG['erros'].append(f'TELA CONGELADA depois de {onde}: so {n} quadros em 0,5 s')
+            Clock.schedule_once(_conta, 0.5)
+        return _f
+    passos = [(0.8, lambda: fase('menu')), (0.01, ligado('abrir'))]
     for t in ('memorias', 'ganhos', 'calculadora', 'progresso'):
-        passos += [(0.6, lambda t=t: fase('vai ' + t)), (0.01, ir(t)), (1.4, lambda t=t: fase('volta de ' + t)),
-                   (0.01, ir('menu')), (0.9, lambda: None)]
+        passos += [(0.6, lambda t=t: fase('vai ' + t)), (0.01, ir(t)), (1.0, ligado('ir para ' + t)),
+                   (0.4, lambda t=t: fase('volta de ' + t)),
+                   (0.01, ir('menu')), (0.9, ligado('voltar de ' + t))]
     passos.append((0.5, fim))
     Roteiro(passos).rodar()
 
