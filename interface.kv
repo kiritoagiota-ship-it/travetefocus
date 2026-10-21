@@ -172,6 +172,12 @@
     canvas.after:
         PopMatrix
 
+# Cartoes do menu (menu_hud.CartaoMenu): desenham tudo sozinhos (o "-" tira a
+# moldura do BotaoAngular e o texto do Label, que ficariam por baixo)
+<-CartaoMenu>:
+    background_normal: ""
+    background_color:  0, 0, 0, 0
+
 # ════════════════════════════════════════════════════════════
 #  INPUT HOLOGRÁFICO
 #  ─────────────────────────────────────────────────────────
@@ -370,195 +376,205 @@
         FloatLayout:
             size_hint: 1, 1
 
-            # Tudo numa coluna: alturas fixas em dp e vaos que se ajustam a
-            # altura da tela (antes era por fracao da tela e, num celular com
-            # barras do Android e letra maior, o painel cobria o subtitulo)
+            # Tudo numa coluna: os blocos crescem/encolhem juntos com a altura
+            # da tela (pesos em size_hint_y), nada se sobrepoe em celular nenhum
             BoxLayout:
                 orientation: 'vertical'
                 size_hint:   1, 1
-                padding:     [0, dp(16), 0, dp(6)]
+                padding:     [0, dp(10), 0, dp(6)]
 
-                # ── Logo ─────────────────────────────────────────
-                TituloLogo:
-                    id:          titulo_menu
-                    text:        "TRAVETE FOCUS"
-                    font_name:   "orbitron.ttf"
-                    font_size:   min(sp(32), self.width / 12.5) if self.width > 10 else sp(32)
-                    bold:        True
-                    size_hint_y: None
-                    height:      dp(70)
-                SubtituloHUD:
-                    text:        "NERVEGEAR  //  AINCRAD EDITION"
-                    font_name:   "orbitron.ttf"
-                    font_size:   "9sp"
-                    color:       0.66, 0.45, 1.0, 0.8
-                    size_hint_y: None
-                    height:      dp(18)
+                # ── Cabecalho: moldura HUD, nome e o retrato do Yoru ──
+                CabecalhoMenu:
+                    id:          cabecalho_menu
+                    pos_hint:    {"center_x": 0.5}
+                    size_hint:   (0.92, 150)
+                    Label:
+                        text:      "NERVEGEAR INTERFACE\n// TRAVETE FOCUS"
+                        font_name: "orbitron.ttf"
+                        font_size: "7.5sp"
+                        color:     0.3, 0.8, 1.0, 0.75
+                        size_hint: (0.6, None)
+                        height:    dp(24)
+                        pos_hint:  {"x": 0.05, "top": 0.95}
+                        halign:    "left"
+                        valign:    "top"
+                        text_size: self.size
+                    TituloLogo:
+                        id:          titulo_menu
+                        text:        "TRAVETE"
+                        cantos:      False
+                        font_name:   "orbitron.ttf"
+                        font_size:   min(sp(42), self.width / 7.4) if self.width > 10 else sp(42)
+                        bold:        True
+                        size_hint:   (0.6, 0.36)
+                        pos_hint:    {"x": 0.03, "center_y": 0.58}
+                    SubtituloHUD:
+                        id:          foco_menu
+                        text:        "F O C U S"
+                        cor_linhas:  0.0, 0.85, 1.0, 0.85
+                        font_name:   "orbitron.ttf"
+                        font_size:   "17sp"
+                        bold:        True
+                        color:       0.25, 0.85, 1.0, 1
+                        size_hint:   (0.6, None)
+                        height:      dp(24)
+                        pos_hint:    {"x": 0.03, "center_y": 0.33}
+                    Label:
+                        text:      "PRODUÇÃO  //  DISCIPLINA  //  EVOLUÇÃO"
+                        font_name: "orbitron.ttf"
+                        font_size: "7.5sp"
+                        color:     0.35, 0.8, 1.0, 0.9
+                        size_hint: (0.9, None)
+                        height:    dp(16)
+                        pos_hint:  {"x": 0.04, "y": 0.06}
+                        halign:    "left"
+                        valign:    "middle"
+                        text_size: self.size
                 Widget:
-                    size_hint_y: 0.55
+                    size_hint_y: 8
 
                 # ── Painel vivo: hoje / nivel / sequencia ─────────
-                PainelMenu:
+                PainelStatus:
                     id:        painel_menu
                     pos_hint:  {"center_x": 0.5}
-                    size_hint: (0.88, None)
-                    height:    dp(62)
+                    size_hint: (0.92, 112)
                 Widget:
-                    size_hint_y: 0.45
-
-                # ── Linha decorativa superior ─────────────────────
-                Widget:
-                    id:        linha_menu_1
-                    pos_hint:  {"center_x": 0.5}
-                    size_hint: (0.88, None)
-                    height:    dp(1)
-                    canvas:
-                        Color:
-                            rgba: rgba("#00e5ff33")
-                        Rectangle:
-                            pos:  self.pos
-                            size: self.size
-                Widget:
-                    size_hint_y: 0.75
+                    size_hint_y: 10
 
                 # ── Botão principal SYSTEM LINK START ─────────────
-                BotaoAngularMenu:
+                BotaoLinkStart:
                     id:          btn_link_start
-                    text:        "SYSTEM LINK START"
+                    text:        "SYSTEM LINK START\n[size=" + str(int(min(sp(9), self.width / 40.0))) + "][color=#5fd8ffcc]ACESSAR PAINEL DE PRODUÇÃO[/color][/size]"
+                    markup:      True
+                    halign:      "center"
                     font_name:   "orbitron.ttf"
-                    font_size:   min(sp(17), self.width / 18.5) if self.width > 10 else sp(17)
+                    font_size:   min(sp(18), self.width / 17.5) if self.width > 10 else sp(18)
                     bold:        True
                     pos_hint:    {"center_x": 0.5}
-                    size_hint:   (0.88, None)
-                    height:      dp(64)
+                    size_hint:   (0.92, 80)
                     on_release:  app.link_start(self)
                 Widget:
-                    size_hint_y: 0.6
+                    size_hint_y: 10
 
-                # ── Linha decorativa ──────────────────────────────
-                Widget:
-                    id:        linha_menu_2
+                # ── Os quatro cartoes ─────────────────────────────
+                GridLayout:
+                    id:        caixa_botoes_menu
+                    cols:      2
+                    spacing:   dp(10)
                     pos_hint:  {"center_x": 0.5}
-                    size_hint: (0.70, None)
-                    height:    dp(1)
-                    canvas:
-                        Color:
-                            rgba: rgba("#8a2be222")
-                        Rectangle:
-                            pos:  self.pos
-                            size: self.size
+                    size_hint: (0.92, 234)
+                    CartaoMenu:
+                        text:       ">>  MEMÓRIAS"
+                        titulo:     "MEMÓRIAS"
+                        sub:        "TURNOS SALVOS\nE O GRÁFICO DOS DIAS"
+                        icone:      "cristal"
+                        cena:       "memorias"
+                        cor:        0.66, 0.36, 1.0
+                        nome_setas: "setas2_roxo"
+                        on_release: app.mudar_tela("memorias")
+                    CartaoMenu:
+                        text:       ">>  PROGRESSO"
+                        titulo:     "PROGRESSO"
+                        sub:        "NÍVEL, XP\nE RECORDES"
+                        icone:      "grafico"
+                        cena:       "progresso"
+                        cor:        0.0, 0.8, 1.0
+                        nome_setas: "setas2_ciano"
+                        on_release: app.mudar_tela("progresso")
+                    CartaoMenu:
+                        text:       ">>  GANHOS"
+                        titulo:     "GANHOS"
+                        sub:        "PAGAMENTO DA SEMANA\nE AS FAIXAS"
+                        icone:      "carteira"
+                        cena:       "ganhos"
+                        cor:        0.1, 1.0, 0.5
+                        nome_setas: "setas2_verde"
+                        on_release: app.mudar_tela("ganhos")
+                    CartaoMenu:
+                        text:       ">>  CALCULADORA"
+                        titulo:     "CALCULADORA"
+                        sub:        "CONTAS RÁPIDAS\nDO DIA A DIA"
+                        icone:      "calculadora"
+                        cena:       "calculadora"
+                        cor:        1.0, 0.6, 0.08
+                        nome_setas: "setas2_laranja"
+                        on_release: app.mudar_tela("calculadora")
                 Widget:
-                    size_hint_y: 0.6
-
-                # ── Botões secundários VERTICAIS com cores únicas ──
-                BoxLayout:
-                    id:          caixa_botoes_menu
-                    orientation: 'vertical'
-                    pos_hint:    {"center_x": 0.5}
-                    size_hint:   (0.88, None)
-                    height:      dp(220)
-                    spacing:     dp(8)
-
-                    # MEMÓRIAS — roxo (arquivo/histórico)
-                    BotaoAngularMenu:
-                        text:         ">>  MEMÓRIAS"
-                        font_size:    "14sp"
-                        cor_borda:    [0.55, 0.10, 0.92, 0.9]
-                        cor_borda_kv: [0.55, 0.10, 0.92, 0.9]
-                        cor_fundo:    [0.08, 0.02, 0.18, 0.95]
-                        cor_texto:    [0.75, 0.40, 1.00, 1.0]
-                        on_release:   app.mudar_tela("memorias")
-
-                    # PROGRESSO — ciano (evolução/XP)
-                    BotaoAngularMenu:
-                        text:         ">>  PROGRESSO"
-                        font_size:    "14sp"
-                        cor_borda:    [0.00, 0.85, 1.00, 0.9]
-                        cor_borda_kv: [0.00, 0.85, 1.00, 0.9]
-                        cor_fundo:    [0.02, 0.10, 0.18, 0.95]
-                        cor_texto:    [0.00, 0.90, 1.00, 1.0]
-                        on_release:   app.mudar_tela("progresso")
-
-                    # GANHOS — verde (dinheiro/produção)
-                    BotaoAngularMenu:
-                        text:         ">>  GANHOS"
-                        font_size:    "14sp"
-                        cor_borda:    [0.00, 1.00, 0.55, 0.9]
-                        cor_borda_kv: [0.00, 1.00, 0.55, 0.9]
-                        cor_fundo:    [0.02, 0.14, 0.08, 0.95]
-                        cor_texto:    [0.00, 1.00, 0.55, 1.0]
-                        on_release:   app.mudar_tela("ganhos")
-
-                    # CALCULADORA — laranja (cálculo/tático)
-                    BotaoAngularMenu:
-                        text:         ">>  CALCULADORA"
-                        font_size:    "14sp"
-                        cor_borda:    [1.00, 0.60, 0.00, 0.9]
-                        cor_borda_kv: [1.00, 0.60, 0.00, 0.9]
-                        cor_fundo:    [0.16, 0.08, 0.00, 0.95]
-                        cor_texto:    [1.00, 0.72, 0.00, 1.0]
-                        on_release:   app.mudar_tela("calculadora")
-                Widget:
-                    size_hint_y: 0.4
-
-                # ── Linha decorativa inferior ─────────────────────
-                Widget:
-                    id:        linha_menu_3
-                    pos_hint:  {"center_x": 0.5}
-                    size_hint: (0.88, None)
-                    height:    dp(1)
-                    canvas:
-                        Color:
-                            rgba: rgba("#00e5ff1a")
-                        Rectangle:
-                            pos:  self.pos
-                            size: self.size
-                Widget:
-                    size_hint_y: 0.7
+                    size_hint_y: 10
 
                 # ── Vibracao, avisos e senha ──────────────────────
                 BoxLayout:
                     pos_hint:    {"center_x": 0.5}
-                    size_hint:   (0.88, None)
-                    height:      dp(40)
-                    spacing:     dp(10)
-                    BotaoAngular:
-                        text:        "VIBRAR: SIM" if app.vibracao else "VIBRAR: NÃO"
+                    size_hint:   (0.92, 46)
+                    spacing:     dp(8)
+                    BotaoIcone:
+                        icone:       "vibrar_sim" if app.vibracao else "vibrar_nao"
+                        text:        "VIBRAR\n[size=" + str(int(sp(8))) + "][color=" + ("#00e5ff" if app.vibracao else "#77808c") + "]" + ("SIM" if app.vibracao else "NÃO") + "[/color][/size]"
+                        markup:      True
+                        halign:      "center"
+                        padding:     [dp(34), 0, dp(4), 0]
                         font_name:   "orbitron.ttf"
                         font_size:   "9sp"
-                        size_hint_x: 0.34
                         cor_texto:   [0.0, 0.9, 1.0, 1.0] if app.vibracao else [0.45, 0.5, 0.56, 1.0]
                         on_release:  app.alternar_vibracao()
-                    BotaoAngular:
-                        text:        "AVISOS: SIM" if app.lembretes else "AVISOS: NÃO"
+                    BotaoIcone:
+                        icone:       "sino_sim" if app.lembretes else "sino_nao"
+                        text:        "AVISOS\n[size=" + str(int(sp(8))) + "][color=" + ("#00e5ff" if app.lembretes else "#77808c") + "]" + ("SIM" if app.lembretes else "NÃO") + "[/color][/size]"
+                        markup:      True
+                        halign:      "center"
+                        padding:     [dp(34), 0, dp(4), 0]
                         font_name:   "orbitron.ttf"
                         font_size:   "9sp"
-                        size_hint_x: 0.34
                         cor_texto:   [0.0, 0.9, 1.0, 1.0] if app.lembretes else [0.45, 0.5, 0.56, 1.0]
                         on_release:  app.alternar_lembretes()
-                    BotaoAngular:
-                        text:        "SENHA"
+                    BotaoIcone:
+                        icone:       "cadeado"
+                        text:        "SENHA\n[size=" + str(int(sp(8))) + "][color=#00e5ff99]TROCAR[/color][/size]"
+                        markup:      True
+                        halign:      "center"
+                        padding:     [dp(30), 0, dp(4), 0]
                         font_name:   "orbitron.ttf"
                         font_size:   "9sp"
-                        size_hint_x: 0.32
                         cor_texto:   [0.0, 0.9, 1.0, 1.0]
                         on_release:  app.trocar_senha()
                 Widget:
-                    size_hint_y: 0.5
+                    size_hint_y: 8
 
-                # ── Rodapé: o sistema e a VERSAO (legivel) ────────
-                Label:
-                    id:          rodape_menu
-                    text:        "SISTEMA OPERACIONAL DE CONFECÇÃO  //  [color=#00e5ffcc]VERSÃO " + app.versao + "[/color]"
-                    markup:      True
-                    font_name:   "orbitron.ttf"
-                    font_size:   "8.5sp"
-                    color:       1, 1, 1, 0.3
-                    size_hint_y: None
-                    height:      dp(24)
-                    halign:      "center"
-                    valign:      "middle"
-                    text_size:   self.size
+                # ── Rodapé: o selo TF, o sistema, a VERSAO e a frase ──
+                RodapeMenu:
+                    id:        rodape_menu
+                    pos_hint:  {"center_x": 0.5}
+                    size_hint: (0.92, 48)
+                    Label:
+                        text:      "TF"
+                        font_name: "orbitron.ttf"
+                        font_size: "15sp"
+                        bold:      True
+                        color:     0.3, 0.9, 1.0, 1
+                        size_hint: (None, None)
+                        size:      root.ids.rodape_menu.selo_area[2], root.ids.rodape_menu.selo_area[3]
+                        pos:       root.ids.rodape_menu.selo_area[0], root.ids.rodape_menu.selo_area[1]
+                    Label:
+                        text:      "SISTEMA OPERACIONAL DE CONFECÇÃO\n[color=#00e5ff]// VERSÃO " + app.versao + "[/color]"
+                        markup:    True
+                        font_name: "orbitron.ttf"
+                        font_size: "7sp"
+                        color:     0.4, 0.75, 1.0, 0.85
+                        size_hint: (0.56, 1)
+                        pos_hint:  {"x": 0.15, "y": 0}
+                        halign:    "left"
+                        valign:    "middle"
+                        text_size: self.size
+                    Label:
+                        text:      "\"DISCIPLINA HOJE,\nLIBERDADE AMANHÃ.\""
+                        font_name: "orbitron.ttf"
+                        font_size: "7sp"
+                        color:     0.4, 0.75, 1.0, 0.75
+                        size_hint: (0.3, 1)
+                        pos_hint:  {"right": 0.97, "y": 0}
+                        halign:    "right"
+                        valign:    "middle"
+                        text_size: self.size
 
 # ════════════════════════════════════════════════════════════
 #  TELA REGISTRO

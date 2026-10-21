@@ -19,7 +19,7 @@ from kivy.graphics import (
     PushMatrix, PopMatrix, Rotate, Scale, Triangle, RoundedRectangle,
     Translate, Mesh, ScissorPush, ScissorPop
 )
-from kivy.properties import NumericProperty, ListProperty, StringProperty
+from kivy.properties import NumericProperty, ListProperty, StringProperty, BooleanProperty
 from kivy.metrics import dp
 from kivy.clock import Clock
 from kivy.core.window import Window
@@ -1294,8 +1294,9 @@ def _icone_roupa(nome):
     return textura_mapa(_MAPAS_ROUPA[tipo], cores, ('roupa', tipo)), cor
 
 
-def _render_texto(texto, fonte, tamanho, cor, bold=False, markup=False, larg=None):
-    """Textura de um texto (CoreLabel: sem widget). larg: encurta com '...'."""
+def _render_texto(texto, fonte, tamanho, cor, bold=False, markup=False, larg=None, contorno=None):
+    """Textura de um texto (CoreLabel: sem widget). larg: encurta com '...'.
+    contorno: (largura, (r, g, b)) - um contorno escuro para ler sobre desenho."""
     if markup:
         from kivy.core.text.markup import MarkupLabel as _L
     else:
@@ -1304,6 +1305,8 @@ def _render_texto(texto, fonte, tamanho, cor, bold=False, markup=False, larg=Non
     if larg is not None:
         kw.update(text_size=(max(1, int(larg)), None), shorten=True, shorten_from='right',
                   max_lines=1, halign='left')
+    if contorno is not None:
+        kw.update(outline_width=max(1, int(contorno[0])), outline_color=tuple(contorno[1])[:3])
     l = _L(**kw)
     l.refresh()
     return l.texture
@@ -1794,6 +1797,7 @@ class TituloLogo(Label):
     letras embaralham e vao se fixando da esquerda para a direita."""
     COR_CIMA = (0.86, 1.0, 1.0)
     COR_BAIXO = (0.0, 0.82, 1.0)
+    cantos = BooleanProperty(True)          # as cantoneiras em volta do nome
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1822,7 +1826,7 @@ class TituloLogo(Label):
             self._c_cantos = Color(0.0, 0.9, 1.0, 0.55)
             self._l_cantos = [Line(width=dp(1.2)) for _ in range(4)]
         self.bind(pos=self._desenhar, size=self._desenhar, text=self._desenhar,
-                  font_size=self._desenhar)
+                  font_size=self._desenhar, cantos=self._desenhar)
 
     def _textura(self):
         chave = (self.text, self.font_name, float(self.font_size), bool(self.bold))
@@ -1865,6 +1869,10 @@ class TituloLogo(Label):
             self._sc_corte.width, self._sc_corte.height = int(tw), corte
             # cantoneiras (na largura do nome certo: nao pulam enquanto ele se decifra)
             m, L = dp(10), dp(12)
+            if not self.cantos:
+                for ln in self._l_cantos:
+                    ln.points = []
+                return
             lf = getattr(self, '_larg_final', None) or tw
             xf = self.x + (self.width - lf) / 2.0
             x0, y0, x1, y1 = xf - m, y - m * 0.5, xf + lf + m, y + th + m * 0.5
@@ -1911,11 +1919,14 @@ class TituloLogo(Label):
 
 class SubtituloHUD(Label):
     """Subtitulo com um traco e um losango de cada lado do texto."""
+    cor_linhas = ListProperty([0.62, 0.36, 1.0, 0.55])
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         with self.canvas.before:
-            self._c = Color(0.62, 0.36, 1.0, 0.55)
+            self._c = Color(*self.cor_linhas)
+        self.bind(cor_linhas=lambda *_: setattr(self._c, 'rgba', self.cor_linhas))
+        with self.canvas.before:
             self._linhas = [Rectangle(), Rectangle()]
             self._los = [Mesh(mode='triangle_fan', indices=[0, 1, 2, 3]),
                          Mesh(mode='triangle_fan', indices=[0, 1, 2, 3])]

@@ -22,6 +22,7 @@ from kivy.resources import resource_add_path, resource_find
 
 import som
 from efeitos import *
+from menu_hud import CabecalhoMenu, PainelStatus, BotaoLinkStart, CartaoMenu, BotaoIcone, RodapeMenu  # noqa: F401
 from helpers import transicao_tela
 
 from telas.loading     import TelaLoading
@@ -33,7 +34,17 @@ from telas.calculadora import TelaCalculadora
 
 # ── Tela de menu (sem lógica, só navegação) ───────────────
 class MenuPrincipal(Screen):
+    def on_leave(self, *_):
+        try:
+            self.ids.cabecalho_menu.pausar()
+        except Exception as e:
+            print(f"[menu] pausar: {e}")
+
     def on_enter(self):
+        try:
+            self.ids.cabecalho_menu.retomar()             # o Yoru do retrato volta a respirar
+        except Exception as e:
+            print(f"[menu] retomar: {e}")
         # botoes entram em cascata, de cima para baixo
         try:
             from animacoes_ui import entrada_cascata
@@ -51,27 +62,17 @@ class MenuPrincipal(Screen):
             if not getattr(self, '_logo_decodificado', False):       # 1a vez: o nome se decifra
                 self._logo_decodificado = True
                 self.ids.titulo_menu.decodificar()
-            luz_na_linha(self.ids.linha_menu_1, (0, 0.9, 1), periodo=5.0, atraso=0.6)
-            luz_na_linha(self.ids.linha_menu_2, (0.6, 0.25, 1), periodo=5.0, atraso=2.2)
-            luz_na_linha(self.ids.linha_menu_3, (0, 0.9, 1), periodo=5.0, atraso=3.8)
+            luz_na_linha(self.ids.cabecalho_menu.linha_luz, (0, 0.9, 1), periodo=5.0, atraso=0.6)
+            luz_na_linha(self.ids.rodape_menu.linha_luz, (0, 0.9, 1), periodo=5.0, atraso=3.2)
         except Exception as e:
             print(f"[menu] vida: {e}")
         try:
-            from animacoes_ui import icone_pixel
-            for w in self.walk(restrict=True):
-                txt = str(getattr(w, 'text', ''))
-                for chave, nome in (('MEMÓRIAS', 'memorias'), ('PROGRESSO', 'progresso'),
-                                    ('GANHOS', 'ganhos'), ('CALCULADORA', 'calculadora')):
-                    if isinstance(w, BotaoAngular) and chave in txt:
-                        icone_pixel(w, nome)
-            # o Link Start: NerveGear a esquerda, setas a direita, dados correndo
+            # o Link Start: dados correndo pelas bordas (a maquina e as setas
+            # sao do proprio botao, menu_hud.BotaoLinkStart)
             from animacoes_ui import pacotes_de_luz
-            ls = self.ids.btn_link_start
-            icone_pixel(ls, 'nervegear', u=max(2.0, round(dp(2.6))), margem=dp(18))
-            icone_pixel(ls, 'setas', u=max(2.0, round(dp(2.4))), margem=dp(20), lado='dir')
-            pacotes_de_luz(ls)
+            pacotes_de_luz(self.ids.btn_link_start)
         except Exception as e:
-            print(f"[menu] icones: {e}")
+            print(f"[menu] link start: {e}")
         self._painel()
         if not getattr(self, '_aquecido', False):          # uma vez: fontes dos cartoes
             self._aquecido = True
@@ -90,7 +91,7 @@ class MenuPrincipal(Screen):
             _sem, hoje = metas.pecas_da_semana(app.memorias, app.registros, date.today())
             nivel, xp_atual, xp_nec = calcular_level(app.total_xp)
             p.definir(hoje, nivel, xp_atual / float(max(1, xp_nec)),
-                      TelaProgresso._sequencia_valida(app))
+                      TelaProgresso._sequencia_valida(app), xp=(xp_atual, xp_nec))
             luz_na_linha(p.linha_topo, (1.0, 0.82, 0.25), periodo=6.0, atraso=1.6)
         except Exception as e:
             print(f"[menu] painel: {e}")
