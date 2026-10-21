@@ -20,7 +20,7 @@ import math
 import random
 
 import som
-from animacoes_ui import fmt_br
+from animacoes_ui import fmt_br, _matriz, _chanfro
 from efeitos import (
     InputHolografico, BotaoAngular, BotaoAngularAlerta,
     ListaItem, tremer_tela, explodir_estilhacos
@@ -155,30 +155,70 @@ def obter_titulo_level(level: int) -> str:
 #  HELPERS VISUAIS
 # ═══════════════════════════════════════════════════════════
 
+def _hud_cores(widget, cor_borda, luz=0.0):
+    """Pinta o painel HUD na cor `cor_borda` (`luz` 0..1 puxa para o branco:
+    o clarao de quando o aviso abre)."""
+    r, g, b = cor_borda[:3]
+    a = cor_borda[3] if len(cor_borda) > 3 else 1.0
+
+    def mis(k):
+        return (r + (1 - r) * k, g + (1 - g) * k, b + (1 - b) * k)
+    cb, ci, ca = widget._bg_cores
+    cb.rgba = (*mis(luz * 0.6), min(1.0, a + luz * 0.3))
+    ci.rgba = (r, g, b, 0.22 + 0.3 * luz)
+    ca.rgba = (*mis(0.35 + 0.5 * luz), 1.0)
+
+
 def aplicar_fundo_holografico(widget, cor_borda=None):
+    """Fundo dos avisos: painel HUD de cantos chanfrados, borda na cor dada,
+    uma linha fina por dentro, os quatro cantos acesos e uma aba no topo."""
     if cor_borda is None:
         cor_borda = (0, 0.9, 1, 0.85)
     # chamado de novo (ex: caixa do PIN fica verde no acerto): so troca a cor,
     # sem empilhar outro fundo e outra borda por cima dos antigos
-    if getattr(widget, '_bg_cor_borda', None) is not None:
-        widget._bg_cor_borda.rgba = cor_borda
+    if getattr(widget, '_bg_cores', None) is not None:
+        widget._bg_cor = tuple(cor_borda)
+        _hud_cores(widget, cor_borda)
         return
+    from kivy.graphics import Mesh
     with widget.canvas.before:
         Color(0.03, 0.03, 0.09, 0.97)
-        widget._bg_rr = RoundedRectangle(
-            pos=widget.pos, size=widget.size, radius=[14])
-        widget._bg_cor_borda = Color(*cor_borda)
-        widget._bg_ln = Line(
-            rounded_rectangle=[widget.x, widget.y, widget.width, widget.height, 14],
-            width=1.6)
+        widget._bg_mesh = Mesh(mode='triangle_fan')
+        cb = Color()
+        widget._bg_ln = Line(width=dp(1.2), close=True)
+        ci = Color()
+        widget._bg_in = Line(width=dp(1), close=True)
+        ca = Color()
+        widget._bg_cantos = [Line(width=dp(1.8)) for _ in range(4)]
+        widget._bg_aba = Rectangle()
+    widget._bg_cores = (cb, ci, ca)
+    widget._bg_cor = tuple(cor_borda)
+    _hud_cores(widget, cor_borda)
 
     def _upd(inst, *_):
-        inst._bg_rr.pos  = inst.pos
-        inst._bg_rr.size = inst.size
-        inst._bg_ln.rounded_rectangle = [
-            inst.x, inst.y, inst.width, inst.height, 14]
+        x, y, w, h = inst.x, inst.y, inst.width, inst.height
+        c = min(dp(14), w * 0.2, h * 0.2)
+        pts = _chanfro(x, y, w, h, c)
+        vs = []
+        for i in range(0, len(pts), 2):
+            vs += [pts[i], pts[i + 1], 0, 0]
+        inst._bg_mesh.vertices = vs
+        inst._bg_mesh.indices = list(range(len(pts) // 2))
+        inst._bg_ln.points = pts
+        d = dp(5)
+        inst._bg_in.points = _chanfro(x + d, y + d, w - 2 * d, h - 2 * d, max(1.0, c - d * 0.6))
+        L = min(dp(16), w * 0.15, h * 0.15)
+        x2, y2 = x + w, y + h
+        inst._bg_cantos[0].points = [x, y2 - c - L, x, y2 - c, x + c, y2, x + c + L, y2]
+        inst._bg_cantos[1].points = [x2 - c - L, y2, x2 - c, y2, x2, y2 - c, x2, y2 - c - L]
+        inst._bg_cantos[2].points = [x2, y + c + L, x2, y + c, x2 - c, y, x2 - c - L, y]
+        inst._bg_cantos[3].points = [x + c + L, y, x + c, y, x, y + c, x, y + c + L]
+        la = min(dp(64), w * 0.26)
+        inst._bg_aba.pos = (x + (w - la) / 2.0, y2 - dp(1.5))
+        inst._bg_aba.size = (la, dp(3))
 
     widget.bind(pos=_upd, size=_upd)
+    _upd(widget)
 
 
 _transicao = {'sentido': 1, 'ativa': False, 'destino': None}
@@ -400,7 +440,20 @@ def _abrir_popup(caixa, pop):
     except Exception:
         pass
     caixa.opacity  = 0
-    caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.44}
+    caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+    # abre do meio para os lados (como o LEVEL UP), com um clarao na borda
+    tr, sc = _matriz(caixa)
+    sc.x, sc.y = 0.06, 0.94
+    anim = {'ev': None}
+
+    def _parar():
+        if anim['ev'] is not None:
+            anim['ev'].cancel()
+            anim['ev'] = None
+
+    def _cor_hud(luz):
+        if getattr(caixa, '_bg_cores', None) is not None:
+            _hud_cores(caixa, caixa._bg_cor, luz)
     # recem-aberto, o toque no fundo escuro nao fecha (o 2o toque de um toque
     # duplo no botao que abriu o popup caia no fundo e fechava na hora)
     if pop.auto_dismiss:
@@ -411,13 +464,34 @@ def _abrir_popup(caixa, pop):
                 pop.auto_dismiss = True
         Clock.schedule_once(_libera, 0.35)
 
-    def _on_open(*_):
-        Animation(opacity=1, duration=0.16,
-                  transition='out_expo').start(caixa)
-        Animation(pos_hint={'center_x': 0.5, 'center_y': 0.5},
-                  duration=0.20, transition='out_back').start(caixa)
+    def _abrir_ja():
+        # comeca junto com o fundo escurecendo (o on_open do Popup so vem
+        # depois do fade dele: ficava ~0,2 s de tela escura e vazia)
+        _parar()
+        t = [0.0]
+        _cor_hud(1.0)
 
-    pop.bind(on_open=_on_open)
+        def _abre(dt):
+            try:
+                t[0] += min(dt, 1 / 30.)
+                k = min(1.0, t[0] / 0.24)
+                e = 1 - (1 - k) ** 3
+                sc.x = 0.06 + 0.94 * e
+                sc.y = 0.94 + 0.06 * e
+                caixa.opacity = min(1.0, 0.15 + e * 1.6)
+                _cor_hud(max(0.0, 1.0 - t[0] / 0.42))       # o clarao dura um pouco mais
+                if t[0] >= 0.42:
+                    sc.x = sc.y = 1.0
+                    _cor_hud(0.0)
+                    anim['ev'] = None
+                    return False
+            except Exception:
+                sc.x = sc.y = 1.0
+                caixa.opacity = 1
+                anim['ev'] = None
+                return False
+        anim['ev'] = Clock.schedule_interval(_abre, 1 / 60.)
+
 
     def _on_dismiss(*_):
         # fecha o teclado SAO dos campos do popup (senao ele ficava aberto
@@ -432,11 +506,30 @@ def _abrir_popup(caixa, pop):
     pop.bind(on_dismiss=_on_dismiss)
 
     def _ao_fechar(*_):
-        # a caixa encolhe e desce um pouco enquanto o fundo escuro some
+        # a caixa se fecha numa linha (de cima e de baixo para o meio)
+        # enquanto o fundo escuro some
         try:
-            Animation.cancel_all(caixa)
-            Animation(opacity=0, pos_hint={'center_x': 0.5, 'center_y': 0.47},
-                      duration=0.14, transition='in_cubic').start(caixa)
+            _parar()
+            _cor_hud(0.0)
+            Animation.cancel_all(caixa, 'opacity')
+            t = [0.0]
+            sx0 = sc.x
+
+            def _fecha(dt):
+                try:
+                    t[0] += min(dt, 1 / 30.)
+                    k = min(1.0, t[0] / 0.14)
+                    e = k * k
+                    sc.y = 1 - 0.92 * e
+                    sc.x = sx0 + (1.0 - sx0) * e
+                    caixa.opacity = 1 - e
+                    if k >= 1:
+                        anim['ev'] = None
+                        return False
+                except Exception:
+                    anim['ev'] = None
+                    return False
+            anim['ev'] = Clock.schedule_interval(_fecha, 1 / 60.)
         except Exception as e:
             print(f"[popup] fechar: {e}")
     try:
@@ -445,6 +538,7 @@ def _abrir_popup(caixa, pop):
     except Exception as e:
         print(f"[popup] animacao de saida: {e}")
     pop.open()
+    _abrir_ja()
 
 
 

@@ -1426,6 +1426,302 @@ class CartaoLote(ItemGesto):
         Clock.schedule_interval(_pula, 1 / 60.)
 
 
+_MAPA_CALENDARIO = [
+    "..k.....k...",
+    "KKkKKKKKkKKK",
+    "KcccccccccdK",
+    "KKKKKKKKKKKK",
+    "KwwwwwwwwwwK",
+    "KwKwwKwwKwwK",
+    "KwwwwwwwwwwK",
+    "KwKwwKwwKwwK",
+    "KwwwwwwwwwwK",
+    "KKKKKKKKKKKK",
+]
+_MAPA_TROFEU = [
+    "..KKKKKKKK..",
+    "KKyyllyyyyKK",
+    "KyKylyyyyKyK",
+    "KyKylyyyyKyK",
+    ".KKyylyyyKK.",
+    "...KyyyydK..",
+    "....KyydK...",
+    "....KyydK...",
+    "...KyyyydK..",
+    "..KKKKKKKK..",
+]
+_DIAS_SEMANA = ('segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo')
+
+
+class CartaoMemoria(ListaItem):
+    """Um dia das Memorias no mesmo estilo dos cartoes do Registro: calendario
+    (ou trofeu no dia recorde), a data em destaque, o dia da semana e a hora,
+    as pecas grandes e o XP. Toque: afunda de leve e o icone da um pulinho.
+    (`text` continua com o texto antigo - so nao aparece.)"""
+
+    def __init__(self, mem=None, recorde=False, **kwargs):
+        from kivy.uix.label import Label
+        from kivy.metrics import sp
+        super().__init__(**kwargs)
+        self.height = dp(66)
+        self.cor_texto = [0, 0, 0, 0]
+        self.recorde = recorde
+        with self.canvas:
+            PushMatrix()
+            self._tile_tr = Translate(0, 0)
+            self._c_tile_bg = Color(0.03, 0.02, 0.08, 1)
+            self._r_tile_bg = Rectangle()
+            self._c_tile_ln = Color(0.62, 0.3, 1.0, 0.85)
+            self._l_tile_ln = Line(width=dp(1), close=True)
+            Color(1, 1, 1, 1)
+            self._r_icone = Rectangle()
+            PopMatrix()
+            self._c_div = Color(0.62, 0.3, 1.0, 0.16)
+            self._r_div = Rectangle()
+
+        def rotulo(fs, cor, fonte='rajdhani.ttf', bold=False, halign='left'):
+            l = Label(font_name=fonte, font_size=fs, bold=bold, color=cor, markup=True,
+                      halign=halign, valign='middle', shorten=True, shorten_from='right',
+                      size_hint=(None, None))
+            self.add_widget(l)
+            return l
+        ouro = (1.0, 0.86, 0.25, 1)
+        self._l_data = rotulo(sp(17), ouro if recorde else (0.9, 0.95, 1.0, 1), bold=True)
+        self._l_sub = rotulo(sp(12), (0.85, 0.7, 0.3, 1) if recorde else (0.55, 0.55, 0.78, 1))
+        self._l_qtd = rotulo(sp(19), ouro if recorde else (0.75, 0.55, 1.0, 1), fonte='orbitron.ttf',
+                             bold=True, halign='right')
+        self._l_xp = rotulo(sp(12.5), (0.25, 1.0, 0.6, 1), bold=True, halign='right')
+        if recorde:
+            cores = {'K': (0.12, 0.08, 0.0), 'y': (1.0, 0.8, 0.15), 'l': (1.0, 0.97, 0.7), 'd': (0.7, 0.48, 0.0)}
+            self._r_icone.texture = textura_mapa(_MAPA_TROFEU, cores, 'trofeu')
+            self._c_tile_ln.rgba = (1.0, 0.82, 0.2, 0.9)
+            self._c_div.rgba = (1.0, 0.82, 0.2, 0.18)
+            self._c_tile_bg.rgba = (0.1, 0.07, 0.0, 1)
+        else:
+            cores = {'K': (0.04, 0.03, 0.1), 'c': (0.62, 0.3, 1.0), 'd': (0.4, 0.15, 0.75),
+                     'w': (0.82, 0.84, 1.0), 'k': (0.55, 0.58, 0.7)}
+            self._r_icone.texture = textura_mapa(_MAPA_CALENDARIO, cores, 'calendario')
+        self.bind(pos=self._arrumar, size=self._arrumar)
+        if mem is not None:
+            self.definir(mem)
+
+    def definir(self, mem):
+        from datetime import datetime as _dt
+        from animacoes_ui import fmt_br
+        bruto = str(mem.get('data', '')).strip()
+        partes = bruto.split()
+        dia = partes[0] if partes else bruto
+        hora = partes[1] if len(partes) > 1 else ''
+        semana = ''
+        try:
+            semana = _DIAS_SEMANA[_dt.strptime(dia, '%d/%m/%Y').weekday()]
+        except Exception:
+            pass
+        self._l_data.text = dia
+        sub = '  ·  '.join(x for x in (semana, hora) if x)
+        self._l_sub.text = ('RECORDE  ·  ' + sub) if self.recorde else sub
+        try:
+            total = int(mem.get('total', 0))
+            xp = int(mem.get('xp', 0))
+        except (TypeError, ValueError):
+            total, xp = 0, 0
+        self._l_qtd.text = f"{fmt_br(total)}[size={int(dp(11))}] un.[/size]"
+        self._l_xp.text = f"+{fmt_br(xp)} XP"
+        self._arrumar()
+
+    def _arrumar(self, *_):
+        x, y, w, h = self.x, self.y, self.width, self.height
+        s = h - dp(18)
+        tx, ty = x + dp(12), y + dp(9)
+        self._r_tile_bg.pos, self._r_tile_bg.size = (tx, ty), (s, s)
+        self._l_tile_ln.rectangle = (tx, ty, s, s)
+        tex = self._r_icone.texture
+        if tex is not None:
+            tw, th = tex.size
+            u = max(1, int((s * 0.74) // max(tw, th)))
+            iw, ih = tw * u, th * u
+            self._r_icone.pos = (int(tx + (s - iw) / 2.0), int(ty + (s - ih) / 2.0))
+            self._r_icone.size = (iw, ih)
+        larg_dir = dp(104)
+        xn = tx + s + dp(12)
+        wn = max(dp(40), x + w - larg_dir - dp(10) - xn)
+        for l, yy, hh in ((self._l_data, y + h * 0.6, dp(26)), (self._l_sub, y + h * 0.27, dp(18))):
+            l.size = (wn, hh)
+            l.text_size = l.size
+            l.pos = (xn, yy - hh / 2.0)
+        xd = x + w - larg_dir - dp(14)
+        self._r_div.pos, self._r_div.size = (xd - dp(6), y + dp(12)), (dp(1), h - dp(24))
+        for l, yy, hh in ((self._l_qtd, y + h * 0.6, dp(30)), (self._l_xp, y + h * 0.27, dp(18))):
+            l.size = (larg_dir, hh)
+            l.text_size = l.size
+            l.pos = (xd, yy - hh / 2.0)
+
+    def on_press(self):
+        super().on_press()
+        Animation.cancel_all(self, 'escala')
+        Animation(escala=0.975, duration=0.07, transition='out_quad').start(self)
+        t = [0.0]
+        tr = self._tile_tr
+
+        def _pula(dt):
+            try:
+                t[0] += dt
+                k = min(1.0, t[0] / 0.26)
+                tr.y = int(round(math.sin(math.pi * k) * dp(4)))
+                if k >= 1:
+                    tr.y = 0
+                    return False
+            except Exception:
+                tr.y = 0
+                return False
+        Clock.schedule_interval(_pula, 1 / 60.)
+
+
+class PainelMenu(Widget):
+    """Painel vivo do menu: pecas de HOJE, o NIVEL (com a barrinha do XP) e a
+    SEQUENCIA de dias. Os numeros contam do valor de antes ate o de agora (na
+    primeira vez, do zero) e o que mudou da uma batida. Toque: abre o Progresso."""
+    CORES = ((0.0, 0.9, 1.0), (1.0, 0.82, 0.25), (1.0, 0.55, 0.15))
+    frac_xp = NumericProperty(0.0)
+
+    def __init__(self, **kwargs):
+        from kivy.uix.label import Label
+        from kivy.metrics import sp
+        super().__init__(**kwargs)
+        self._vals = None
+        self._ev_toque = None
+        with self.canvas.before:
+            Color(0.02, 0.04, 0.1, 0.78)
+            self._m_fundo = Mesh(mode='triangle_fan')
+            Color(0.0, 0.9, 1.0, 0.3)
+            self._l_borda = Line(width=dp(1), close=True)
+            Color(0.0, 0.9, 1.0, 0.16)
+            self._r_div = [Rectangle(), Rectangle()]
+            Color(1.0, 0.82, 0.25, 0.16)
+            self._r_xp_bg = Rectangle()
+            Color(1.0, 0.82, 0.25, 0.95)
+            self._r_xp = Rectangle()
+            self._c_toque = Color(0.0, 0.9, 1.0, 0)
+            self._m_toque = Mesh(mode='triangle_fan')
+        self._cap, self._val = [], []
+        for i, nome in enumerate(('HOJE', 'NÍVEL', 'SEQUÊNCIA')):
+            r, g, b = self.CORES[i]
+            c = Label(text=nome, font_name='orbitron.ttf', font_size=sp(8), color=(r, g, b, 0.6),
+                      halign='center', valign='middle', size_hint=(None, None))
+            v = Label(text='-', font_name='orbitron.ttf', font_size=sp(17), bold=True, markup=True,
+                      color=(r, g, b, 1), halign='center', valign='middle', size_hint=(None, None))
+            self.add_widget(c)
+            self.add_widget(v)
+            self._cap.append(c)
+            self._val.append(v)
+        # a luz que corre pela borda de cima (luz_na_linha, instalada pelo menu)
+        self.linha_topo = Widget(size_hint=(None, None))
+        self.add_widget(self.linha_topo)
+        self.bind(pos=self._arrumar, size=self._arrumar, frac_xp=self._arrumar_xp)
+
+    def _arrumar(self, *_):
+        x, y, w, h = self.x, self.y, self.width, self.height
+        c = min(dp(12), h * 0.25)
+        from animacoes_ui import _chanfro
+        pts = _chanfro(x, y, w, h, c)
+        vs = []
+        for i in range(0, len(pts), 2):
+            vs += [pts[i], pts[i + 1], 0, 0]
+        idx = list(range(len(pts) // 2))
+        self._m_fundo.vertices, self._m_fundo.indices = vs, idx
+        self._m_toque.vertices, self._m_toque.indices = vs, idx
+        self._l_borda.points = pts
+        col = w / 3.0
+        for i, r in enumerate(self._r_div):
+            r.pos, r.size = (x + col * (i + 1), y + h * 0.2), (dp(1), h * 0.6)
+        for i in range(3):
+            cx = x + col * i
+            cap, val = self._cap[i], self._val[i]
+            cap.size = (col - dp(8), dp(14))
+            cap.text_size = cap.size
+            cap.pos = (cx + dp(4), y + h - dp(8) - dp(14))
+            val.size = (col - dp(8), dp(28))
+            val.text_size = val.size
+            val.pos = (cx + dp(4), y + h * 0.42 - dp(14))
+        self.linha_topo.pos = (x + c, y + h - dp(1))
+        self.linha_topo.size = (w - 2 * c, dp(1))
+        self._arrumar_xp()
+
+    def _arrumar_xp(self, *_):
+        col = self.width / 3.0
+        bw = col * 0.62
+        bx = self.x + col + (col - bw) / 2.0
+        by = self.y + dp(9)
+        self._r_xp_bg.pos, self._r_xp_bg.size = (bx, by), (bw, dp(3))
+        self._r_xp.pos, self._r_xp.size = (bx, by), (bw * max(0.0, min(1.0, self.frac_xp)), dp(3))
+
+    def definir(self, hoje, nivel, frac, seq, atraso=0.25):
+        from animacoes_ui import contar, pulso, fmt_br
+        from kivy.metrics import sp
+        novos = (int(hoje), int(nivel), int(seq))
+        primeira = self._vals is None
+        velhos = (0, 0, 0) if primeira else self._vals
+        self._vals = novos
+        pq = int(sp(10))
+        montar = (
+            lambda v: f"{fmt_br(v)}[size={pq}] {'peça' if v == 1 else 'peças'}[/size]",
+            lambda v: f"[size={pq}]LVL [/size]{v}",
+            lambda v: f"{v}[size={pq}] {'dia' if v == 1 else 'dias'}[/size]",
+        )
+        dur = 0.9
+        for i in range(3):
+            contar(self._val[i], novos[i], montar[i], de=velhos[i], duracao=dur, atraso=atraso + i * 0.08)
+            if not primeira and novos[i] != velhos[i]:
+                lbl = self._val[i]
+                Clock.schedule_once(lambda dt, l=lbl: pulso(l, 1.18, 0.3), atraso + i * 0.08 + dur * 0.8)
+        Animation.cancel_all(self, 'frac_xp')
+        if not primeira and novos[1] > velhos[1]:
+            self.frac_xp = 0.0                    # subiu de nivel: a barra recomeca
+        if primeira:
+            self.frac_xp = 0.0
+        Clock.schedule_once(lambda dt: Animation(frac_xp=float(frac), duration=0.9,
+                                                 transition='out_cubic').start(self), atraso + 0.1)
+
+    # ── toque: acende e abre o Progresso ──
+    def _acender(self, a):
+        if self._ev_toque is not None:
+            self._ev_toque.cancel()
+            self._ev_toque = None
+        self._c_toque.a = a
+
+    def _apagar(self):
+        self._acender(self._c_toque.a)
+
+        def _f(dt):
+            self._c_toque.a = max(0.0, self._c_toque.a - dt * 0.5)
+            if self._c_toque.a <= 0:
+                self._ev_toque = None
+                return False
+        self._ev_toque = Clock.schedule_interval(_f, 1 / 60.)
+
+    def on_touch_down(self, touch):
+        if self.opacity > 0.5 and self.collide_point(*touch.pos):
+            touch.grab(self)
+            self._acender(0.14)
+            return True
+        return super().on_touch_down(touch)
+
+    def on_touch_up(self, touch):
+        if touch.grab_current is not self:
+            return super().on_touch_up(touch)
+        touch.ungrab(self)
+        self._apagar()
+        if self.collide_point(*touch.pos):
+            try:
+                tatil.botao()
+            except Exception:
+                pass
+            app = App.get_running_app()
+            if app is not None and hasattr(app, 'mudar_tela'):
+                app.mudar_tela('progresso')
+        return True
+
+
 # ═══════════════════════════════════════════════════════════
 #  GRÁFICO DE BARRAS HOLOGRÁFICO
 # ═══════════════════════════════════════════════════════════

@@ -359,10 +359,17 @@
                     valign:    "middle"
                     text_size: self.size
 
+            # ── Painel vivo: hoje / nivel / sequencia ─────────
+            PainelMenu:
+                id:        painel_menu
+                pos_hint:  {"center_x": 0.5, "center_y": 0.808}
+                size_hint: (0.88, None)
+                height:    dp(62)
+
             # ── Linha decorativa superior ─────────────────────
             Widget:
                 id:        linha_menu_1
-                pos_hint:  {"center_x": 0.5, "center_y": 0.76}
+                pos_hint:  {"center_x": 0.5, "center_y": 0.748}
                 size_hint: (0.88, None)
                 height:    dp(1)
                 canvas:

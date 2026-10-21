@@ -247,6 +247,10 @@ class InfinitoLoader(Widget):
 
     # ── loop ────────────────────────────────────────────────────────────
     def _tick(self, dt):
+        # fora da tela (a abertura ja saiu) nao gasta nada: antes ele seguia
+        # animando escondido o tempo todo, em todas as telas
+        if self.get_root_window() is None:
+            return
         try:
             self._frame(min(dt, 1 / 20.))
         except Exception as e:
@@ -544,6 +548,8 @@ class BarraCometa(Widget):
             print(f"[barra] on_parent: {e}")
 
     def _tick(self, dt):
+        if self.get_root_window() is None:          # (fora da tela nao gasta nada)
+            return
         try:
             self._t += dt
             alvo = cor_do_ciclo(self.cor_linha, self._t)
@@ -619,6 +625,8 @@ class PainelHolografico(BoxLayout):
             self._ev = None
 
     def _tick(self, dt):
+        if self.get_root_window() is None:          # (fora da tela nao gasta nada)
+            return
         try:
             self._t += dt
             r, g, b = cor_do_ciclo(self.cor, self._t)

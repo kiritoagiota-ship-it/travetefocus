@@ -85,7 +85,7 @@ if CENA == 'meta':                     # a regra real: 2.500 / 3.000 por semana
     dados['config_ganhos'] = {'valor_base': 0.25, 'valor_bonus': 0.30, 'meta_bonus': 3000, 'tipo_periodo': 'semanal'}
 with open(os.path.join(pasta_app, 'dados.json'), 'w', encoding='utf-8') as f:
     json.dump(dados, f, ensure_ascii=False)
-if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas', 'mem', 'link', 'ajustes', 'toques', 'trans'):
+if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas', 'mem', 'link', 'ajustes', 'toques', 'trans', 'perfil', 'polir'):
     with open(os.path.join(pasta_app, '.tf_session'), 'w') as f:
         f.write(str(time.time()))
 
@@ -884,6 +884,77 @@ def roteiro_toques():
     Roteiro(passos).rodar()
 
 
+def roteiro_polir():
+    """O polimento de 1.8 com toques de verdade: o painel vivo do menu (toque
+    abre o Progresso; na volta os numeros contam do valor de antes), o aviso
+    HUD abrindo do meio e fechando (SENHA -> CANCELAR) e o cartao do dia nas
+    Memorias abrindo."""
+    from kivy.uix.popup import Popup
+    toque = {}
+
+    def tocar_painel():
+        p = app().root.ids.sm.get_screen('menu').ids.painel_menu
+        toque['t'] = dedo_desce(*no_meio(p))
+
+    def soltar():
+        if 't' in toque:
+            dedo_sobe(toque.pop('t'))
+
+    def deve(nome):
+        def _f():
+            atual = app().root.ids.sm.current
+            fase(f'tela agora: {atual}')
+            if atual != nome:
+                LOG['erros'].append(f'esperava a tela {nome}, esta em {atual}')
+        return _f
+
+    def popup_aberto(sim):
+        def _f():
+            n = sum(1 for w in Window.children if isinstance(w, Popup))
+            fase(f'popups abertos: {n}')
+            if (n > 0) != sim:
+                LOG['erros'].append(f'popup {"nao abriu" if sim else "nao fechou"}')
+        return _f
+
+    def tocar_txt(txt):
+        def _f():
+            w = achar(txt)
+            if w is None:
+                LOG['erros'].append('botao nao achado: ' + txt)
+                return
+            toque['t'] = dedo_desce(*no_meio(w))
+        return _f
+
+    def tocar_cartao():
+        from efeitos import CartaoMemoria
+        cs = [w for w in tela().walk(restrict=True) if isinstance(w, CartaoMemoria)]
+        if not cs:
+            LOG['erros'].append('nenhum CartaoMemoria')
+            return
+        fase(f'{len(cs)} cartoes; recordes: {sum(1 for c in cs if c.recorde)}')
+        c = max(cs, key=lambda w: w.to_window(*w.center)[1])   # o de cima da lista
+        fase(f'toca no cartao {c._l_data.text} em {no_meio(c)}')
+        toque['t'] = dedo_desce(*no_meio(c))
+
+    def pecas_hoje(n):
+        def _f():
+            app().registros.append(['Camisa polo', str(n), n * 3, '', time.time()])
+            fase(f'+{n} pecas hoje')
+        return _f
+
+    passos = [(1.6, lambda: fase('painel')), (0.01, tocar_painel), (0.12, soltar),
+              (1.6, deve('progresso')),
+              (0.2, pecas_hoje(40)), (0.01, lambda: app().mudar_tela('menu')), (2.2, deve('menu')),
+              (0.2, lambda: fase('aviso senha')), (0.01, tocar_txt('SENHA')), (0.1, soltar),
+              (0.9, popup_aberto(True)), (0.01, tocar_txt('CANCELAR')), (0.1, soltar),
+              (0.6, popup_aberto(False)),
+              (0.2, lambda: app().mudar_tela('memorias')), (2.6, lambda: fase('cartao')),
+              (0.01, tocar_cartao), (0.1, soltar), (1.2, popup_aberto(True)),
+              (0.01, tocar_txt('FECHAR')), (0.1, soltar), (0.8, popup_aberto(False)),
+              (0.3, fim)]
+    Roteiro(passos).rodar()
+
+
 def roteiro_trans():
     """So as trocas de tela: o corte que parte a tela (ida, na cor de cada
     destino) e o deslize do Voltar."""
@@ -909,6 +980,101 @@ def roteiro_trans():
                    (0.4, lambda t=t: fase('volta de ' + t)),
                    (0.01, ir('menu')), (0.9, ligado('voltar de ' + t))]
     passos.append((0.5, fim))
+    Roteiro(passos).rodar()
+
+
+def roteiro_perfil():
+    """Onde vai o tempo do Python em cada momento (cProfile): o menu parado
+    (animacoes continuas), uma troca de tela, o Registro com muitos lotes e o
+    LEVEL UP. Grava perfil_*.txt na pasta de saida."""
+    import cProfile
+    import pstats
+    import io
+    from datetime import datetime as _dt
+    est = {}
+
+    def liga(nome):
+        def _f():
+            est['nome'] = nome
+            est['q0'] = Q[0]
+            est['t0'] = time.perf_counter()
+            est['p'] = cProfile.Profile()
+            est['p'].enable()
+        return _f
+
+    def desliga():
+        p = est['p']
+        p.disable()
+        dur = time.perf_counter() - est['t0']
+        quadros = max(1, Q[0] - est['q0'])
+        s = io.StringIO()
+        st = pstats.Stats(p, stream=s).sort_stats('tottime')
+        st.print_stats(28)
+        tot = sum(v[2] for v in st.stats.values())
+        with open(os.path.join(SAIDA, f"perfil_{est['nome']}.txt"), 'w', encoding='utf-8') as f:
+            f.write(f"{est['nome']}: {dur:.2f} s, {quadros} quadros, python {tot * 1000 / quadros:.2f} ms por quadro" + chr(10))
+            f.write(s.getvalue())
+        fase(f"PERFIL {est['nome']}: python {tot * 1000 / quadros:.2f} ms/quadro ({quadros} quadros em {dur:.1f} s)")
+
+    def muitos_lotes():
+        a = app()
+        for i in range(25):
+            a.registros.append([f'Peca {i}', str(20 + i), 60, '', _dt.now().timestamp()])
+
+    def perto_nivel():
+        from helpers import calcular_level
+        a = app()
+        _lv, at, nec = calcular_level(a.total_xp)
+        a.total_xp += nec - at - 10
+
+    def lote():
+        t = tela()
+        t.ids.nome_input.text = 'Short'
+        t.ids.qtd_input.text = '40'
+        soltar_foco()
+        t.adicionar_item()
+
+    def mede_atualizar():
+        from telas.registro import TelaRegistro
+        from telas.memorias import TelaMemorias
+        from telas.ganhos import TelaGanhos
+        from telas.calculadora import TelaCalculadora
+        from telas.progresso import TelaProgresso
+        import animacoes_ui as AU
+        for cls in (TelaRegistro, TelaMemorias, TelaGanhos, TelaCalculadora, TelaProgresso, main.MenuPrincipal):
+            o = cls.on_enter
+
+            def _m(self, *a, _o=o, _n=cls.__name__, **k):
+                t0 = time.perf_counter()
+                r = _o(self, *a, **k)
+                fase(f'PERFIL {_n}.on_enter: {(time.perf_counter() - t0) * 1000:.1f} ms')
+                return r
+            cls.on_enter = _m
+        of = AU.foto_da_tela
+
+        def _f(*a, **k):
+            t0 = time.perf_counter()
+            r = of(*a, **k)
+            fase(f'PERFIL foto_da_tela: {(time.perf_counter() - t0) * 1000:.1f} ms')
+            return r
+        AU.foto_da_tela = _f
+        orig = TelaRegistro.atualizar
+
+        def _medido(self, *a, **k):
+            t0 = time.perf_counter()
+            r = orig(self, *a, **k)
+            fase(f'PERFIL registro.atualizar: {(time.perf_counter() - t0) * 1000:.1f} ms '
+                 f'({len(app().registros)} lotes, num quadro so)')
+            return r
+        TelaRegistro.atualizar = _medido
+    passos = [(0.01, mede_atualizar), (0.3, lambda: app().mudar_tela('ganhos')), (1.5, lambda: app().mudar_tela('calculadora')),
+              (1.5, lambda: app().mudar_tela('progresso')), (1.5, lambda: app().mudar_tela('menu')),
+              (2.0, liga('menu_parado')), (4.0, desliga),
+              (0.2, liga('troca_de_tela')), (0.01, lambda: app().mudar_tela('memorias')), (0.8, desliga),
+              (0.5, muitos_lotes), (0.1, liga('entra_registro_30_lotes')), (0.01, lambda: app().mudar_tela('registro')),
+              (1.4, desliga), (0.6, soltar_foco), (0.4, perto_nivel), (0.01, lote),
+              (0.8, lambda: setattr(campo_do_popup(), 'text', '3')), (0.2, lambda: apertar('CONFIRMAR')),
+              (0.6, soltar_foco), (1.5, liga('level_up')), (3.0, desliga), (0.5, fim)]
     Roteiro(passos).rodar()
 
 
@@ -975,7 +1141,8 @@ def esperar_menu(dt):
     Clock.schedule_once(lambda dt: {'telas': roteiro_telas, 'zap': roteiro_zap, 'varre': roteiro_varre, 'meta': roteiro_meta,
               'anim': roteiro_anim, 'vivo': roteiro_vivo, 'novas': roteiro_novas,
               'mem': roteiro_mem, 'link': roteiro_link,
-              'ajustes': roteiro_ajustes, 'toques': roteiro_toques, 'trans': roteiro_trans}.get(CENA, roteiro_app)(), 1.0)
+              'ajustes': roteiro_ajustes, 'toques': roteiro_toques, 'trans': roteiro_trans,
+              'perfil': roteiro_perfil, 'polir': roteiro_polir}.get(CENA, roteiro_app)(), 1.0)
 
 
 def roteiro_pin():

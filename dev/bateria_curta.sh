@@ -19,6 +19,7 @@ r link 540 1158 1.3125 CENA=link CADA=0 TOUR_PY=dev/filme_cenas.py
 r ajustes 540 1158 1.3125 CENA=ajustes CADA=0 TOUR_PY=dev/filme_cenas.py
 r toques 540 1158 1.3125 CENA=toques CADA=0 TOUR_PY=dev/filme_cenas.py
 r trans 540 1158 1.3125 CENA=trans CADA=0 TOUR_PY=dev/filme_cenas.py
+r polir 540 1158 1.3125 CENA=polir CADA=0 TOUR_PY=dev/filme_cenas.py
 r perf 720 1560 1.75 FOTOS=0
 python dev/teste_metas.py 2>&1 | tail -1
 python dev/teste_dados.py 2>&1 | tail -1

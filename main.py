@@ -38,6 +38,7 @@ class MenuPrincipal(Screen):
         try:
             from animacoes_ui import entrada_cascata
             botoes = [w for w in self.walk(restrict=True) if isinstance(w, BotaoAngular)]
+            botoes.append(self.ids.painel_menu)
             botoes.sort(key=lambda w: -w.to_window(*w.center)[1])
             entrada_cascata(botoes, atraso=0.07, dy=dp(28))
         except Exception as e:
@@ -68,6 +69,25 @@ class MenuPrincipal(Screen):
             pacotes_de_luz(ls)
         except Exception as e:
             print(f"[menu] icones: {e}")
+        self._painel()
+
+    def _painel(self):
+        """O painel vivo: pecas de hoje, nivel (e a barrinha do XP) e a sequencia."""
+        try:
+            import metas
+            from datetime import date
+            from helpers import calcular_level
+            from telas.progresso import TelaProgresso
+            from animacoes_ui import luz_na_linha
+            app = App.get_running_app()
+            p = self.ids.painel_menu
+            _sem, hoje = metas.pecas_da_semana(app.memorias, app.registros, date.today())
+            nivel, xp_atual, xp_nec = calcular_level(app.total_xp)
+            p.definir(hoje, nivel, xp_atual / float(max(1, xp_nec)),
+                      TelaProgresso._sequencia_valida(app))
+            luz_na_linha(p.linha_topo, (1.0, 0.82, 0.25), periodo=6.0, atraso=1.6)
+        except Exception as e:
+            print(f"[menu] painel: {e}")
 
 LARGURA_COLUNA = 560     # dp: largura maxima do app em janela larga (PC/tablet)
 

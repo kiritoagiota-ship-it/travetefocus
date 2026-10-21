@@ -37,6 +37,7 @@ class TelaRegistro(Screen):
         self._foco_ev = Clock.schedule_once(self._focar_nome, 0.35)
 
     def on_leave(self, *_):
+        self._terminar_lista()
         if hasattr(self, '_foco_ev') and self._foco_ev:
             self._foco_ev.cancel()
             self._foco_ev = None
@@ -92,13 +93,62 @@ class TelaRegistro(Screen):
                 Clock.schedule_once(lambda _: pulse.start(es), 0.5)
             Clock.schedule_once(_animar_empty, 0.1)
 
-        novos = []
-        for r in registros:
+        self._montar_lista(list(registros), inicio)
+
+    POR_QUADRO = 4          # cartoes montados por quadro da tela
+
+    def _montar_lista(self, fila, inicio=0.0):
+        """Monta os cartoes POR_QUADRO por quadro (a tela nunca para) e acende
+        todos em cascata no fim. Quem mexe na lista antes de acabar chama
+        _terminar_lista() (monta o resto na hora)."""
+        self._cancelar_montagem()
+        cont = self.ids.lista_container
+        est = self._montagem = {'fila': fila, 'novos': [], 'ev': None, 'inicio': inicio}
+
+        def _um(r):
             btn = self._make_item(self._texto_item(r), r)
             btn.bind(on_release=lambda x, dado=r, w=btn: self.confirmar_delete(dado, w))
-            self.ids.lista_container.add_widget(btn)
-            novos.append(btn)
-        entrada_cascata(novos, inicio=inicio)
+            btn.opacity = 0                          # a cascata acende no fim
+            cont.add_widget(btn)
+            est['novos'].append(btn)
+
+        def _passo(dt=0):
+            try:
+                parte, est['fila'] = est['fila'][:self.POR_QUADRO], est['fila'][self.POR_QUADRO:]
+                for r in parte:
+                    _um(r)
+                if est['fila']:
+                    est['ev'] = Clock.schedule_once(_passo, 0)
+                    return
+                est['ev'] = None
+                self._montagem = None
+                entrada_cascata(est['novos'], inicio=est['inicio'])
+            except Exception as e:
+                print(f"[registro] montar lista: {e}")
+                self._montagem = None
+        est['passo'] = _passo
+        est['um'] = _um
+        est['ev'] = Clock.schedule_once(_passo, 0)
+
+    def _cancelar_montagem(self):
+        est = getattr(self, '_montagem', None)
+        if est and est.get('ev') is not None:
+            est['ev'].cancel()
+        self._montagem = None
+
+    def _terminar_lista(self):
+        """Termina a montagem agora (antes de mexer na lista)."""
+        est = getattr(self, '_montagem', None)
+        if not est:
+            return
+        if est.get('ev') is not None:
+            est['ev'].cancel()
+        for r in est['fila']:
+            est['um'](r)
+        est['fila'] = []
+        self._montagem = None
+        for b in est['novos']:
+            b.opacity = 1
 
     @staticmethod
     def _dia_do_item(r):
@@ -208,6 +258,7 @@ class TelaRegistro(Screen):
         tatil.confirmar()
         self.ids.empty_state.opacity = 0
         self.ids.empty_state.height  = 0
+        self._terminar_lista()                       # (a lista ainda montando: termina antes)
         dado = app.registros[-1]
         btn = self._make_item(self._texto_item(dado), dado)
         btn.bind(on_release=lambda x, d=dado, w=btn: self.confirmar_delete(d, w))
@@ -382,6 +433,7 @@ class TelaRegistro(Screen):
         popup_delete_engracado(_fazer)
 
     def deletar(self, dado, btn=None):
+        self._terminar_lista()
         app = App.get_running_app()
         try:
             app.registros.remove(dado)

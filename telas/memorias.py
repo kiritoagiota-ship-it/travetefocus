@@ -13,7 +13,7 @@ from kivy.metrics import dp
 from kivy.properties import StringProperty
 from datetime import datetime
 
-from efeitos import (BotaoAngular, BotaoAngularAlerta, ListaItem,
+from efeitos import (BotaoAngular, BotaoAngularAlerta, ListaItem, CartaoMemoria,
                      InputHolografico, tremer_tela, explodir_estilhacos)
 import som
 from helpers import (aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, _bind_teclado,
@@ -22,7 +22,7 @@ from helpers import (aplicar_fundo_holografico, _make_popup, _abrir_popup, vibra
 import tatil
 
 PAGINA = 30          # turnos desenhados de cada vez (anos de dados abrem rapido)
-POR_QUADRO = 8       # ... montados aos poucos, alguns por quadro
+POR_QUADRO = 4       # ... montados aos poucos, alguns por quadro (a tela nunca para)
 
 
 def _mes_de(data_str):
@@ -95,6 +95,14 @@ class TelaMemorias(Screen):
     def _atualizar_filtros(self):
         app  = App.get_running_app()
         cont = self.ids.filtros_container
+        meses = []
+        for m in reversed(_ordenadas(app.memorias)):
+            mk = _mes_de(m.get('data', ''))
+            if mk and mk not in meses:
+                meses.append(mk)
+        if getattr(self, '_meses_filtro', None) == meses and cont.children:
+            return                                   # os mesmos meses: os botoes ja estao ali
+        self._meses_filtro = meses
         cont.clear_widgets()
 
         btn_todos = BotaoAngular(text="TODOS",
@@ -195,16 +203,17 @@ class TelaMemorias(Screen):
     def _item(self, m):
         is_rec = m['total'] == self._max_t and self._max_t > 0
         crown  = "[REC] " if is_rec else ""
-        btn    = ListaItem(
+        btn    = CartaoMemoria(
+            m, recorde=is_rec,
             text=f"  {crown}{m['data']}   ·   {m['total']} un.   ·   +{m.get('xp', 0)} XP")
-        btn.height = dp(52)
-        btn.valign = 'middle'
         if is_rec:
             btn.cor_borda    = [1.0, 0.82, 0.0, 1.0]
             btn.cor_borda_kv = [1.0, 0.82, 0.0, 1.0]
             btn.cor_fundo    = [0.10, 0.08, 0.0, 0.92]
-            btn.cor_texto    = [1.0, 0.88, 0.1, 1.0]
             self._brilho_recorde(btn)
+        else:
+            btn.cor_borda    = [0.62, 0.36, 1.0, 0.85]
+            btn.cor_borda_kv = [0.62, 0.36, 1.0, 0.85]
         btn._data_mem = m.get('data', '')
         btn.bind(on_release=lambda x, mem=m: self._abrir_do_item(x, mem))
         return btn
@@ -365,13 +374,14 @@ class TelaMemorias(Screen):
                     cont.add_widget(b)
                     self._btn_mais = b
                 ini, self._inicio_lista = getattr(self, '_inicio_lista', 0.0), 0.0
+                ini = max(0.0, ini - 0.05 * len(novos) / float(POR_QUADRO))   # (ja passou tempo montando)
                 entrada_cascata(novos, atraso_max=0.4, inicio=ini)
                 # solta a ancora depois que o layout assentar
                 Clock.schedule_once(lambda dt: self._soltar_ancora(), 0.12)
             except Exception as e:
                 print(f"[memorias] lote: {e}")
                 self._soltar_ancora()
-        _passo()
+        self._lote_ev = Clock.schedule_once(_passo, 0)       # comeca no proximo quadro
 
     def _manter_ancora(self, cont, h):
         if self._ancora is None:
