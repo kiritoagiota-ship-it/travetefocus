@@ -462,14 +462,27 @@ def chamas_em_volta(alvo, forca=1.0):
                 janela = alvo.get_root_window()
                 janela.add_widget(w)
             x0, y0 = alvo.to_window(alvo.x, alvo.y)
-            tw = alvo.texture_size[0] if alvo.texture_size[0] > 0 else alvo.width
+            # largura do TEXTO (o label ocupa a linha toda): mede uma copia sem markup
+            if estado.get('txt') != alvo.text:
+                import re
+                from kivy.core.text import Label as CoreLabel
+                cl = CoreLabel(text=re.sub(r'\[/?[^\]]*\]', '', alvo.text), font_name=alvo.font_name,
+                               font_size=alvo.font_size, bold=alvo.bold)
+                cl.refresh()
+                estado['txt'], estado['tam'] = alvo.text, tuple(cl.texture.size)
+            tw, th = estado['tam']
             cx = x0 + alvo.width / 2.0
-            esq, dir_ = cx - tw / 2.0 - dp(10), cx + tw / 2.0 + dp(10)
-            estado['acc'] += dt * 70 * forca
+            base = y0 + (alvo.height - th) / 2.0                 # o pe das letras
+            meia = tw / 2.0 + dp(6)
+            estado['acc'] += dt * 55 * forca
             while estado['acc'] >= 1 and len(pool) < 70:
                 estado['acc'] -= 1
-                pool.append([random.uniform(esq, dir_), y0 + random.uniform(-dp(2), dp(6)),
-                             random.uniform(dp(30), dp(70)), random.uniform(0.35, 0.8), 0.0,
+                # mais brasas no meio do texto, menos nas pontas (forma de chama)
+                dx = max(-meia, min(meia, random.gauss(0, meia * 0.5)))
+                alta = 1.0 - abs(dx) / meia * 0.6
+                # nasce no alto das letras e sobe (nao tapa o texto)
+                pool.append([cx + dx, base + th * 0.85 + random.uniform(0, dp(3)),
+                             random.uniform(dp(34), dp(70)) * alta, random.uniform(0.4, 0.9) * alta, 0.0,
                              random.uniform(0, 6.28)])
             vivos = []
             pontos = [[] for _ in cores]
@@ -481,7 +494,7 @@ def chamas_em_volta(alvo, forca=1.0):
                 p[1] += p[2] * dt
                 xx = p[0] + math.sin(p[5] + p[4] * 9) * dp(2.5)
                 ci = min(len(cores) - 1, int(k * len(cores)))
-                tam = u * (2 if k < 0.35 else 1)
+                tam = u * (2 if 0.15 < k < 0.4 else 1)
                 pontos[ci].append((math.floor(xx / u) * u, math.floor(p[1] / u) * u, tam))
                 vivos.append(p)
             pool[:] = vivos

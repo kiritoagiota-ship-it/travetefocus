@@ -243,39 +243,71 @@ def transicao_tela(app, destino):
 
 
 def animar_ganho_xp(quantidade, origem=None):
-    """'+N XP' subindo. Com `origem` (ex: o item recem-adicionado na lista),
-    nasce em cima dele em vez de no meio da tela (onde cobria o botao)."""
-    ww = Window.width
-    wh = Window.height
-    fs = min(int(wh * 0.055), 34)
-
-    y_base = wh * 0.66
+    """'+N XP' saltando. Com `origem` (o item recem-adicionado na lista) nasce
+    no item e salta para logo ACIMA dele (nao fica por cima do texto do item):
+    cresce passando um pouco do tamanho, assenta, segura e sobe sumindo.
+    Tamanhos em sp/dp (em pixel fixo ficava pequeno no celular)."""
+    from kivy.metrics import sp
+    ww, wh = Window.size
+    alt = dp(46)
+    y_ini = wh * 0.62
+    y_alvo = y_ini + dp(18)
     if origem is not None:
         try:
             _, oy = origem.to_window(origem.x, origem.y)
-            y_base = oy + origem.height / 2.0 - 30
+            y_ini = oy + origem.height / 2.0 - alt / 2.0
+            y_alvo = min(wh - alt - dp(8), oy + origem.height - dp(4))
         except Exception:
             pass
-    y_alto  = y_base + 22
-    y_saida = y_base + min(wh * 0.12, dp(90))
-
+    verde = (0.2, 1.0, 0.6)
     lbl = Label(
-        text=f"[b]+{quantidade} XP[/b]",
-        markup=True, color=(0.0, 1.0, 0.53, 0.0),
-        font_name="orbitron.ttf", font_size=fs,
-        size_hint=(None, None), size=(ww * 0.8, 60),
-        pos=(ww * 0.10, y_base))
-
+        text=f"[b]+{fmt_br(quantidade)} XP[/b]",
+        markup=True, color=(verde[0], verde[1], verde[2], 0.0),
+        font_name="orbitron.ttf", font_size=sp(26),
+        outline_width=max(1, int(dp(1.5))), outline_color=(0.0, 0.10, 0.05, 1),
+        size_hint=(None, None), size=(ww * 0.8, alt),
+        pos=(ww * 0.10, y_ini))
     Window.add_widget(lbl)
-    anim = (
-        Animation(color=(0.0, 1.0, 0.53, 1.0), y=y_alto,
-                  duration=0.28, transition='out_quad') +
-        Animation(duration=0.42) +
-        Animation(color=(0.0, 1.0, 0.53, 0.0), y=y_saida,
-                  duration=0.40, transition='in_quad')
-    )
-    anim.bind(on_complete=lambda *_: Window.remove_widget(lbl))
-    anim.start(lbl)
+    try:
+        from animacoes_ui import _matriz
+        tr, sc = _matriz(lbl)
+    except Exception:
+        tr = sc = None
+    t = [0.0]
+    SALTO, SEGURA, SAI = 0.26, 0.5, 0.42
+    sobe = min(wh * 0.08, dp(56))
+
+    def _p(dt):
+        try:
+            t[0] += dt
+            k = t[0]
+            if k < SALTO:
+                u = k / SALTO
+                e = 1 - (1 - u) ** 3
+                lbl.y = y_ini + (y_alvo - y_ini) * e
+                ov = 1 + 2.4 * (u - 1) ** 3 + 1.4 * (u - 1) ** 2       # passa um pouco e assenta
+                if sc is not None:
+                    sc.x = sc.y = 0.55 + 0.45 * ov
+                lbl.color = (verde[0], verde[1], verde[2], min(1.0, u * 2.5))
+            elif k < SALTO + SEGURA:
+                lbl.y = y_alvo
+                if sc is not None:
+                    sc.x = sc.y = 1.0
+                lbl.color = (verde[0], verde[1], verde[2], 1.0)
+            elif k < SALTO + SEGURA + SAI:
+                u = (k - SALTO - SEGURA) / SAI
+                lbl.y = y_alvo + sobe * u * u
+                lbl.color = (verde[0], verde[1], verde[2], 1.0 - u)
+            else:
+                Window.remove_widget(lbl)
+                return False
+        except Exception:
+            try:
+                Window.remove_widget(lbl)
+            except Exception:
+                pass
+            return False
+    Clock.schedule_interval(_p, 1 / 60.)
 
 
 # ═══════════════════════════════════════════════════════════
