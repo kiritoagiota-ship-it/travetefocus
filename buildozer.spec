@@ -8,7 +8,7 @@ package.domain = com.travetefocus
 # ── CÓDIGO FONTE ─────────────────────────────────────────────────────────────
 source.dir = .
 source.include_exts = py,kv,ttf,json,wav,mp3,ogg,png,jpg,csv,bin,txt
-source.exclude_dirs = tests,bin,.buildozer,.git,__pycache__,.github,dev,java,res_notif
+source.exclude_dirs = tests,bin,.buildozer,.git,__pycache__,.github,dev,java,res_notif,docs
 
 # ── VERSÃO ───────────────────────────────────────────────────────────────────
 version = 1.0.4

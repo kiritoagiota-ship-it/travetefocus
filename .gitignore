@@ -9,3 +9,12 @@ build.log
 
 keystore_novo_base64.txt
 versao.json
+
+# saidas e lixo de sistema
+*.apk
+*.log
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store

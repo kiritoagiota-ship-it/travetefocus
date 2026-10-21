@@ -136,4 +136,5 @@ DESENHO DO ROSTO/TRONCO A PARTIR DA REFERENCIA
   retrato.py (closes)   -> usam os arquivos de dados\
 
   p.py              ajudante para aplicar mudancas mantendo o fim de linha
-  historico\        remendos antigos (so para consulta)
+  (os remendos antigos de dev\historico sairam em 21/10/2026: continuam no
+  historico do Git, se um dia for preciso consultar)
