@@ -8,6 +8,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
+import android.os.Bundle;
 
 /**
  * Mostra um aviso na barra do celular na hora agendada pelo app (lembretes.py),
@@ -17,12 +18,33 @@ import android.os.Build;
 public class Lembrete extends BroadcastReceiver {
     private static final String CANAL = "travete_lembretes";
 
+    /** Le um texto do aviso em qualquer formato que tenha chegado (texto,
+     *  CharSequence ou bytes em UTF-8). */
+    private static String ler(Intent it, String chave) {
+        try {
+            Bundle b = it.getExtras();
+            if (b == null) {
+                return null;
+            }
+            Object o = b.get(chave);
+            if (o == null) {
+                return null;
+            }
+            if (o instanceof byte[]) {
+                return new String((byte[]) o, "UTF-8");
+            }
+            return o.toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     @Override
     public void onReceive(Context ctx, Intent it) {
         try {
-            String titulo = it.getStringExtra("titulo");
-            String texto = it.getStringExtra("texto");
-            String sid = it.getStringExtra("id");
+            String titulo = ler(it, "titulo");
+            String texto = ler(it, "texto");
+            String sid = ler(it, "id");
             int id = 7100;
             try {
                 id = Integer.parseInt(sid);

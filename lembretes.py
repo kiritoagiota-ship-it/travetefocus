@@ -142,9 +142,15 @@ def _agendar(nid, titulo, texto, quando_ms, cancelar_so=False):
     it.setClassName(ctx.getPackageName(), RECEBEDOR)
     it.setAction('org.travetefocus.LEMBRETE_%d' % nid)
     if not cancelar_so:
-        it.putExtra('id', str(nid))
-        it.putExtra('titulo', str(titulo))
-        it.putExtra('texto', str(texto))
+        # os textos vao num Bundle com putString: o putExtra tem varias versoes
+        # e o pyjnius escolhia a errada para texto do Python (chegava como
+        # bytes: o aviso aparecia so com "TraveteFocus", sem titulo nem texto)
+        Bundle = autoclass('android.os.Bundle')
+        b = Bundle()
+        b.putString('id', str(nid))
+        b.putString('titulo', str(titulo))
+        b.putString('texto', str(texto))
+        it.putExtras(b)
     pi = PendingIntent.getBroadcast(ctx, nid, it, flags)
     am.cancel(pi)
     if cancelar_so:
