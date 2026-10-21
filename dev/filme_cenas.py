@@ -85,7 +85,7 @@ if CENA == 'meta':                     # a regra real: 2.500 / 3.000 por semana
     dados['config_ganhos'] = {'valor_base': 0.25, 'valor_bonus': 0.30, 'meta_bonus': 3000, 'tipo_periodo': 'semanal'}
 with open(os.path.join(pasta_app, 'dados.json'), 'w', encoding='utf-8') as f:
     json.dump(dados, f, ensure_ascii=False)
-if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas'):
+if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas', 'mem'):
     with open(os.path.join(pasta_app, '.tf_session'), 'w') as f:
         f.write(str(time.time()))
 
@@ -718,6 +718,15 @@ def roteiro_novas():
     Roteiro(passos).rodar()
 
 
+def roteiro_mem():
+    """So a entrada nas Memorias (duas vezes), para ver quadro a quadro."""
+    def ir(nome):
+        return lambda: app().mudar_tela(nome)
+    passos = [(0.5, lambda: fase('entra memorias')), (0.01, ir('memorias')), (2.5, lambda: fase('volta menu')),
+              (0.01, ir('menu')), (1.5, lambda: fase('entra memorias 2')), (0.01, ir('memorias')), (2.5, fim)]
+    Roteiro(passos).rodar()
+
+
 def roteiro_meta():
     """As telas das METAS: a faixa HOJE do registro, o painel da meta, um
     lote novo (com a festa se passar da meta) e a tela de ganhos."""
@@ -779,7 +788,8 @@ def esperar_menu(dt):
         return
     fase('menu')
     Clock.schedule_once(lambda dt: {'telas': roteiro_telas, 'zap': roteiro_zap, 'varre': roteiro_varre, 'meta': roteiro_meta,
-              'anim': roteiro_anim, 'vivo': roteiro_vivo, 'novas': roteiro_novas}.get(CENA, roteiro_app)(), 1.0)
+              'anim': roteiro_anim, 'vivo': roteiro_vivo, 'novas': roteiro_novas,
+              'mem': roteiro_mem}.get(CENA, roteiro_app)(), 1.0)
 
 
 def roteiro_pin():

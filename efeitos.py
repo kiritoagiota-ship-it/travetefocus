@@ -1145,9 +1145,11 @@ class GraficoBarras(Widget):
         self._tex_cache.clear()
         self._animar(list(self._vistas))
 
-    def animar_entrada(self):
-        """Ao abrir a tela: todas as barras crescem do chao."""
+    def animar_entrada(self, atraso=0.0):
+        """Ao abrir a tela: todas as barras crescem do chao (depois de
+        `atraso` s - o quadro do grafico chega primeiro)."""
         self._animar([])
+        self._t = -float(atraso)
 
     def _animar(self, de):
         self._de = de

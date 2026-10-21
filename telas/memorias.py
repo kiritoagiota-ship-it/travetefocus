@@ -78,10 +78,11 @@ class TelaMemorias(Screen):
     def on_enter(self):
         self.filtro_mes = "TODOS"   # nao herdar filtro de uma visita anterior
         self._atualizar_filtros()
+        self._inicio_lista = 0.24   # a lista entra depois do titulo, do grafico e dos filtros
         self.atualizar_lista()
         self._atualizar_grafico()
         try:
-            self.ids.grafico_barras.animar_entrada()       # as barras crescem do chao
+            self.ids.grafico_barras.animar_entrada(atraso=0.16)   # cresce depois que o quadro chega
         except Exception as e:
             print(f"[memorias] grafico: {e}")
         try:
@@ -363,7 +364,8 @@ class TelaMemorias(Screen):
                     b.bind(on_release=lambda *_: self._carregar_mais())
                     cont.add_widget(b)
                     self._btn_mais = b
-                entrada_cascata(novos, atraso_max=0.4)
+                ini, self._inicio_lista = getattr(self, '_inicio_lista', 0.0), 0.0
+                entrada_cascata(novos, atraso_max=0.4, inicio=ini)
                 # solta a ancora depois que o layout assentar
                 Clock.schedule_once(lambda dt: self._soltar_ancora(), 0.12)
             except Exception as e:

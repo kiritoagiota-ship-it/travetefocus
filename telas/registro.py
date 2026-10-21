@@ -23,7 +23,7 @@ LOTE_GRANDE = 1000          # acima disso o app confere antes (digitacao errada)
 class TelaRegistro(Screen):
 
     def on_enter(self):
-        self.atualizar()
+        self.atualizar(inicio=0.2)            # a lista entra depois da faixa HOJE e dos campos
         self._hj_mostrado = None               # ao abrir a tela o numero ja aparece pronto
         self.atualizar_meta()
         try:
@@ -70,7 +70,7 @@ class TelaRegistro(Screen):
         btn.valign = 'middle' # texto centralizado verticalmente
         return btn
 
-    def atualizar(self):
+    def atualizar(self, inicio=0.0):
         Animation.cancel_all(self.ids.empty_state)  # parar pulse antes de atualizar
         self.ids.lista_container.clear_widgets()
         registros = App.get_running_app().registros
@@ -98,7 +98,7 @@ class TelaRegistro(Screen):
             btn.bind(on_release=lambda x, dado=r, w=btn: self.confirmar_delete(dado, w))
             self.ids.lista_container.add_widget(btn)
             novos.append(btn)
-        entrada_cascata(novos)
+        entrada_cascata(novos, inicio=inicio)
 
     @staticmethod
     def _dia_do_item(r):

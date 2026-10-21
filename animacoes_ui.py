@@ -60,9 +60,10 @@ def _matriz(w):
 
 
 def entrada_cascata(widgets, atraso=0.045, dy=None, duracao=0.38,
-                    escala=True, atraso_max=0.55):
+                    escala=True, atraso_max=0.55, inicio=0.0):
     """Opacidade 0->1, sobe `dy` e cresce levemente, um item depois do outro.
-    O atraso total e limitado a `atraso_max` (listas longas nao demoram)."""
+    O atraso total e limitado a `atraso_max` (listas longas nao demoram).
+    `inicio`: espera antes do primeiro (ex.: a lista espera o topo da tela)."""
     try:
         ws = [w for w in widgets if w is not None]
     except Exception:
@@ -74,7 +75,7 @@ def entrada_cascata(widgets, atraso=0.045, dy=None, duracao=0.38,
     passo = atraso if len(ws) * atraso <= atraso_max else atraso_max / float(len(ws))
     for i, w in enumerate(ws):
         try:
-            _entrar(w, i * passo, dy, duracao, escala)
+            _entrar(w, inicio + i * passo, dy, duracao, escala)
         except Exception as e:
             print(f"[anim_ui] cascata item ignorado: {e}")
             w.opacity = 1
