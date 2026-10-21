@@ -193,6 +193,12 @@ class TraveteApp(App):
         # botao VOLTAR do Android (ESC no PC): antes jogava o app para o fundo
         # na hora, ate com um popup aberto ou no meio de uma tela
         Window.bind(on_keyboard=self._tecla_voltar)
+        # o fundo HUD das telas (holograma + cenario + moldura, na cor de cada tela)
+        try:
+            from menu_hud import instalar_fundos
+            instalar_fundos(self.root.ids.sm, 'tudo')
+        except Exception as e:
+            print(f"[fundos] {e}")
         # avisos na barra do celular: pede a permissao (Android 13+) e agenda
         if self.lembretes:
             Clock.schedule_once(lambda dt: self._iniciar_lembretes(), 6.0)

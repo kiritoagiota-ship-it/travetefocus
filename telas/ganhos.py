@@ -288,9 +288,11 @@ class TelaGanhos(Screen):
                 if md['e_sabado']:
                     como = "tudo hoje (sábado)"
                 elif md['por_dia'] > 0:
-                    como = f"[b]{fmt_br(md['por_dia'])}[/b] por dia + {fmt_br(md['sabado'])} no sábado"
+                    # o sabado e so uma PREVISAO (meio periodo, ajustavel): nao conta como feito
+                    como = (f"[b]{fmt_br(md['por_dia'])}[/b] por dia [color=#7f8aa3](contando{NB}~{fmt_br(md['sabado'])}"
+                            f"{NB}no{NB}sábado)[/color]")
                 else:
-                    como = f"cabe no sábado ({fmt_br(md['sabado'])})"
+                    como = f"cabe no sábado [color=#7f8aa3](previsão{NB}~{fmt_br(md['sabado'])})[/color]"
                 linhas.append(f"[color=#c8d2e6]Faltam [b]{fmt_br(md['falta'])}[/b] para {_reais(v)} "
                               f"[color=#00e5ff]->[/color] {como}[/color]")
             periodo_no_topo = (aberto is not None and getattr(self, '_pecas_periodo', None) is not None

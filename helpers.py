@@ -1389,9 +1389,11 @@ def popup_meta_producao():
         if md['e_sabado']:
             lin += "\n[color=#9aa6bd]É sábado: tudo isso hoje[/color]"
         elif md['por_dia'] > 0:
-            lin += (f"\n[color=#9aa6bd]{fmt_br(md['por_dia'])} por dia + {fmt_br(md['sabado'])} no sábado[/color]")
+            # o sabado e so uma PREVISAO (meio periodo, ajustavel): nao conta como feito
+            lin += (f"\n[color=#9aa6bd]{fmt_br(md['por_dia'])} por dia (contando ~{fmt_br(md['sabado'])} "
+                    f"no sábado)[/color]")
         elif md['sabado'] > 0:
-            lin += f"\n[color=#9aa6bd]Cabe no sábado: {fmt_br(md['sabado'])}[/color]"
+            lin += f"\n[color=#9aa6bd]Cabe no sábado (previsão ~{fmt_br(md['sabado'])})[/color]"
     texto(lin, alt=dp(70), tam="14sp")
     caixa.add_widget(Widget())
     btn = BotaoAngular(text=">>  OK", size_hint_y=None, height=dp(48))

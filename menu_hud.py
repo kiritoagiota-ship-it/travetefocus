@@ -1224,3 +1224,283 @@ class RodapeMenu(FloatLayout):
         self._l_selo.points = ps
         self.selo_area = [sx, sy, s, s]
         self.linha_luz.pos, self.linha_luz.size = (x + dp(14), y + h - dp(1)), (w - dp(28), dp(1))
+
+
+# ═══════════════════════════════════════════════════════════
+#  FUNDO DAS TELAS (atras do conteudo, na frente da grade)
+# ═══════════════════════════════════════════════════════════
+_COR_TELA = {'registro': (0.0, 0.85, 1.0), 'memorias': (0.66, 0.36, 1.0), 'progresso': (0.1, 0.75, 1.0),
+             'ganhos': (0.1, 1.0, 0.5), 'calculadora': (1.0, 0.6, 0.08)}
+_CENA_TELA = {'registro': 'calculadora', 'memorias': 'memorias', 'progresso': 'progresso',
+              'ganhos': 'ganhos', 'calculadora': 'calculadora'}
+
+
+def _tex_brilho():
+    """32x32: brilho redondo (claro no meio, some na borda)."""
+    t = _TEX.get('brilho')
+    if t is None:
+        n = 32
+        buf = bytearray()
+        for j in range(n):
+            for i in range(n):
+                d = math.hypot(i - (n - 1) / 2.0, j - (n - 1) / 2.0) / (n / 2.0)
+                a = max(0.0, 1.0 - d)
+                buf += bytes((255, 255, 255, int(255 * a * a)))
+        dados = bytes(buf)
+        t = Texture.create(size=(n, n), colorfmt='rgba')
+        t.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte')
+        t.add_reload_observer(lambda tx: tx.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte'))
+        _TEX['brilho'] = t
+    return t
+
+
+class FundoTela(Widget):
+    """Camada de fundo das telas (atras do conteudo), na cor de cada tela.
+    As tres camadas que o usuario escolheu, juntas:
+      holo     - grade hexagonal holografica com celulas que acendem e apagam,
+                 uma onda de luz saindo do meio de tempos em tempos, um brilho
+                 e uma faixa de varredura descendo devagar
+      cenario  - a cena em pixel art da tela embaixo (apagada, animada), com a
+                 linha do horizonte acesa e particulas subindo pela tela
+      moldura  - por cima: cantoneiras respirando com pontos acendendo em
+                 sequencia, trilhos dos lados com uma luz subindo e a faixa
+                 de dados viva (hora, sincronia, o ponto de online piscando)
+    tipo: 'tudo' (as tres) ou so uma delas. Tudo anda no relogio unico e so
+    com a tela aberta."""
+    tipo = StringProperty('tudo')
+    tela = StringProperty('')
+    N_CELULAS = 9
+    N_PARTICULAS = 14
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._anim = []
+        self._rng = random.Random(hash(kwargs.get('tela', '')) & 0xffff)
+        self.bind(pos=self._montar, size=self._montar, tipo=self._montar)
+        RELOGIO.add(self)
+
+    def _quer(self, parte):
+        return self.tipo in ('tudo', parte)
+
+    @staticmethod
+    def _hexa(cx, cy, r):
+        pts = []
+        for k in range(7):
+            a = math.pi / 3 * k
+            pts += [cx + math.cos(a) * r, cy + math.sin(a) * r]
+        return pts
+
+    def _montar(self, *_):
+        x, y, w, h = self.x, self.y, self.width, self.height
+        if w < 50 or h < 50:
+            return
+        self.canvas.clear()
+        self.canvas.after.clear()
+        for c in list(self.children):
+            self.remove_widget(c)
+        r, g, b = _COR_TELA.get(self.tela, (0.0, 0.85, 1.0))
+        self._cor = (r, g, b)
+        self._anim = []
+        rng = self._rng
+        # ── holograma (atras de tudo) ──
+        if self._quer('holo'):
+            rr = dp(22)
+            centros = []
+            with self.canvas:
+                Color(r, g, b, 0.13)
+                Rectangle(texture=_tex_brilho(), pos=(x + w * 0.5 - w * 0.6, y + h * 0.52 - w * 0.6),
+                          size=(w * 1.2, w * 1.2))
+                Color(r, g, b, 0.05)
+                dx, dy = rr * 1.5, rr * math.sqrt(3)
+                j = 0
+                yy = y - rr
+                while yy < y + h + rr:
+                    xx = x - rr + (dx if j % 2 else 0)
+                    while xx < x + w + rr:
+                        Line(points=self._hexa(xx, yy, rr * 0.92), width=dp(1))
+                        if x + rr < xx < x + w - rr and y + h * 0.12 < yy < y + h * 0.9:
+                            centros.append((xx, yy))
+                        xx += dx * 2
+                    yy += dy / 2.0
+                    j += 1
+                # as celulas que acendem (um punhado, trocando de lugar)
+                celulas = []
+                for i in range(self.N_CELULAS):
+                    cf = Color(r, g, b, 0)
+                    mf = Mesh(mode='triangle_fan')
+                    cl = Color(min(1, r + 0.3), min(1, g + 0.3), min(1, b + 0.3), 0)
+                    ln = Line(width=dp(1.3))
+                    celulas.append({'cf': cf, 'mf': mf, 'cl': cl, 'ln': ln, 'ini': -rng.random() * 3.0,
+                                    'dur': 1.8 + rng.random() * 1.6})
+                # a onda de luz saindo do meio
+                c_onda = Color(r, g, b, 0)
+                l_onda = Line(width=dp(1.6))
+                c_onda2 = Color(r, g, b, 0)
+                l_onda2 = Line(width=dp(1))
+                c_v = Color(r, g, b, 0.0)
+                m_cima = Mesh(mode='triangle_fan', texture=_tex_degrade(), indices=[0, 1, 2, 3])
+                m_baixo = Mesh(mode='triangle_fan', texture=_tex_degrade(), indices=[0, 1, 2, 3])
+            self._centros = centros or [(x + w / 2.0, y + h / 2.0)]
+            self._rr = rr
+            for cel in celulas:
+                self._mudar_celula(cel)
+            self._anim.append(('celulas', celulas))
+            self._anim.append(('onda', (c_onda, l_onda, c_onda2, l_onda2)))
+            self._anim.append(('varre', c_v, (m_cima, m_baixo)))
+        # ── cenario (a cena da tela, embaixo, apagada) e particulas ──
+        if self._quer('cenario'):
+            nome = 'cena_' + _CENA_TELA.get(self.tela, 'progresso')
+            sp_ = SpritePixel(nome, fps=3, alfa=0.17)
+            if sp_._qs:
+                tw, th = sp_._qs[0].size
+                u = max(1, int(min(w * 0.75 / tw, h * 0.2 / th)))
+                sp_.mudar_u(u)
+                sp_.pos = (int(x + (w - sp_.width) / 2.0), int(y + dp(14)))
+            self.add_widget(sp_)
+            with sp_.canvas.after:                               # some para cima
+                Color(0.02, 0.02, 0.05, 1)
+                Mesh(mode='triangle_fan', texture=_tex_degrade(),
+                     vertices=[sp_.x, sp_.top, 0, 0.5, sp_.right, sp_.top, 0, 0.5,
+                               sp_.right, sp_.y + sp_.height * 0.4, 1, 0.5, sp_.x, sp_.y + sp_.height * 0.4, 1, 0.5],
+                     indices=[0, 1, 2, 3])
+            with self.canvas.after:
+                c_hor = Color(r, g, b, 0.0)                      # a linha do horizonte acesa
+                r_hor = Rectangle(pos=(x + w * 0.08, sp_.y + dp(1)), size=(w * 0.84, dp(1.5)))
+                c_brh = Color(min(1, r + 0.4), min(1, g + 0.4), min(1, b + 0.4), 0.0)
+                r_brh = Rectangle(size=(dp(46), dp(1.5)))
+                c_p = Color(r, g, b, 0.45)
+                parts = [Rectangle() for _ in range(self.N_PARTICULAS)]
+            self._parts = [(rng.random(), rng.random(), 0.04 + rng.random() * 0.05, rng.choice((1, 1, 2)))
+                           for _ in parts]
+            self._anim.append(('horizonte', c_hor, r_hor, c_brh, r_brh, sp_.y))
+            self._anim.append(('particulas', c_p, parts))
+        # ── moldura HUD (por cima) ──
+        if self._quer('moldura'):
+            m, L = dp(8), dp(26)
+            with self.canvas.after:
+                c_cant = Color(r, g, b, 0.55)
+                cantos = ((x + m, y + h - m, 1, -1), (x + w - m, y + h - m, -1, -1),
+                          (x + w - m, y + m, -1, 1), (x + m, y + m, 1, 1))
+                for (cx, cy, sx, sy) in cantos:
+                    Line(points=[cx, cy + sy * L, cx, cy, cx + sx * L, cy], width=dp(1.4))
+                pontos = []
+                for (cx, cy, sx, sy) in cantos:                  # o ponto em cada canto
+                    cp = Color(min(1, r + 0.4), min(1, g + 0.4), min(1, b + 0.4), 0.0)
+                    Rectangle(pos=(cx + sx * dp(4) - dp(1.5), cy + sy * dp(4) - dp(1.5)), size=(dp(3), dp(3)))
+                    pontos.append(cp)
+                Color(r, g, b, 0.16)
+                for xx in (x + m, x + w - m):                  # os trilhos dos lados
+                    Line(points=[xx, y + h * 0.18, xx, y + h * 0.82], width=dp(1))
+                Color(r, g, b, 0.4)
+                for i in range(9):                              # as marcas nos trilhos
+                    yy = y + h * (0.22 + 0.07 * i)
+                    larg = dp(6) if i % 3 else dp(10)
+                    Rectangle(pos=(x + m, yy), size=(larg, dp(1.5)))
+                    Rectangle(pos=(x + w - m - larg, yy), size=(larg, dp(1.5)))
+                c_luz = Color(r, g, b, 0.0)
+                r_luz = [Rectangle(), Rectangle()]
+                Color(1, 1, 1, 1)
+                r_dados = Rectangle()
+                c_pt = Color(r, g, b, 0.0)
+                r_pt = Rectangle(size=(dp(4), dp(4)))
+            self._anim.append(('cantos', c_cant, pontos))
+            self._anim.append(('trilho', c_luz, r_luz))
+            self._anim.append(('dados', r_dados, c_pt, r_pt, {'txt': None}))
+
+    def _mudar_celula(self, cel):
+        cx, cy = self._rng.choice(self._centros)
+        pts = self._hexa(cx, cy, self._rr * 0.9)
+        cel['ln'].points = pts
+        vs = []
+        for i in range(0, 12, 2):
+            vs += [pts[i], pts[i + 1], 0, 0]
+        cel['mf'].vertices, cel['mf'].indices = vs, list(range(6))
+
+    def tique(self, t):
+        x, y, w, h = self.x, self.y, self.width, self.height
+        for item in self._anim:
+            tipo = item[0]
+            if tipo == 'celulas':                                # acendem e apagam, trocando de lugar
+                for cel in item[1]:
+                    k = (t - cel['ini']) / cel['dur']
+                    if k >= 1:
+                        cel['ini'] = t + self._rng.random() * 1.5
+                        self._mudar_celula(cel)
+                        k = -1
+                    a = math.sin(math.pi * k) if 0 <= k < 1 else 0.0
+                    cel['cf'].a = 0.04 * a                       # (sutis: nao disputam com o conteudo)
+                    cel['cl'].a = 0.22 * a
+            elif tipo == 'onda':                                 # a onda saindo do meio (a cada 7 s)
+                c1, l1, c2, l2 = item[1]
+                k = (t % 7.0) / 2.6
+                if k < 1:
+                    cx, cy = x + w / 2.0, y + h * 0.52
+                    rad = dp(20) + k * h * 0.75
+                    l1.circle = (cx, cy, rad)
+                    l2.circle = (cx, cy, max(dp(4), rad - dp(14)))
+                    c1.a = 0.22 * (1 - k)
+                    c2.a = 0.1 * (1 - k)
+                else:
+                    c1.a = c2.a = 0.0
+            elif tipo == 'varre':                                # a faixa de varredura desce (suave)
+                _, c, (m_cima, m_baixo) = item
+                k = 1.0 - (t * 0.1) % 1.0
+                yy = y - dp(60) + (h + dp(120)) * k
+                c.a = 0.09
+                fx = dp(60)
+                m_cima.vertices = [x, yy, 0, 0.5, x + w, yy, 0, 0.5, x + w, yy + fx, 1, 0.5, x, yy + fx, 1, 0.5]
+                m_baixo.vertices = [x, yy, 0, 0.5, x + w, yy, 0, 0.5, x + w, yy - fx, 1, 0.5, x, yy - fx, 1, 0.5]
+            elif tipo == 'horizonte':                            # a linha acesa e um brilho correndo nela
+                _, c, rr_, cb, rb, hy = item
+                c.a = 0.22 + 0.08 * math.sin(t * 1.8)
+                k = (t * 0.22) % 1.0
+                cb.a = 0.6 * math.sin(math.pi * k)
+                rb.pos = (x + w * 0.08 + (w * 0.84 - dp(46)) * k, hy + dp(1))
+            elif tipo == 'particulas':                           # subindo devagar, balancando
+                _, c, parts = item
+                for (px0, fase, vel, tam), rp in zip(self._parts, parts):
+                    f = (fase + t * vel) % 1.0
+                    px_ = x + w * px0 + math.sin(t * 0.9 + fase * 9) * dp(6)
+                    py_ = y + h * 0.1 + f * h * 0.85
+                    s = dp(1.5) * tam
+                    rp.pos, rp.size = (int(px_), int(py_)), (s, s)
+                c.a = 0.4
+            elif tipo == 'cantos':                               # respiram; o ponto acende em sequencia
+                _, c, pontos = item
+                c.a = 0.45 + 0.2 * math.sin(t * 1.6)
+                ativo = int(t * 2.0) % 4
+                for i, cp in enumerate(pontos):
+                    cp.a = 0.95 if i == ativo else 0.12
+            elif tipo == 'trilho':                               # um pulso sobe pelos trilhos
+                _, c, rs = item
+                k = (t * 0.25) % 1.0
+                c.a = 0.7 * math.sin(math.pi * k)
+                yy = y + h * (0.18 + 0.64 * k)
+                for i, xx in enumerate((x + dp(8) - dp(1.5), x + w - dp(8) - dp(1.5))):
+                    rs[i].pos, rs[i].size = (xx, yy), (dp(3), dp(18))
+            elif tipo == 'dados':                                # a faixa de dados viva
+                _, rd, cpt, rpt, est = item
+                import time as _t
+                nome = {'registro': 'REGISTRO', 'memorias': 'MEMÓRIAS', 'progresso': 'PROGRESSO',
+                        'ganhos': 'GANHOS', 'calculadora': 'CÁLCULO'}.get(self.tela, '')
+                sinc = 96 + int(abs(math.sin(int(t / 2.0) * 1.7)) * 4)
+                txt = f"NERVEGEAR // {nome} // SYNC {sinc}% // {_t.strftime('%H:%M')}"
+                if txt != est['txt']:
+                    est['txt'] = txt
+                    r, g, b = self._cor
+                    tex = _render_texto(txt, 'orbitron.ttf', sp(6.5), (r, g, b, 0.5))
+                    rd.texture, rd.size = tex, tex.size
+                    rd.pos = (int(x + (w - tex.width) / 2.0), int(y + dp(7)))
+                    rpt.pos = (int(rd.pos[0] - dp(9)), int(rd.pos[1] + tex.height / 2.0 - dp(2)))
+                cpt.a = 0.85 if int(t * 1.5) % 2 else 0.15
+
+
+def instalar_fundos(sm, tipo='tudo'):
+    """Poe um FundoTela em cada tela (menos menu e abertura), logo depois da
+    grade do fundo (atras do conteudo)."""
+    for scr in sm.screens:
+        if scr.name in ('menu', 'loading') or getattr(scr, '_fundo_tela', None) is not None:
+            continue
+        f = FundoTela(tipo=tipo, tela=scr.name, size_hint=(1, 1), pos_hint={'x': 0, 'y': 0})
+        scr.add_widget(f, index=max(0, len(scr.children) - 1))
+        scr._fundo_tela = f
