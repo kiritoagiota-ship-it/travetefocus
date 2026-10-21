@@ -1,7 +1,7 @@
 """
 menu_hud.py — TraveteFocus
-O menu no modelo HUD (1.10): cabecalho com o retrato do Yoru (o olho aceso),
-painel de 3 quadros (hoje / nivel / sequencia), SYSTEM LINK START com o
+O menu no modelo HUD (1.10): cabecalho com a moldura HUD e o nome, painel
+de 3 quadros (hoje / nivel / sequencia), SYSTEM LINK START com o
 capacete NerveGear, cartoes 2x2 com cenas em pixel art animadas, botoes com
 icone e o rodape com a versao.
 
@@ -17,7 +17,6 @@ from kivy.app import App
 from kivy.uix.widget import Widget
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.label import Label
-from kivy.uix.stencilview import StencilView
 from kivy.graphics import Color, Rectangle, Line, Mesh, PushMatrix, PopMatrix, Scale
 from kivy.graphics.texture import Texture
 from kivy.properties import StringProperty, ListProperty, NumericProperty
@@ -106,25 +105,6 @@ def _tex_degrade():
         t.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte')
         t.add_reload_observer(lambda tx: tx.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte'))
         _TEX['degrade'] = t
-    return t
-
-
-def _tex_brilho():
-    """32x32: brilho redondo (claro no meio, some na borda)."""
-    t = _TEX.get('brilho')
-    if t is None:
-        n = 32
-        buf = bytearray()
-        for j in range(n):
-            for i in range(n):
-                d = math.hypot(i - (n - 1) / 2.0, j - (n - 1) / 2.0) / (n / 2.0)
-                a = max(0.0, 1.0 - d)
-                buf += bytes((255, 255, 255, int(255 * a * a)))
-        dados = bytes(buf)
-        t = Texture.create(size=(n, n), colorfmt='rgba')
-        t.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte')
-        t.add_reload_observer(lambda tx: tx.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte'))
-        _TEX['brilho'] = t
     return t
 
 
@@ -622,22 +602,15 @@ class SpritePixel(Widget):
 
 
 # ═══════════════════════════════════════════════════════════
-#  CABECALHO: moldura HUD + retrato do Yoru
+#  CABECALHO: moldura HUD
 # ═══════════════════════════════════════════════════════════
 class CabecalhoMenu(FloatLayout):
-    """Moldura HUD do topo do menu; o retrato do Yoru em pixel art grande
-    (yoru_retrato.py, feito por dev/retrato_pixel.py) fica do lado direito,
-    recortado pela moldura e apagado para o lado dos textos. Animacoes: o
-    cabelo balanca, ele pisca (as vezes duas vezes), respira (1 pixel) e o
-    olho brilha com um rastro de luz."""
+    """Moldura HUD do topo do menu (o nome do app e as frases ficam por cima,
+    no interface.kv)."""
     FUNDO = (0.01, 0.03, 0.08)
-    CABELO = ('normal', 'vento_a', 'normal', 'vento_b')
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._u = 2
-        self._base = (0, 0)
-        self._atual = None
         with self.canvas.before:
             Color(*self.FUNDO, 0.88)
             self._m_fundo = Mesh(mode='triangle_fan')
@@ -653,33 +626,7 @@ class CabecalhoMenu(FloatLayout):
         # a luz que corre pela borda de baixo (luz_na_linha, instalada pelo menu)
         self.linha_luz = Widget(size_hint=(None, None))
         self.add_widget(self.linha_luz)
-        self._sv = StencilView(size_hint=(None, None))
-        self.add_widget(self._sv, index=len(self.children))          # atras dos textos
-        with self._sv.canvas:
-            Color(1, 1, 1, 1)
-            self._r_yoru = Rectangle()
-        with self._sv.canvas.after:
-            Color(0.0, 0.04, 0.16, 0.2)
-            self._r_tinta = Rectangle()
-            Color(*self.FUNDO, 1)
-            self._r_degrade = Rectangle(texture=_tex_degrade())
-            self._c_olho = Color(0.3, 0.85, 1.0, 0)
-            self._r_olho = Rectangle(texture=_tex_brilho())
-            self._c_olho2 = Color(0.85, 1.0, 1.0, 0)
-            self._r_olho2 = Rectangle(texture=_tex_brilho())
-            self._c_rastro = Color(0.35, 0.9, 1.0, 0)
-            self._r_rastro = Rectangle(texture=_tex_brilho())
         self.bind(pos=self._arrumar, size=self._arrumar)
-        RELOGIO.add(self)
-
-    @staticmethod
-    def _quadros():
-        q = _QUADROS.get('retrato')
-        if q is None:
-            import yoru_retrato as YR
-            q = {nome: textura_mapa(m, YR.CORES, ('hud', 'retrato', nome)) for nome, m in YR.MAPAS.items()}
-            _QUADROS['retrato'] = q
-        return q
 
     def _arrumar(self, *_):
         x, y, w, h = self.x, self.y, self.width, self.height
@@ -698,74 +645,6 @@ class CabecalhoMenu(FloatLayout):
         self._marcas[3].pos, self._marcas[3].size = (x + w * 0.08, y - dp(1.5)), (w * 0.12, dp(3))
         self._marcas[4].pos, self._marcas[4].size = (x + w * 0.22, y - dp(1.5)), (w * 0.03, dp(3))
         self.linha_luz.pos, self.linha_luz.size = (x + dp(16), y), (w - dp(32), dp(1))
-        # o retrato: metade direita, dentro da moldura
-        sx, sy = x + w * 0.46, y + dp(2)
-        sw, sh = x + w - dp(2) - sx, h - dp(4)
-        self._sv.pos, self._sv.size = (sx, sy), (sw, sh)
-        self._r_tinta.pos, self._r_tinta.size = (sx, sy), (sw, sh)
-        self._r_degrade.pos, self._r_degrade.size = (sx, sy), (sw * 0.3, sh)
-        try:
-            import yoru_retrato as YR
-            q = self._quadros()
-            u = max(1, int(round(sh * 1.04 / YR.GH)))       # pixel inteiro: nitido
-            self._u = u
-            tw, th = YR.GW * u, YR.GH * u
-            # a direita, o queixo e a gola chegando embaixo da moldura
-            self._base = (int(sx + sw - tw * 0.97), int(sy - u * 3))
-            self._r_yoru.size = (tw, th)
-            self._r_yoru.pos = self._base
-            if self._atual is None:
-                self._atual = 'normal'
-                self._r_yoru.texture = q['normal']
-        except Exception as e:
-            print(f"[cabecalho] retrato: {e}")
-
-    # (o retrato e animado pelo relogio unico, que so anda com o menu na tela)
-    def retomar(self):
-        pass
-
-    def pausar(self):
-        pass
-
-    def _quadro_em(self, t):
-        """Qual desenho mostrar no tempo t: o cabelo balanca devagar e ele
-        pisca a cada ~4 s (de vez em quando duas vezes)."""
-        ciclo, f = divmod(t, 4.3)
-        for ini in ((0.0, 0.32) if int(ciclo) % 3 == 2 else (0.0,)):
-            k = f - ini
-            if 0 <= k < 0.05 or 0.13 <= k < 0.18:
-                return 'meio'
-            if 0.05 <= k < 0.13:
-                return 'fechado'
-        return self.CABELO[int(t / 0.45) % 4]
-
-    def tique(self, t):
-        try:
-            import yoru_retrato as YR
-            nome = self._quadro_em(t)
-            if nome != self._atual:
-                self._atual = nome
-                self._r_yoru.texture = self._quadros()[nome]
-            u = self._u
-            dy = u if math.sin(t * 1.4) > 0.55 else 0          # respira: sobe 1 pixel
-            bx, by = self._base
-            self._r_yoru.pos = (bx, by + dy)
-            ex = bx + YR.OLHO[0] * u
-            ey = by + dy + (YR.GH - YR.OLHO[1]) * u
-            fechado = nome in ('meio', 'fechado')
-            pulso = 0.5 + 0.5 * math.sin(t * 2.4)
-            r = dp(26) + dp(8) * pulso
-            self._c_olho.a = 0.0 if fechado else (0.45 + 0.3 * pulso)
-            self._r_olho.pos, self._r_olho.size = (ex - r / 2.0, ey - r / 2.0), (r, r)
-            r2 = dp(6)
-            self._c_olho2.a = 0.0 if fechado else 0.7
-            self._r_olho2.pos, self._r_olho2.size = (ex - r2 / 2.0, ey - r2 / 2.0), (r2, r2)
-            # o rastro: uma risca de luz saindo do olho para tras (para a direita)
-            rl, ra = dp(40) + dp(10) * pulso, dp(4)
-            self._c_rastro.a = 0.0 if fechado else (0.25 + 0.2 * pulso)
-            self._r_rastro.pos, self._r_rastro.size = (ex - dp(4), ey - ra / 2.0), (rl, ra)
-        except Exception:
-            pass
 
 
 # ═══════════════════════════════════════════════════════════

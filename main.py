@@ -34,17 +34,7 @@ from telas.calculadora import TelaCalculadora
 
 # ── Tela de menu (sem lógica, só navegação) ───────────────
 class MenuPrincipal(Screen):
-    def on_leave(self, *_):
-        try:
-            self.ids.cabecalho_menu.pausar()
-        except Exception as e:
-            print(f"[menu] pausar: {e}")
-
     def on_enter(self):
-        try:
-            self.ids.cabecalho_menu.retomar()             # o Yoru do retrato volta a respirar
-        except Exception as e:
-            print(f"[menu] retomar: {e}")
         # botoes entram em cascata, de cima para baixo
         try:
             from animacoes_ui import entrada_cascata
