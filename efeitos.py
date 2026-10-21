@@ -913,8 +913,10 @@ class ItemGesto(ListaItem):
       arrastar para o lado  -> ao_arrastar(item): o item segue o dedo, a
                                borda fica vermelha; passou do limite e soltou,
                                ele volta escorregando e chama a funcao;
-      segurar o dedo        -> ao_segurar(item): uma linha de luz enche a base
-                               do item em 0,55 s e ai chama a funcao."""
+      segurar o dedo        -> ao_segurar(item): uma luz contorna a borda do
+                               item em 0,55 s e ai chama a funcao.
+    Atras do item (parado, so aparece quando ele sai do lugar) fica o fundo
+    vermelho com a lixeira e APAGAR, do lado que o dedo descobre."""
     SEGURAR = 0.55
     LIMITE = 0.30                  # fracao da largura para o arrasto valer
 
@@ -924,15 +926,62 @@ class ItemGesto(ListaItem):
         super().__init__(**kwargs)
         self._g = None
         with self.canvas.after:
-            self._c_seg = Color(0.6, 1.0, 1.0, 0)
-            self._r_seg = Rectangle(pos=(0, 0), size=(0, 0))
+            self._c_seg_h = Color(0.3, 0.95, 1.0, 0)
+            self._l_seg_h = Line(width=dp(3.2))            # halo da luz
+            self._c_seg = Color(0.85, 1.0, 1.0, 0)
+            self._l_seg = Line(width=dp(1.5))
             self._c_lado = Color(1.0, 0.18, 0.28, 0)
             self._l_lado = Line(width=dp(1.6))
+        # o fundo do arrasto fica ANTES do deslocamento do item (nao anda com ele)
+        try:
+            from kivy.graphics import InstructionGroup
+            from kivy.core.text import Label as CoreLabel
+            from kivy.metrics import sp
+            self._matriz_x()
+            g = InstructionGroup()
+            self._c_fundo_arr = Color(0.32, 0.02, 0.07, 0)
+            self._r_fundo_arr = Rectangle()
+            self._c_lix = Color(1, 1, 1, 0)
+            self._r_lix = Rectangle(texture=textura_mapa(_MAPA_LIXEIRA, {'K': (1.0, 0.42, 0.48),
+                                                                          'r': (0.5, 0.05, 0.12)}, 'lixeira'))
+            cl = CoreLabel(text="APAGAR", font_name='orbitron.ttf', font_size=sp(11), bold=True)
+            cl.refresh()
+            self._r_apagar = Rectangle(texture=cl.texture, size=cl.texture.size)
+            for ins in (self._c_fundo_arr, self._r_fundo_arr, self._c_lix, self._r_lix, self._r_apagar):
+                g.add(ins)
+            self.canvas.before.insert(0, g)
+        except Exception as e:
+            print(f"[item] fundo do arrasto: {e}")
+            self._c_fundo_arr = None
 
     def _solta_visual(self):
         """O botao 'afundado' do toque volta ao tamanho (o soltar normal nao vem)."""
         Animation.cancel_all(self, 'escala')
         Animation(escala=1.0, duration=0.18, transition='out_quad').start(self)
+
+    def _clarao_borda(self):
+        """A borda inteira acende em branco e volta (fechou o contorno)."""
+        orig = list(self.cor_borda_kv)
+        Animation.cancel_all(self, 'cor_borda')
+        (Animation(cor_borda=[1, 1, 1, 1], duration=0.06) +
+         Animation(cor_borda=orig, duration=0.35, transition='out_quad')).start(self)
+
+    def _fundo(self, dx, k, valeu):
+        """O fundo vermelho com a lixeira, do lado que o item descobriu."""
+        if self._c_fundo_arr is None:
+            return
+        x, y, w, h = self.x, self.y, self.width, self.height
+        self._r_fundo_arr.pos, self._r_fundo_arr.size = (x, y), (w, h)
+        self._c_fundo_arr.a = 0.92 * min(1.0, k * 1.6)
+        tw, th = self._r_lix.texture.size
+        u = max(1, int(dp(2.6)))
+        lw, lh = tw * u, th * u
+        aw, ah = self._r_apagar.size
+        bloco = lw + dp(8) + aw
+        bx = x + dp(18) if dx > 0 else x + w - dp(18) - bloco
+        self._r_lix.pos, self._r_lix.size = (int(bx), int(y + (h - lh) / 2.0)), (lw, lh)
+        self._r_apagar.pos = (int(bx + lw + dp(8)), int(y + (h - ah) / 2.0))
+        self._c_lix.rgba = (1, 1, 1, min(1.0, k * 1.4)) if valeu else (1, 0.8, 0.8, 0.55 * min(1.0, k * 1.4))
 
     def _matriz_x(self):
         from animacoes_ui import _matriz
@@ -962,7 +1011,24 @@ class ItemGesto(ListaItem):
             g['ev'].cancel()
             g['ev'] = None
         self._c_seg.a = 0
-        self._r_seg.size = (0, 0)
+        self._c_seg_h.a = 0
+
+    def _contorno(self, k):
+        """Pontos da borda (chanfrada a direita) do comeco ate a fracao k."""
+        x, y, r, t = self.x, self.y, self.right, self.top
+        c = dp(12)
+        pts = [(x, y), (r - c, y), (r, y + c), (r, t - c), (r - c, t), (x, t), (x, y)]
+        segs = [math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]) for i in range(len(pts) - 1)]
+        falta = sum(segs) * k
+        out = [pts[0][0], pts[0][1]]
+        for i, s in enumerate(segs):
+            if falta <= 0:
+                break
+            a, b = pts[i], pts[i + 1]
+            f = min(1.0, falta / s) if s else 1.0
+            out += [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]
+            falta -= s
+        return out
 
     def _segurando(self, dt):
         try:
@@ -973,13 +1039,18 @@ class ItemGesto(ListaItem):
             g['t'] += dt
             k = min(1.0, g['t'] / self.SEGURAR)
             if g['t'] > 0.12:                           # (um toque rapido nao acende nada)
-                self._r_seg.pos = (self.x + dp(4), self.y + dp(3))
-                self._r_seg.size = ((self.width - dp(8)) * k, dp(3))
-                self._c_seg.a = 0.9
+                pts = self._contorno(min(1.0, (g['t'] - 0.12) / (self.SEGURAR - 0.12)))
+                if len(pts) >= 4:
+                    self._l_seg.points = pts
+                    self._l_seg_h.points = pts
+                    self._c_seg.a = 0.95
+                    self._c_seg_h.a = 0.35
             if k >= 1:
                 g['modo'] = 'segurou'
                 g['ev'] = None
                 self._c_seg.a = 0
+                self._c_seg_h.a = 0
+                self._clarao_borda()
                 self.state = 'normal'
                 self._solta_visual()
                 try:
@@ -1020,6 +1091,7 @@ class ItemGesto(ListaItem):
             k = min(1.0, abs(dx) / lim)
             self._c_lado.a = 0.25 + 0.75 * k
             self._l_lado.rectangle = (self.x + dp(2), self.y + dp(2), self.width - dp(4), self.height - dp(4))
+            self._fundo(dx, k, k >= 1)
             if k >= 1 and not g['aviso']:
                 g['aviso'] = True                        # passou do limite: tremidinha
                 try:
@@ -1057,9 +1129,15 @@ class ItemGesto(ListaItem):
                     k = min(1.0, t[0] / 0.24)
                     tr.x = x0 * (1 - k) ** 3
                     self._c_lado.a = (1 - k) * (1.0 if valeu else 0.5)
+                    if self._c_fundo_arr is not None:
+                        self._c_fundo_arr.a *= (1 - k)
+                        self._c_lix.a *= (1 - k)
                     if k >= 1:
                         tr.x = 0
                         self._c_lado.a = 0
+                        if self._c_fundo_arr is not None:
+                            self._c_fundo_arr.a = 0
+                            self._c_lix.a = 0
                         return False
                 except Exception:
                     tr.x = 0
@@ -1069,6 +1147,283 @@ class ItemGesto(ListaItem):
                 fn = self.ao_arrastar
                 Clock.schedule_once(lambda _d: fn(self), 0.18)
         return True
+
+
+# ═══════════════════════════════════════════════════════════
+#  CARTAO DO LOTE (Registro): icone da peca, nome, hora, quantidade e XP
+# ═══════════════════════════════════════════════════════════
+_MAPAS_ROUPA = {
+    'camisa': [
+        "..KKK..KKK..",
+        ".KcccKKcccK.",
+        "KcclccccclcK",
+        "KccKccccKccK",
+        ".KKKcclcKKK.",
+        "...KcclcK...",
+        "...KccccK...",
+        "...KcdccK...",
+        "...KddddK...",
+        "...KKKKKK...",
+    ],
+    'calca': [
+        "..KKKKKKKK..",
+        "..KcllcccK..",
+        "..KcccccdK..",
+        "..KccKKcdK..",
+        "..KclKKcdK..",
+        ".KclK..KcdK.",
+        ".KclK..KcdK.",
+        ".KccK..KcdK.",
+        ".KddK..KddK.",
+        ".KKKK..KKKK.",
+    ],
+    'short': [
+        "............",
+        "..KKKKKKKK..",
+        "..KcllcccK..",
+        "..KcccccdK..",
+        "..KccKKcdK..",
+        ".KclK..KcdK.",
+        ".KccK..KcdK.",
+        ".KddK..KddK.",
+        ".KKKK..KKKK.",
+        "............",
+    ],
+    'vestido': [
+        "....K..K....",
+        "...KcKKcK...",
+        "...KclccK...",
+        "...KccccK...",
+        "..KcclcccK..",
+        "..KcccccdK..",
+        ".KccclcccdK.",
+        ".KcccccccdK.",
+        "KcclccccccdK",
+        "KKKKKKKKKKKK",
+    ],
+    'saia': [
+        "............",
+        "............",
+        "...KKKKKK...",
+        "...KllccK...",
+        "..KcclcccK..",
+        "..KcccccdK..",
+        ".KccclcccdK.",
+        ".KcccccccdK.",
+        "KcclccccccdK",
+        "KKKKKKKKKKKK",
+    ],
+    'jaqueta': [
+        "..KKKllKKK..",
+        ".KcccKKcccK.",
+        "KcclcWcclcdK",
+        "KccKcWccKcdK",
+        "KccKcWccKcdK",
+        ".KKKcWccKKK.",
+        "...KcWccK...",
+        "...KcWcdK...",
+        "...KdWddK...",
+        "...KKKKKK...",
+    ],
+    'peca': [
+        "............",
+        "..KKKKKKK...",
+        ".KcllccccK..",
+        "KccKKccccdK.",
+        "KccKKcccccdK",
+        "KcccccccccdK",
+        ".KcccccccdK.",
+        "..KddddddK..",
+        "...KKKKKK...",
+        "............",
+    ],
+}
+_ROUPAS = [
+    (('camisa', 'camiseta', 'blusa', 'polo', 'regata', 'body', 'cropped', 'top', 'bata'), 'camisa', (0.15, 0.78, 1.0)),
+    (('calca', 'jeans', 'legging', 'pantalona', 'jogger'), 'calca', (0.42, 0.52, 1.0)),
+    (('short', 'bermuda'), 'short', (0.1, 0.88, 0.66)),
+    (('vestido', 'macacao', 'jardineira'), 'vestido', (0.92, 0.38, 0.98)),
+    (('saia',), 'saia', (1.0, 0.48, 0.72)),
+    (('jaqueta', 'casaco', 'moletom', 'blazer', 'colete', 'cardigan'), 'jaqueta', (1.0, 0.62, 0.18)),
+]
+_TEX_MAPA = {}
+
+
+def tipo_roupa(nome):
+    """('camisa' | 'calca' | ... | 'peca', cor) pelo nome da peca."""
+    import unicodedata
+    n = unicodedata.normalize('NFKD', str(nome or '').lower())
+    n = ''.join(ch for ch in n if not unicodedata.combining(ch))
+    for chaves, tipo, cor in _ROUPAS:
+        if any(c in n for c in chaves):
+            return tipo, cor
+    return 'peca', (1.0, 0.82, 0.25)
+
+
+def textura_mapa(mapa, cores, chave):
+    """Textura (pixel duro) de um mapa de pixel art: cores = {letra: (r,g,b)}."""
+    tex = _TEX_MAPA.get(chave)
+    if tex is not None:
+        return tex
+    from kivy.graphics.texture import Texture
+    h, w = len(mapa), len(mapa[0])
+    buf = bytearray(w * h * 4)
+    for j, linha in enumerate(mapa):
+        y = h - 1 - j                                  # a textura cresce para cima
+        for i, ch in enumerate(linha):
+            c = cores.get(ch)
+            if c is None:
+                continue
+            k = (y * w + i) * 4
+            buf[k], buf[k + 1], buf[k + 2], buf[k + 3] = (int(c[0] * 255), int(c[1] * 255), int(c[2] * 255), 255)
+    dados = bytes(buf)
+    tex = Texture.create(size=(w, h), colorfmt='rgba')
+    tex.mag_filter = tex.min_filter = 'nearest'
+    tex.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte')
+    tex.add_reload_observer(lambda t: t.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte'))
+    _TEX_MAPA[chave] = tex
+    return tex
+
+
+def _icone_roupa(nome):
+    tipo, cor = tipo_roupa(nome)
+    cores = {'K': (0.02, 0.03, 0.08), 'c': cor,
+             'l': tuple(min(1.0, v * 0.45 + 0.6) for v in cor),
+             'd': tuple(v * 0.55 for v in cor), 'W': (0.85, 0.9, 1.0)}
+    return textura_mapa(_MAPAS_ROUPA[tipo], cores, ('roupa', tipo)), cor
+
+
+_MAPA_LIXEIRA = [
+    "...KKK...",
+    "KKKKKKKKK",
+    ".KrrrrrK.",
+    ".KrKrKrK.",
+    ".KrKrKrK.",
+    ".KrKrKrK.",
+    ".KrKrKrK.",
+    ".KrrrrrK.",
+    "..KKKKK..",
+]
+
+
+class CartaoLote(ItemGesto):
+    """O lote do Registro como cartao: icone da peca (pelo nome), nome em
+    destaque, a hora do lancamento, a quantidade grande e o XP. Toque: afunda
+    de leve e o icone da um pulinho; segurar: a luz contorna a borda; arrastar:
+    aparece o fundo vermelho com a lixeira. (`text` continua com o texto de
+    sempre - so nao aparece - para quem procura o lote pelo texto.)"""
+
+    def __init__(self, dado=None, **kwargs):
+        from kivy.uix.label import Label
+        super().__init__(**kwargs)
+        self.height = dp(66)
+        self.cor_texto = [0, 0, 0, 0]
+        self._dado = None
+        with self.canvas:
+            self._tile_push = PushMatrix()
+            self._tile_tr = Translate(0, 0)
+            self._c_tile_bg = Color(0.02, 0.03, 0.09, 1)
+            self._r_tile_bg = Rectangle()
+            self._c_tile_ln = Color(0, 0.9, 1, 0.8)
+            self._l_tile_ln = Line(width=dp(1), close=True)
+            Color(1, 1, 1, 1)
+            self._r_icone = Rectangle()
+            PopMatrix()
+            self._c_div = Color(0, 0.9, 1, 0.14)
+            self._r_div = Rectangle()
+        def rotulo(fs, cor, fonte='rajdhani.ttf', bold=False, halign='left'):
+            l = Label(font_name=fonte, font_size=fs, bold=bold, color=cor, markup=True,
+                      halign=halign, valign='middle', shorten=True, shorten_from='right',
+                      size_hint=(None, None))
+            self.add_widget(l)
+            return l
+        from kivy.metrics import sp
+        self._l_nome = rotulo(sp(17), (0.88, 0.96, 1.0, 1), bold=True)
+        self._l_sub = rotulo(sp(12), (0.5, 0.58, 0.75, 1))
+        self._l_qtd = rotulo(sp(20), (0.0, 0.9, 1.0, 1), fonte='orbitron.ttf', bold=True, halign='right')
+        self._l_xp = rotulo(sp(12.5), (0.25, 1.0, 0.6, 1), bold=True, halign='right')
+        self.bind(pos=self._arrumar, size=self._arrumar)
+        if dado is not None:
+            self.definir(dado)
+
+    def definir(self, dado):
+        """Preenche com o registro [nome, qtd, xp, dia, ts]."""
+        self._dado = dado
+        try:
+            from animacoes_ui import fmt_br
+            nome = str(dado[0])
+            qtd = int(dado[1])
+            xp = int(dado[2]) if len(dado) > 2 else 0
+            dia = str(dado[3]) if len(dado) > 3 and dado[3] else ''
+            ts = dado[4] if len(dado) > 4 else None
+        except Exception:
+            return
+        if dia:
+            sub = f"dia {dia[:5]}  ·  do WhatsApp"
+        elif ts:
+            import time as _time
+            sub = "hoje  ·  " + _time.strftime('%H:%M', _time.localtime(float(ts)))
+        else:
+            sub = "hoje"
+        self._l_nome.text = nome
+        self._l_sub.text = sub
+        self._l_qtd.text = f"{fmt_br(qtd)}[size={int(dp(11))}] un.[/size]"
+        self._l_xp.text = f"+{fmt_br(xp)} XP"
+        tex, cor = _icone_roupa(nome)
+        self._r_icone.texture = tex
+        self._c_tile_ln.rgba = (cor[0], cor[1], cor[2], 0.85)
+        self.cor_borda = [cor[0] * 0.25 + 0.0, cor[1] * 0.25 + 0.66, cor[2] * 0.25 + 0.75, 0.85]
+        self.cor_borda_kv = list(self.cor_borda)
+        self._arrumar()
+
+    def _arrumar(self, *_):
+        x, y, w, h = self.x, self.y, self.width, self.height
+        s = h - dp(18)
+        tx, ty = x + dp(12), y + dp(9)
+        self._r_tile_bg.pos, self._r_tile_bg.size = (tx, ty), (s, s)
+        self._l_tile_ln.rectangle = (tx, ty, s, s)
+        tex = self._r_icone.texture
+        if tex is not None:
+            tw, th = tex.size
+            u = max(1, int((s * 0.78) // max(tw, th)))
+            iw, ih = tw * u, th * u
+            self._r_icone.pos = (int(tx + (s - iw) / 2.0), int(ty + (s - ih) / 2.0))
+            self._r_icone.size = (iw, ih)
+        larg_dir = dp(104)
+        xn = tx + s + dp(12)
+        wn = max(dp(40), x + w - larg_dir - dp(10) - xn)
+        for l, yy, hh in ((self._l_nome, y + h * 0.58, dp(26)), (self._l_sub, y + h * 0.26, dp(18))):
+            l.size = (wn, hh)
+            l.text_size = l.size
+            l.pos = (xn, yy - hh / 2.0)
+        xd = x + w - larg_dir - dp(14)
+        self._r_div.pos, self._r_div.size = (xd - dp(6), y + dp(12)), (dp(1), h - dp(24))
+        for l, yy, hh in ((self._l_qtd, y + h * 0.6, dp(30)), (self._l_xp, y + h * 0.26, dp(18))):
+            l.size = (larg_dir, hh)
+            l.text_size = l.size
+            l.pos = (xd, yy - hh / 2.0)
+
+    def on_press(self):
+        super().on_press()
+        # o cartao afunda so um pouco (0,93 era muito para uma linha inteira)
+        Animation.cancel_all(self, 'escala')
+        Animation(escala=0.975, duration=0.07, transition='out_quad').start(self)
+        # o icone da um pulinho
+        t = [0.0]
+        tr = self._tile_tr
+
+        def _pula(dt):
+            try:
+                t[0] += dt
+                k = min(1.0, t[0] / 0.26)
+                tr.y = int(round(math.sin(math.pi * k) * dp(4)))
+                if k >= 1:
+                    tr.y = 0
+                    return False
+            except Exception:
+                tr.y = 0
+                return False
+        Clock.schedule_interval(_pula, 1 / 60.)
 
 
 # ═══════════════════════════════════════════════════════════

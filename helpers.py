@@ -215,8 +215,11 @@ def transicao_tela(app, destino):
     def _trocar():
         alvo = _transicao['destino']
         try:
-            _soltar_foco(sm.current_screen)
+            # so solta o foco quando a tela muda DE VERDADE: este _trocar roda de
+            # novo no fim do corte e, ja na tela nova, derrubava o campo que ela
+            # tinha acabado de focar (o teclado do Registro as vezes nao abria)
             if alvo and sm.current != alvo:
+                _soltar_foco(sm.current_screen)
                 sm.current = alvo
         except Exception as e:
             print(f"[transicao] sm.current={alvo} falhou: {e}")
@@ -240,6 +243,36 @@ def transicao_tela(app, destino):
         print(f"[transicao_tela] erro: {e}")
         _transicao['ativa'] = False
         _trocar()
+
+
+def transicao_link_start(app, destino, centro):
+    """Entrar pelo SYSTEM LINK START: o tunel de aneis no lugar do corte de
+    espada; a tela troca no pico do clarao."""
+    try:
+        sm = app.root.ids.sm
+    except Exception as e:
+        print(f"[link start] sem ScreenManager: {e}")
+        return
+    if _transicao['ativa'] or sm.current == destino:
+        return
+    _transicao['ativa'] = True
+
+    def _meio():
+        try:
+            _soltar_foco(sm.current_screen)
+            sm.current = destino
+        except Exception as e:
+            print(f"[link start] troca: {e}")
+
+    def _fim():
+        _transicao['ativa'] = False
+    try:
+        from animacoes_ui import tunel_link_start
+        tunel_link_start(centro, on_meio=_meio, on_fim=_fim)
+    except Exception as e:
+        print(f"[link start] {e}")
+        _transicao['ativa'] = False
+        transicao_tela(app, destino)
 
 
 def animar_ganho_xp(quantidade, origem=None):

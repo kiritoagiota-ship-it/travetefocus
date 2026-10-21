@@ -17,6 +17,8 @@ Animacoes de interface usadas por todas as telas:
   expandir_de(origem, l, a)      o item cresce ate virar o detalhe (Memorias)
   chamas_em_volta(label)         chamas de pixel subindo (sequencia de 5+ dias)
   icone_pixel(botao, nome)       icone de pixel art animado no botao (menu)
+  tunel_link_start(centro, ...)  o tunel de aneis do Link Start (entrar no Registro)
+  pacotes_de_luz(botao)          pacotes de luz correndo por dentro do botao
 
 Regras: nada de .bind(...).start(...) encadeado (bind devolve None) e nenhum
 callback de Clock/Animation deixa excecao escapar.
@@ -307,6 +309,7 @@ def aplicar_brilho_toque(botao, cor=None):
         return False              # nao consome o evento
 
     botao.fbind('on_press', _disparar)
+    botao._brilho_disparar = _disparar
 
     def _parar(inst, parent):
         if parent is None and estado['ev'] is not None:
@@ -566,6 +569,27 @@ _ICONES = {
         "..KyyyyK..",
         "...KKKK...",
     ],
+    # NerveGear (o capacete do Link Start): uma luz varre o visor
+    'nervegear': [
+        "...KKKKKK...",
+        "..KmmmmmmK..",
+        ".KmmnnnnmmK.",
+        "KmmKKKKKKmmK",
+        "KmKvvvvvvKmK",
+        "KmKvvvvvvKmK",
+        "KmmKKKKKKmmK",
+        ".KnmmmmmmnK.",
+        "..KKnnnnKK..",
+        "....KKKK....",
+    ],
+    # >>> que acendem em sequencia
+    'setas': [
+        "v..v..v..",
+        ".v..v..v.",
+        "..v..v..v",
+        ".v..v..v.",
+        "v..v..v..",
+    ],
     # calculadora (laranja) com o visor piscando
     'calculadora': [
         "KKKKKKKKK.",
@@ -586,17 +610,19 @@ _ICONE_CORES = {
     'c': (0.0, 0.88, 1.0),
     'y': (0.0, 0.62, 0.32), 'Y': (0.2, 1.0, 0.55),
     'o': (0.55, 0.3, 0.0), 'V': (1.0, 0.72, 0.0),
+    'm': (0.52, 0.56, 0.7), 'n': (0.3, 0.32, 0.44), 'v': (0.0, 0.78, 1.0), 'z': (0.75, 1.0, 1.0),
+    'e': (0.0, 0.26, 0.36),
 }
 
 
-def icone_pixel(botao, nome, u=None, margem=None):
-    """Um icone de pixel art animado no lado esquerdo do `botao` (30 quadros
-    por segundo, so com o botao na tela)."""
+def icone_pixel(botao, nome, u=None, margem=None, lado='esq'):
+    """Um icone de pixel art animado no lado esquerdo (ou direito) do `botao`
+    (30 quadros por segundo, so com o botao na tela)."""
     from kivy.uix.widget import Widget
     mapa = _ICONES.get(nome)
-    if mapa is None or getattr(botao, '_icone_ok', False):
+    if mapa is None or getattr(botao, '_icone_ok_' + lado, False):
         return
-    botao._icone_ok = True
+    setattr(botao, '_icone_ok_' + lado, True)
     u = u or max(2.0, round(dp(2.2)))
     ic = Widget(size_hint=(None, None), size=(len(mapa[0]) * u, len(mapa) * u))
     grupos = {}
@@ -610,7 +636,8 @@ def icone_pixel(botao, nome, u=None, margem=None):
 
     def _onde(*_):
         m = margem if margem is not None else dp(26)
-        ic.pos = (int(botao.x + m), int(botao.center_y - ic.height / 2.0))
+        x = botao.x + m if lado == 'esq' else botao.right - m - ic.width
+        ic.pos = (int(x), int(botao.center_y - ic.height / 2.0))
     botao.bind(pos=_onde, size=_onde)
     _onde()
 
@@ -668,6 +695,13 @@ def icone_pixel(botao, nome, u=None, margem=None):
                             continue
                         if nome == 'calculadora' and ch == 'V' and int(t * 1.6) % 2:
                             ch = 'o' if (i + j) % 2 else 'V'       # o visor pisca
+                        if nome == 'nervegear' and ch == 'v':
+                            col = int(t * 14) % 18 - 2               # a luz varre o visor
+                            if i in (col, col + 1):
+                                ch = 'z'
+                        if nome == 'setas' and ch == 'v':
+                            if i // 3 != int(t * 7) % 4:             # uma seta acesa por vez
+                                ch = 'e'
                         pix.append((i, h - 1 - j + bob, ch, 1))
             _pinta(pix)
             # brilho: uma faisca branca passa pelo icone a cada ~2,4 s
@@ -688,6 +722,169 @@ def icone_pixel(botao, nome, u=None, margem=None):
             print(f"[anim_ui] icone {nome}: {e}")
             return False
     Clock.schedule_interval(_quadro, 1 / 60.)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  LINK START: o tunel de aneis coloridos (como no anime) ao entrar
+# ═══════════════════════════════════════════════════════════════════
+_CORES_TUNEL = [(0.0, 0.9, 1.0), (0.85, 0.25, 1.0), (1.0, 0.85, 0.2), (0.2, 1.0, 0.55),
+                (0.3, 0.45, 1.0), (1.0, 0.38, 0.55), (0.75, 1.0, 1.0)]
+
+
+def tunel_link_start(centro, on_meio=None, on_fim=None, dur=1.0):
+    """Aneis coloridos nascem no botao e correm para fora cada vez mais rapido
+    (perspectiva de tunel), riscos de velocidade passam pelas bordas, a tela
+    vira um clarao branco - ai troca de tela (on_meio) - e o clarao se abre
+    na tela nova. Segura o toque enquanto acontece."""
+    from kivy.core.window import Window
+    from kivy.uix.widget import Widget
+
+    class _Tunel(Widget):
+        def on_touch_down(self, touch):
+            return True
+
+        def on_touch_move(self, touch):
+            return True
+
+        def on_touch_up(self, touch):
+            return True
+    W, H = Window.size
+    tn = _Tunel(size_hint=(None, None), size=(W, H), pos=(0, 0))
+    n_aneis, n_riscos = 16, 36
+    with tn.canvas:
+        c_fundo = Color(0.0, 0.0, 0.04, 0)
+        Rectangle(pos=(0, 0), size=(W, H))
+        aneis = []
+        for _ in range(n_aneis):
+            c = Color(1, 1, 1, 0)
+            l = Line(circle=(0, 0, 1), width=dp(1))
+            aneis.append([c, l, -1.0, None])           # [cor, linha, nasceu_em, rgb]
+        riscos = []
+        for _ in range(n_riscos):
+            c = Color(1, 1, 1, 0)
+            l = Line(points=[0, 0, 0, 0], width=dp(1.2))
+            riscos.append([c, l, random.uniform(0, 2 * math.pi), random.uniform(0.0, 1.0),
+                           random.choice(_CORES_TUNEL)])
+        c_flash = Color(1, 1, 1, 0)
+        Rectangle(pos=(0, 0), size=(W, H))
+    Window.add_widget(tn)
+    estado = {'t': 0.0, 'prox': 0.0, 'cor': 0, 'meio': False}
+    rmax = math.hypot(W, H) * 0.75
+    T_FLASH0, T_MEIO, T_FLASH1 = 0.56, 0.68, 0.74
+    try:
+        import som
+        som.tocar('transicao')
+    except Exception:
+        pass
+    try:
+        import tatil
+        tatil.confirmar()
+    except Exception:
+        pass
+
+    def _fim():
+        try:
+            Window.remove_widget(tn)
+        except Exception:
+            pass
+        if on_fim:
+            try:
+                on_fim()
+            except Exception as e:
+                print(f"[anim_ui] tunel fim: {e}")
+
+    def _q(dt):
+        try:
+            estado['t'] += dt
+            t = estado['t']
+            # o centro do tunel vai do botao para o meio da tela
+            e = min(1.0, t / 0.45)
+            e = e * e * (3 - 2 * e)
+            cx = centro[0] + (W / 2.0 - centro[0]) * e
+            cy = centro[1] + (H * 0.5 - centro[1]) * e
+            c_fundo.a = 0.88 * min(1.0, t / 0.18) if t < T_FLASH1 else 0.88 * max(0.0, 1 - (t - T_FLASH1) / 0.2)
+            # aneis: nascem a cada 40 ms com a proxima cor e aceleram para fora
+            if t < T_FLASH0 and t >= estado['prox']:
+                estado['prox'] = t + 0.04
+                livre = next((a for a in aneis if a[2] < 0), None)
+                if livre is not None:
+                    livre[2] = t
+                    livre[3] = _CORES_TUNEL[estado['cor'] % len(_CORES_TUNEL)]
+                    estado['cor'] += 1
+            for a in aneis:
+                if a[2] < 0:
+                    continue
+                idade = t - a[2]
+                r = dp(10) * math.exp(idade * 7.5)
+                if r > rmax:
+                    a[2] = -1.0
+                    a[0].a = 0
+                    continue
+                rgb = a[3]
+                fade = 1.0 if t < T_FLASH1 else max(0.0, 1 - (t - T_FLASH1) / 0.15)
+                a[0].rgba = (rgb[0], rgb[1], rgb[2], min(1.0, idade * 8) * (1 - r / rmax) * fade)
+                a[1].width = dp(1) + r * 0.035
+                a[1].circle = (cx, cy, r)
+            # riscos de velocidade nas bordas
+            for rs in riscos:
+                c, l, ang, fase, rgb = rs
+                v = (t * 2.6 + fase) % 1.0
+                r0 = rmax * (0.15 + 0.85 * v * v)
+                r1 = r0 + rmax * 0.18 * v
+                l.points = [cx + math.cos(ang) * r0, cy + math.sin(ang) * r0,
+                            cx + math.cos(ang) * r1, cy + math.sin(ang) * r1]
+                aa = 0.0 if t > T_FLASH1 else min(1.0, t / 0.2) * v * 0.85
+                c.rgba = (rgb[0], rgb[1], rgb[2], aa)
+            # o clarao branco: sobe, troca a tela no pico, abre na tela nova
+            if t < T_FLASH0:
+                c_flash.a = 0.0
+            elif t < T_MEIO:
+                c_flash.a = (t - T_FLASH0) / (T_MEIO - T_FLASH0)
+            else:
+                if not estado['meio']:
+                    estado['meio'] = True
+                    if on_meio:
+                        try:
+                            on_meio()
+                        except Exception as ex:
+                            print(f"[anim_ui] tunel meio: {ex}")
+                c_flash.a = max(0.0, 1 - (t - T_MEIO) / (dur - T_MEIO))
+            if t >= dur:
+                _fim()
+                return False
+        except Exception as ex:
+            print(f"[anim_ui] tunel: {ex}")
+            if not estado['meio'] and on_meio:
+                try:
+                    on_meio()
+                except Exception:
+                    pass
+            _fim()
+            return False
+    Clock.schedule_interval(_q, 1 / 60.)
+
+
+def pacotes_de_luz(botao, cor=(0, 0.9, 1), periodo=2.4):
+    """Pacotes de luz correndo pelas bordas de dentro do botao (dados passando)."""
+    from kivy.uix.widget import Widget
+    if getattr(botao, '_pacotes_ok', False):
+        return
+    botao._pacotes_ok = True
+    linhas = []
+    for k in range(2):
+        w = Widget(size_hint=(None, None), size=(1, 1))
+        botao.add_widget(w)
+        linhas.append(w)
+
+    def _onde(*_):
+        m = dp(26)
+        for k, w in enumerate(linhas):
+            w.size = (max(dp(10), botao.width - 2 * m), 1)
+            w.pos = (botao.x + m, botao.y + (dp(7) if k == 0 else botao.height - dp(7)))
+    botao.bind(pos=_onde, size=_onde)
+    _onde()
+    luz_na_linha(linhas[0], cor, periodo=periodo, atraso=0.3, duracao=1.1, larg=dp(46))
+    luz_na_linha(linhas[1], cor, periodo=periodo, atraso=0.3 + periodo / 2.0, duracao=1.1, larg=dp(46))
 
 
 def pulso(widget, fator=1.08, duracao=0.28):

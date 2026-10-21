@@ -374,14 +374,15 @@
 
             # ── Botão principal SYSTEM LINK START ─────────────
             BotaoAngularMenu:
-                text:      ">>  SYSTEM LINK START  <<"
+                id:        btn_link_start
+                text:      "SYSTEM LINK START"
                 font_name: "orbitron.ttf"
                 font_size: "17sp"
                 bold:      True
                 pos_hint:  {"center_x": 0.5, "center_y": 0.62}
                 size_hint: (0.88, None)
                 height:    dp(64)
-                on_release: app.mudar_tela("registro")
+                on_release: app.link_start(self)
 
             # ── Linha decorativa ──────────────────────────────
             Widget:

@@ -85,7 +85,7 @@ if CENA == 'meta':                     # a regra real: 2.500 / 3.000 por semana
     dados['config_ganhos'] = {'valor_base': 0.25, 'valor_bonus': 0.30, 'meta_bonus': 3000, 'tipo_periodo': 'semanal'}
 with open(os.path.join(pasta_app, 'dados.json'), 'w', encoding='utf-8') as f:
     json.dump(dados, f, ensure_ascii=False)
-if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas', 'mem'):
+if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas', 'mem', 'link'):
     with open(os.path.join(pasta_app, '.tf_session'), 'w') as f:
         f.write(str(time.time()))
 
@@ -727,6 +727,60 @@ def roteiro_mem():
     Roteiro(passos).rodar()
 
 
+def roteiro_link():
+    """O botao SYSTEM LINK START (icone, setas, luz correndo e o tunel ao
+    tocar) e os cartoes novos do Registro: toque, segurar, arrastar e um lote
+    novo chegando - tudo com toques de verdade."""
+    est = {}
+
+    def cartao(i):
+        itens = list(reversed(tela().ids.lista_container.children))
+        return itens[min(i, len(itens) - 1)]
+
+    def toca(w_fn, segura=0.1):
+        def _f():
+            t = dedo_desce(*no_meio(w_fn()))
+            Clock.schedule_once(lambda dt: dedo_sobe(t), segura)
+        return _f
+
+    def segura_ini():
+        est['t'] = dedo_desce(*no_meio(cartao(1)))
+
+    def arrasta_ini():
+        est['w'] = cartao(0)
+        est['xy'] = no_meio(est['w'])
+        est['t'] = dedo_desce(*est['xy'])
+
+    def arrasta(k):
+        def _f():
+            x, y = est['xy']
+            dedo_move(est['t'], x + est['w'].width * 0.42 * k, y + 2 * k)
+        return _f
+
+    def lote():
+        t = tela()
+        t.ids.nome_input.text = 'Vestido longo'
+        t.ids.qtd_input.text = '35'
+        soltar_foco()
+        t.adicionar_item()
+
+    passos = [(1.5, lambda: fase('menu')), (2.6, lambda: foto('l1-menu')),
+              (0.2, lambda: fase('toque link start')), (0.01, toca(lambda: tela().ids.btn_link_start)),
+              (0.3, lambda: foto('l2-tunel')), (0.25, lambda: foto('l3-tunel-clarao')),
+              (1.6, soltar_foco), (0.6, lambda: foto('l4-cartoes')),
+              (0.3, lambda: fase('toque no cartao')), (0.01, toca(lambda: cartao(2), 0.12)),
+              (0.06, lambda: foto('l5-toque')), (0.6, fechar_popups),
+              (0.6, lambda: fase('segurar cartao')), (0.01, segura_ini), (0.45, lambda: foto('l6-segurando')),
+              (0.5, lambda: dedo_sobe(est['t'])), (0.6, lambda: foto('l7-corrigir')), (0.2, fechar_popups),
+              (0.6, lambda: fase('arrastar cartao')), (0.01, arrasta_ini), (0.12, arrasta(0.1)),
+              (0.12, arrasta(0.4)), (0.08, arrasta(0.8)), (0.08, arrasta(1.15)), (0.03, lambda: foto('l8-arrastando')),
+              (0.05, lambda: dedo_sobe(est['t'])), (0.7, fechar_popups),
+              (0.6, lambda: fase('lote novo')), (0.01, lote), (0.8, lambda: setattr(campo_do_popup(), 'text', '4')),
+              (0.2, lambda: apertar('CONFIRMAR')), (0.6, soltar_foco), (0.5, lambda: foto('l9-lote-novo')),
+              (3.5, fim)]
+    Roteiro(passos).rodar()
+
+
 def roteiro_meta():
     """As telas das METAS: a faixa HOJE do registro, o painel da meta, um
     lote novo (com a festa se passar da meta) e a tela de ganhos."""
@@ -789,7 +843,7 @@ def esperar_menu(dt):
     fase('menu')
     Clock.schedule_once(lambda dt: {'telas': roteiro_telas, 'zap': roteiro_zap, 'varre': roteiro_varre, 'meta': roteiro_meta,
               'anim': roteiro_anim, 'vivo': roteiro_vivo, 'novas': roteiro_novas,
-              'mem': roteiro_mem}.get(CENA, roteiro_app)(), 1.0)
+              'mem': roteiro_mem, 'link': roteiro_link}.get(CENA, roteiro_app)(), 1.0)
 
 
 def roteiro_pin():

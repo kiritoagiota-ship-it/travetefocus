@@ -4,7 +4,7 @@ from kivy.app import App
 from kivy.animation import Animation
 from kivy.clock import Clock
 from kivy.metrics import dp
-from efeitos import ListaItem, ItemGesto, explodir_estilhacos, tremer_tela
+from efeitos import ListaItem, ItemGesto, CartaoLote, explodir_estilhacos, tremer_tela
 from helpers import (popup_pedir_xp, popup_delete_engracado, popup_resumo_dia, animar_ganho_xp,
                      anexar_teclado, sugestoes_pecas, popup_importar_zap, popup_aviso,
                      ler_area_de_transferencia)
@@ -61,11 +61,11 @@ class TelaRegistro(Screen):
         arrastar para o lado apaga (com a pergunta de sempre) e segurar o
         dedo corrige a quantidade."""
         if dado is not None:
-            btn = ItemGesto(text=text,
-                            ao_arrastar=lambda w, d=dado: self.confirmar_delete(d, w),
-                            ao_segurar=lambda w, d=dado: self.editar_lote(d, w))
-        else:
-            btn = ListaItem(text=text)
+            # o cartao do lote: icone da peca, nome, hora, quantidade e XP
+            return CartaoLote(dado=dado, text=text,
+                              ao_arrastar=lambda w, d=dado: self.confirmar_delete(d, w),
+                              ao_segurar=lambda w, d=dado: self.editar_lote(d, w))
+        btn = ListaItem(text=text)
         btn.height  = dp(52)   # mais compacto que dp(68)
         btn.valign = 'middle' # texto centralizado verticalmente
         return btn
@@ -213,6 +213,9 @@ class TelaRegistro(Screen):
         btn.bind(on_release=lambda x, d=dado, w=btn: self.confirmar_delete(d, w))
         self.ids.lista_container.add_widget(btn)
         entrada_cascata([btn], dy=dp(30))
+        fn = getattr(btn, '_brilho_disparar', None)
+        if fn:
+            Clock.schedule_once(lambda dt: fn(), 0.34)      # chegou: uma luz passa pelo cartao
         # o Yoru aparece e 'carimba' o +XP com um corte curto (o numero nasce
         # no corte); espera o item novo terminar de entrar na lista
         def _carimbo(dt):
@@ -355,8 +358,13 @@ class TelaRegistro(Screen):
                 som.tocar_add()
                 tatil.confirmar()
                 btn.text = self._texto_item(dado)
+                if hasattr(btn, 'definir'):
+                    btn.definir(dado)
                 from animacoes_ui import pulso
-                pulso(btn, 1.05, 0.3)
+                pulso(btn, 1.04, 0.3)
+                fn = getattr(btn, '_brilho_disparar', None)
+                if fn:
+                    fn()
                 subiu = conferir_level(xp_antes, app.total_xp, atraso=0.5)
                 self.atualizar_meta(bater=True)
                 self._comemorar(antes, self._situacao(), atraso=5.0 if subiu else 0.6)

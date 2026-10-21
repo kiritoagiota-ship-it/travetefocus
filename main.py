@@ -59,6 +59,12 @@ class MenuPrincipal(Screen):
                                     ('GANHOS', 'ganhos'), ('CALCULADORA', 'calculadora')):
                     if isinstance(w, BotaoAngular) and chave in txt:
                         icone_pixel(w, nome)
+            # o Link Start: NerveGear a esquerda, setas a direita, dados correndo
+            from animacoes_ui import pacotes_de_luz
+            ls = self.ids.btn_link_start
+            icone_pixel(ls, 'nervegear', u=max(2.0, round(dp(2.6))), margem=dp(18))
+            icone_pixel(ls, 'setas', u=max(2.0, round(dp(2.4))), margem=dp(20), lado='dir')
+            pacotes_de_luz(ls)
         except Exception as e:
             print(f"[menu] icones: {e}")
 
@@ -211,6 +217,15 @@ class TraveteApp(App):
 
     def mudar_tela(self, destino):
         transicao_tela(self, destino)
+
+    def link_start(self, botao):
+        """O botao principal do menu: entra no Registro pelo tunel do Link Start."""
+        try:
+            from helpers import transicao_link_start
+            transicao_link_start(self, 'registro', botao.to_window(*botao.center))
+        except Exception as e:
+            print(f"[link start] {e}")
+            self.mudar_tela('registro')
 
     def alternar_vibracao(self):
         """Botao do menu: liga/desliga a resposta tatil (fica salvo)."""
