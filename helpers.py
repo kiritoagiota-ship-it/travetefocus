@@ -985,7 +985,7 @@ def popup_avisos(app):
     avisos de verdade (AlarmManager -> recebedor -> barra)."""
     import lembretes
     pop, layout = _make_popup()
-    alt = min(dp(500), int(Window.height * 0.86))
+    alt = min(dp(560), int(Window.height * 0.9))
     caixa = BoxLayout(orientation='vertical', padding=[dp(20), dp(16), dp(20), dp(16)], spacing=dp(8),
                       size_hint=(0.92, None), height=alt)
     aplicar_fundo_holografico(caixa, (0, 0.9, 1, 0.9))
@@ -999,12 +999,12 @@ def popup_avisos(app):
         l.bind(size=lambda i, s: setattr(i, 'text_size', s))
         caixa.add_widget(l)
         return l
-    lbl_estado = rotulo("15sp", dp(98))
+    lbl_estado = rotulo("15sp", dp(122))
     caixa.add_widget(Label(text="[b]PRÓXIMOS AVISOS[/b]", markup=True, font_name="orbitron.ttf", font_size="10sp",
                            color=(0, 0.9, 1, 0.75), size_hint_y=None, height=dp(18), halign="left",
                            text_size=(Window.width * 0.8, None)))
-    lbl_prox = rotulo("15sp", dp(84))
-    lbl_teste = rotulo("14sp", dp(48), valign='middle')
+    lbl_prox = rotulo("15sp", dp(70))
+    lbl_teste = rotulo("14sp", dp(92), valign='middle')
 
     def ok(v, sim, nao, cinza="não deu para conferir"):
         if v is None:
@@ -1024,6 +1024,8 @@ def popup_avisos(app):
                           + ok(e['ativadas'], "ligadas", "DESLIGADAS"))
             linhas.append("[color=#aab4c8]Recebedor dos avisos:[/color]  "
                           + ok(e['recebedor'], "OK", "FALTANDO"))
+            linhas.append("[color=#aab4c8]Horário exato:[/color]  "
+                          + ok(e.get('exato'), "OK", "NÃO LIBERADO", "aproximado"))
             if e['erro']:
                 linhas.append(f"[color=#7f8aa3]{e['erro']}[/color]")
         lbl_estado.text = "\n".join(linhas)
@@ -1038,33 +1040,53 @@ def popup_avisos(app):
         b_liga.text = ">>  DESLIGAR" if ligado else ">>  LIGAR"
         return e
 
+    res = {'direto': None, 'agendado': None}
+
+    def mostra_teste():
+        def linha(n, nome, v):
+            if v is None:
+                return f"[color=#7f8aa3]{n}) {nome}: conferindo...[/color]"
+            if v is True:
+                return f"[color=#00ff88]{n}) {nome}: [b]apareceu[/b][/color]"
+            return f"[color=#ff4466]{n}) {nome}: [b]não apareceu[/b][/color]"
+        txt = linha(1, "Aviso direto", res['direto']) + "\n" + linha(2, "Aviso agendado", res['agendado'])
+        if res['direto'] is False:
+            txt += ("\n[color=#c8d2e6]O celular está escondendo os avisos do app: toque em CONFIGURAÇÕES "
+                    "e ligue as notificações.[/color]")
+        elif res['direto'] and res['agendado'] is False:
+            txt += ("\n[color=#c8d2e6]O Android está segurando os agendados: em CONFIGURAÇÕES > Bateria, "
+                    "deixe o app [b]Sem restrições[/b].[/color]")
+        elif res['direto'] and res['agendado']:
+            txt += "\n[color=#00ff88]Tudo certo: os lembretes vão chegar na hora.[/color]"
+        lbl_teste.text = txt
+
     def testar(*_):
         lembretes.pedir_permissao()
-        erro = lembretes.testar(4)
-        if erro:
-            lbl_teste.text = f"[color=#ffcc00]{erro}[/color]"
+        e1, e2 = lembretes.testar(5)
+        if e1 and e2 and e1 == e2:
+            lbl_teste.text = f"[color=#ffcc00]{e1}[/color]"
             return
-        lbl_teste.text = "[color=#00e5ff]Enviado! Olhe a barra de notificações (em 4 segundos)...[/color]"
+        res['direto'] = False if e1 else None
+        res['agendado'] = False if e2 else None
+        mostra_teste()
 
-        def conferir(dt):
-            if pop.parent is None and not getattr(app, 'root', None):
-                return
-            e = atualizar()
-            v = lembretes.apareceu()
-            if v:
-                lbl_teste.text = "[color=#00ff88][b]Apareceu![/b] Os avisos estão funcionando.[/color]"
-            elif e.get('permissao') is False or e.get('ativadas') is False:
-                lbl_teste.text = ("[color=#ff4466][b]Não apareceu:[/b][/color] [color=#c8d2e6]as notificações estão "
-                                  "bloqueadas. Toque em CONFIGURAÇÕES e ligue.[/color]")
-            elif e.get('recebedor') is False:
-                lbl_teste.text = ("[color=#ff4466][b]Não apareceu:[/b][/color] [color=#c8d2e6]falta o recebedor no "
-                                  "app. Me mande uma foto desta tela.[/color]")
-            elif v is False:
-                lbl_teste.text = ("[color=#ffcc00][b]Ainda não apareceu.[/b][/color] [color=#c8d2e6]O Android pode "
-                                  "estar segurando (economia de bateria). Toque em CONFIGURAÇÕES.[/color]")
-            else:
-                lbl_teste.text = "[color=#c8d2e6]Confira a barra de notificações: apareceu?[/color]"
-        Clock.schedule_once(conferir, 7.0)
+        def confere_direto(dt):
+            if res['direto'] is None:
+                v = lembretes.apareceu(lembretes.ID_TESTE_DIRETO)
+                res['direto'] = True if v is None else bool(v)
+            atualizar()
+            mostra_teste()
+
+        def confere_agendado(dt):
+            if res['agendado'] is None:
+                v = lembretes.apareceu(lembretes.ID_TESTE)
+                if v is None:
+                    lbl_teste.text += "\n[color=#c8d2e6]Confira a barra: o teste 2 apareceu?[/color]"
+                    return
+                res['agendado'] = bool(v)
+            mostra_teste()
+        Clock.schedule_once(confere_direto, 2.0)
+        Clock.schedule_once(confere_agendado, 14.0)
 
     def ligar(*_):
         app.alternar_lembretes()
@@ -1089,7 +1111,8 @@ def popup_avisos(app):
     caixa.add_widget(Widget())
     caixa.add_widget(l1)
     caixa.add_widget(l2)
-    lbl_teste.text = "[color=#7f8aa3]TESTAR AGORA manda um aviso de verdade em 4 segundos.[/color]"
+    lbl_teste.text = ("[color=#7f8aa3]TESTAR AGORA manda 2 avisos: um na hora (direto) e outro "
+                      "agendado para 5 segundos depois.[/color]")
     atualizar()
     layout.add_widget(caixa)
     caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}

@@ -149,10 +149,64 @@ def _agendar(nid, titulo, texto, quando_ms, cancelar_so=False):
     am.cancel(pi)
     if cancelar_so:
         return
-    if sdk >= 23:
+    # no horario EXATO (como um despertador) quando o Android deixa: o modo
+    # aproximado de antes podia ser atrasado muito pela economia de bateria
+    # (Samsung) e o aviso nao chegava na hora
+    if _pode_exato(am, sdk):
+        am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, int(quando_ms), pi)
+    elif sdk >= 23:
         am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, int(quando_ms), pi)
     else:
         am.set(AlarmManager.RTC_WAKEUP, int(quando_ms), pi)
+
+
+def _pode_exato(am, sdk):
+    """O Android deixa agendar no horario exato? (12+ pede permissao: o app
+    declara USE_EXACT_ALARM / SCHEDULE_EXACT_ALARM no buildozer.spec)"""
+    if sdk < 23:
+        return False
+    if sdk < 31:
+        return True
+    try:
+        return bool(am.canScheduleExactAlarms())
+    except Exception:
+        return False
+
+
+CANAL = 'travete_lembretes'          # o mesmo canal do recebedor (Lembrete.java)
+
+
+def mostrar_agora(nid, titulo, texto):
+    """Mostra um aviso NA HORA, direto do app (sem agendar): prova que o
+    celular mostra os avisos do TraveteFocus. Devolve '' ou o erro."""
+    if not _android():
+        return 'Os avisos só funcionam no celular.'
+    try:
+        from jnius import autoclass, cast
+        PA = autoclass('org.kivy.android.PythonActivity')
+        Context = autoclass('android.content.Context')
+        ctx = PA.mActivity
+        sdk = _sdk()
+        nm = cast('android.app.NotificationManager', ctx.getSystemService(Context.NOTIFICATION_SERVICE))
+        if sdk >= 26:
+            NotificationChannel = autoclass('android.app.NotificationChannel')
+            NotificationManager = autoclass('android.app.NotificationManager')
+            ch = NotificationChannel(CANAL, 'Lembretes', NotificationManager.IMPORTANCE_DEFAULT)
+            nm.createNotificationChannel(ch)
+            b = autoclass('android.app.Notification$Builder')(ctx, CANAL)
+        else:
+            b = autoclass('android.app.Notification$Builder')(ctx)
+        icone = ctx.getResources().getIdentifier('notif_icone', 'drawable', ctx.getPackageName())
+        if not icone:
+            icone = ctx.getApplicationInfo().icon
+        b.setSmallIcon(icone)
+        b.setContentTitle(str(titulo))
+        b.setContentText(str(texto))
+        b.setAutoCancel(True)
+        nm.notify(int(nid), b.build())
+        return ''
+    except Exception as ex:
+        return str(ex)[:160]
 
 
 def aplicar(planos, ligado=True):
@@ -188,7 +242,8 @@ def estado():
     """O que pode impedir os avisos, conferido no proprio celular:
     {'android', 'permissao', 'ativadas', 'recebedor', 'sdk', 'erro'}
     (None = nao deu para conferir)."""
-    e = {'android': _android(), 'permissao': None, 'ativadas': None, 'recebedor': None, 'sdk': None, 'erro': ''}
+    e = {'android': _android(), 'permissao': None, 'ativadas': None, 'recebedor': None, 'exato': None,
+         'sdk': None, 'erro': ''}
     if not e['android']:
         return e
     try:
@@ -212,24 +267,36 @@ def estado():
             e['recebedor'] = True
         except Exception:
             e['recebedor'] = False
+        try:
+            am = cast('android.app.AlarmManager', ctx.getSystemService(Context.ALARM_SERVICE))
+            e['exato'] = _pode_exato(am, sdk)
+        except Exception:
+            e['exato'] = None
     except Exception as ex:
         e['erro'] = str(ex)[:120]
     return e
 
 
-def testar(seg=4):
-    """Manda um aviso de teste daqui a `seg` segundos pelo MESMO caminho dos
-    avisos de verdade (AlarmManager -> recebedor). Devolve '' ou o erro."""
+ID_TESTE_DIRETO = 7198
+
+
+def testar(seg=5):
+    """O teste em duas partes: (1) um aviso DIRETO agora (o celular mostra os
+    avisos do app?) e (2) um AGENDADO daqui a `seg` s pelo mesmo caminho dos
+    lembretes (AlarmManager -> recebedor). Devolve (erro_direto, erro_agendado)."""
     if not _android():
-        return 'Os avisos só funcionam no celular.'
+        return ('Os avisos só funcionam no celular.',) * 2
+    e1 = mostrar_agora(ID_TESTE_DIRETO, "TraveteFocus: teste 1 de 2",
+                       "Aviso direto: se você está lendo isto, o celular mostra os avisos do app.")
     try:
         import time
-        _agendar(ID_TESTE, "⚔ Teste do TraveteFocus",
-                 "Funcionou! É assim que os lembretes vão aparecer aqui na barra.",
+        _agendar(ID_TESTE, "⚔ TraveteFocus: teste 2 de 2",
+                 "Aviso agendado: é assim que os lembretes vão chegar na hora certa.",
                  (time.time() + seg) * 1000)
-        return ''
+        e2 = ''
     except Exception as ex:
-        return str(ex)[:160]
+        e2 = str(ex)[:160]
+    return e1, e2
 
 
 def apareceu(nid=ID_TESTE):
@@ -259,15 +326,28 @@ def abrir_config():
         PA = autoclass('org.kivy.android.PythonActivity')
         Intent = autoclass('android.content.Intent')
         Settings = autoclass('android.provider.Settings')
+        Uri = autoclass('android.net.Uri')
         ctx = PA.mActivity
+        pkg = ctx.getPackageName()
+        pm = ctx.getPackageManager()
+        tentativas = []
         if _sdk() >= 26:
-            it = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-            it.putExtra(Settings.EXTRA_APP_PACKAGE, ctx.getPackageName())
-        else:
-            Uri = autoclass('android.net.Uri')
-            it = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse('package:' + ctx.getPackageName()))
-        it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        ctx.startActivity(it)
+            it = Intent('android.settings.APP_NOTIFICATION_SETTINGS')
+            it.putExtra('android.provider.extra.APP_PACKAGE', pkg)
+            it.putExtra('app_package', pkg)                       # (Androids mais antigos/Samsung)
+            it.putExtra('app_uid', ctx.getApplicationInfo().uid)
+            tentativas.append(it)
+        # a tela de informacoes do app existe em todo Android (Notificacoes e Bateria)
+        tentativas.append(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse('package:' + pkg)))
+        for it in tentativas:
+            it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try:
+                if it.resolveActivity(pm) is None:
+                    continue
+                ctx.startActivity(it)
+                return
+            except Exception as ex:
+                print(f"[lembretes] abrir config (tentando a proxima): {ex}")
     except Exception as ex:
         print(f"[lembretes] abrir config: {ex}")
 

@@ -32,7 +32,7 @@ presplash.filename    = %(source.dir)s/presplash.png
 android.presplash_color = #020204
 
 # ── PERMISSÕES ───────────────────────────────────────────────────────────────
-android.permissions = WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, VIBRATE, POST_NOTIFICATIONS, QUERY_ALL_PACKAGES
+android.permissions = WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, VIBRATE, POST_NOTIFICATIONS, QUERY_ALL_PACKAGES, USE_EXACT_ALARM, SCHEDULE_EXACT_ALARM
 
 # Lembretes na barra do celular, com o app fechado: lembretes.py agenda e o
 # recebedor java/org/travetefocus/Lembrete.java mostra o aviso (o <receiver>
