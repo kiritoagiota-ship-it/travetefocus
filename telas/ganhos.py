@@ -394,19 +394,41 @@ class TelaGanhos(Screen):
             btn_del.bind(on_release=lambda *_, f=_fazer_delete: f())
         entrada_cascata(linhas)
 
+    def on_kv_post(self, *_):
+        self._recolher_conteudo()
+
+    def _recolher_conteudo(self, *_):
+        """Fechado, o painel SAI da tela de verdade: com altura 0 o conteudo
+        (a linha do SALVAR) ficava invisivel e desativado EXATAMENTE em cima do
+        botao AJUSTES - e um botao desativado segura o toque, entao o AJUSTES
+        nunca abria no celular."""
+        bloco = self.ids.bloco_config
+        if bloco.children:
+            self._cfg_filhos = list(reversed(bloco.children))
+            bloco.clear_widgets()
+
+    def _devolver_conteudo(self):
+        bloco = self.ids.bloco_config
+        if not bloco.children:
+            for w in getattr(self, '_cfg_filhos', []):
+                bloco.add_widget(w)
+
     def alternar_ajustes(self, abrir=None):
         """Mostra/esconde as configuracoes do calculo (ficam recolhidas)."""
         bloco = self.ids.bloco_config
-        abrir = (bloco.height == 0) if abrir is None else abrir
+        abrir = (bloco.height < 1 or not bloco.children) if abrir is None else abrir
         Animation.cancel_all(bloco)
         if abrir:
+            self._devolver_conteudo()
             bloco.disabled = False
             Animation(height=dp(220), opacity=1, duration=0.22, transition='out_quad').start(bloco)
             self.ids.btn_ajustes.text = "AJUSTES DO CÁLCULO   [color=#00e5ff88]^[/color]"
             som.tocar_click()
         else:
             bloco.disabled = True
-            Animation(height=0, opacity=0, duration=0.18, transition='out_quad').start(bloco)
+            a = Animation(height=0, opacity=0, duration=0.18, transition='out_quad')
+            a.bind(on_complete=self._recolher_conteudo)
+            a.start(bloco)
             self.ids.btn_ajustes.text = "AJUSTES DO CÁLCULO   [color=#00e5ff88]v[/color]"
         tatil.botao()
 

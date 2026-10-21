@@ -85,7 +85,7 @@ if CENA == 'meta':                     # a regra real: 2.500 / 3.000 por semana
     dados['config_ganhos'] = {'valor_base': 0.25, 'valor_bonus': 0.30, 'meta_bonus': 3000, 'tipo_periodo': 'semanal'}
 with open(os.path.join(pasta_app, 'dados.json'), 'w', encoding='utf-8') as f:
     json.dump(dados, f, ensure_ascii=False)
-if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas', 'mem', 'link'):
+if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas', 'mem', 'link', 'ajustes', 'toques'):
     with open(os.path.join(pasta_app, '.tf_session'), 'w') as f:
         f.write(str(time.time()))
 
@@ -781,6 +781,109 @@ def roteiro_link():
     Roteiro(passos).rodar()
 
 
+def roteiro_ajustes():
+    """Ganhos: o botao AJUSTES com toques de verdade (rapido, segurando e com o
+    dedo tremendo um pouco, como no celular), abrindo e fechando."""
+    est = {}
+
+    def btn():
+        return tela().ids.btn_ajustes
+
+    esperado = {'antes': False, 'toque rapido': True, 'toque rapido de novo': False, 'toque segurando': True,
+                'fechou?': False, 'toque tremendo': True}
+
+    def estado(nome):
+        def _f():
+            b = tela().ids.bloco_config
+            LOG.setdefault('ajustes', []).append([nome, round(b.height, 1), round(b.opacity, 2), b.disabled])
+            if (b.height > 1) != esperado.get(nome, b.height > 1):
+                LOG['erros'].append(f'ajustes: depois de "{nome}" o painel devia estar '
+                                    f'{"aberto" if esperado[nome] else "fechado"} (altura {b.height:.0f})')
+            fase(f'{nome}: altura={b.height:.0f} opacidade={b.opacity:.2f}')
+        return _f
+
+    def toque(segura=0.08, treme=0):
+        def _f():
+            x, y = no_meio(btn())
+            t = est['t'] = dedo_desce(x, y)
+            for k in range(treme):
+                Clock.schedule_once(lambda dt, k=k: dedo_move(t, x + (k % 2) * 3, y + (k % 3) * 2), 0.02 * (k + 1))
+            Clock.schedule_once(lambda dt: dedo_sobe(t), segura)
+        return _f
+    def espia():
+        b = btn()
+        b.bind(on_press=lambda *_: fase('DBG on_press'), on_release=lambda *_: fase('DBG on_release'))
+        fase(f'DBG btn pos={b.to_window(*b.pos)} size={b.size} disabled={b.disabled} opac={b.opacity}')
+        fase(f'DBG janela: {[type(w).__name__ for w in Window.children]}')
+        x, y = no_meio(b)
+        for w in tela().walk(restrict=True):
+            try:
+                x0, y0 = w.to_window(w.x, w.y)
+                if x0 <= x <= x0 + w.width and y0 <= y <= y0 + w.height:
+                    fase(f'DBG sob o dedo: {type(w).__name__} id={getattr(w, "text", "")[:20]!r} '
+                         f'disabled={w.disabled} rect=({x0:.0f},{y0:.0f},{w.width:.0f},{w.height:.0f})')
+            except Exception:
+                pass
+        fase(f'DBG ponto {x:.0f},{y:.0f}')
+    passos = [(0.3, lambda: app().mudar_tela('ganhos')), (2.4, estado('antes')),
+              (0.2, toque(0.08)), (0.6, estado('toque rapido')), (0.1, lambda: foto('a1-rapido')),
+              (0.4, toque(0.08)), (0.6, estado('toque rapido de novo')),
+              (0.4, toque(0.35)), (0.7, estado('toque segurando')), (0.4, toque(0.35)), (0.7, estado('fechou?')),
+              (0.4, toque(0.2, treme=6)), (0.7, estado('toque tremendo')), (0.1, lambda: foto('a2-tremendo')),
+              (0.6, fim)]
+    Roteiro(passos).rodar()
+
+
+def roteiro_toques():
+    """Em cada tela: algum botao visivel tem por cima dele (mais tarde na
+    arvore = recebe o toque antes) um widget escondido ou desativado que
+    seguraria o toque? (foi o que travou o AJUSTES de Ganhos.)"""
+    def checa(nome):
+        def _f():
+            tl = tela()
+            ws = list(tl.walk(restrict=True))
+            ordem = {id(w): i for i, w in enumerate(ws)}
+            def ret(w):
+                x0, y0 = w.to_window(w.x, w.y)
+                return x0, y0, x0 + w.width, y0 + w.height
+            def visivel(w):
+                p = w
+                while p is not None and p is not tl:
+                    if p.opacity < 0.05:
+                        return False
+                    p = p.parent
+                return True
+            botoes = [w for w in ws if hasattr(w, 'is_event_type') and w.is_event_type('on_release')
+                      and not w.disabled and visivel(w) and w.width > 2 and w.height > 2]
+            achados = 0
+            for b in botoes:
+                x0, y0, x1, y1 = ret(b)
+                cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+                for w in ws:
+                    if w is b or ordem[id(w)] <= ordem[id(b)] or w in b.walk():
+                        continue
+                    a = ret(w)
+                    if not (a[0] <= cx <= a[2] and a[1] <= cy <= a[3]):
+                        continue
+                    if b in w.walk():
+                        continue
+                    pega = w.disabled or (not visivel(w) and hasattr(w, 'is_event_type') and w.is_event_type('on_release'))
+                    if pega:
+                        achados += 1
+                        LOG['erros'].append(f'{nome}: {str(getattr(b, "text", ""))[:22]!r} coberto por '
+                                            f'{type(w).__name__} {str(getattr(w, "text", ""))[:16]!r} '
+                                            f'(desativado={w.disabled}, visivel={visivel(w)})')
+            fase(f'toques {nome}: {len(botoes)} botoes, {achados} cobertos')
+        return _f
+    passos = [(0.5, checa('menu'))]
+    for t in ('registro', 'memorias', 'progresso', 'ganhos', 'calculadora'):
+        passos += [(0.3, lambda t=t: app().mudar_tela(t)), (2.6, checa(t))]
+    passos += [(0.3, lambda: app().mudar_tela('ganhos')), (2.6, lambda: tela().alternar_ajustes(True)),
+               (0.8, checa('ganhos com ajustes abertos')), (0.3, lambda: tela().alternar_ajustes(False)),
+               (0.8, checa('ganhos com ajustes fechados')), (0.3, fim)]
+    Roteiro(passos).rodar()
+
+
 def roteiro_meta():
     """As telas das METAS: a faixa HOJE do registro, o painel da meta, um
     lote novo (com a festa se passar da meta) e a tela de ganhos."""
@@ -843,7 +946,8 @@ def esperar_menu(dt):
     fase('menu')
     Clock.schedule_once(lambda dt: {'telas': roteiro_telas, 'zap': roteiro_zap, 'varre': roteiro_varre, 'meta': roteiro_meta,
               'anim': roteiro_anim, 'vivo': roteiro_vivo, 'novas': roteiro_novas,
-              'mem': roteiro_mem, 'link': roteiro_link}.get(CENA, roteiro_app)(), 1.0)
+              'mem': roteiro_mem, 'link': roteiro_link,
+              'ajustes': roteiro_ajustes, 'toques': roteiro_toques}.get(CENA, roteiro_app)(), 1.0)
 
 
 def roteiro_pin():
