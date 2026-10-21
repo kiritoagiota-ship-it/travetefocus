@@ -2,27 +2,60 @@
 lembretes.py — TraveteFocus
 Avisos na barra do celular, com o app fechado (escolha do usuario):
 
-  lancar   seg a sab, 11h: se ainda nao saiu nenhum lote no dia, o Yoru lembra
-  meta     seg a sex, 16h: se a meta do dia ainda nao foi batida, quanto falta
-  faixa    sabado, 8h: se a proxima faixa da semana (2.500 / 3.000) cabe no
-           sabado, quanto falta e quanto a mais rende
-  resumo   sabado, 14h (dia do pagamento): pecas da semana e quanto vai receber
+  lancar      seg a sab, 11h: se ainda nao saiu nenhum lote no dia, o Yoru lembra
+  risco       seg a sab, 15h: nenhum lote hoje e a sequencia (2+ dias) vai quebrar
+  meta        seg a sex, 16h: se a meta do dia ainda nao foi batida, quanto falta
+  fechamento  seg a sex 20h / sabado 13h: o dia (pecas, XP) e a faixa da semana
+  faixa       sabado, 8h: se a proxima faixa da semana (2.500 / 3.000) cabe no
+              sabado, quanto falta e quanto a mais rende
+  resumo      sabado, 14h (dia do pagamento): pecas da semana e quanto vai receber
+  faixa_nova  na hora (o app avisa ao gravar): a semana passou de uma faixa
+
+Cada aviso e um CARD (Lembrete.java + res_layout/): o Yoru numa pose, o titulo,
+a fala dele (uma por dia, sorteada), o texto, a barra de progresso com o
+rotulo e os numeros da semana.
 
 planejar() e so conta (testada no PC: dev/teste_lembretes.py). aplicar()
 agenda no Android: AlarmManager -> org.travetefocus.Lembrete (java/), que mostra
-o aviso com o texto que vai pronto. Tudo e refeito a cada vez que o app grava
-os dados (o lote novo cancela o lembrete de hoje, a meta batida cancela o aviso
+o aviso com o que vai pronto. Tudo e refeito a cada vez que o app grava os
+dados (o lote novo cancela o lembrete de hoje, a meta batida cancela o aviso
 da meta...). Fora do Android nao faz nada. Nunca levanta excecao.
 """
+import random
 from datetime import datetime, timedelta
 
 import metas
 
 HORA_LANCAR = (11, 0)
+HORA_RISCO = (15, 0)
 HORA_META = (16, 0)
+HORA_FECHAMENTO = (20, 0)
+HORA_FECHAMENTO_SAB = (13, 0)
 HORA_FAIXA = (8, 0)
 HORA_RESUMO = (14, 0)
-IDS = {'lancar': 7101, 'meta': 7102, 'faixa': 7103, 'resumo': 7104}
+IDS = {'lancar': 7101, 'meta': 7102, 'faixa': 7103, 'resumo': 7104, 'risco': 7105, 'fechamento': 7106}
+ID_FAIXA_NOVA = 7107
+
+# o que o Yoru fala em cada aviso (uma por dia, sorteada)
+FALAS = {
+    'lancar': ("Bora, a meta não se bate sozinha!", "Primeiro lote do dia: o resto vem junto.",
+               "A espada está afiada. E a agulha?", "Um lote de cada vez, como um golpe de cada vez.",
+               "Hoje é dia de subir de nível."),
+    'risco': ("Não deixa a sequência cair agora!", "Um lote só já salva a sequência.",
+              "Eu seguro a linha, você lança o lote.", "Dias seguidos valem mais que um dia gigante."),
+    'meta': ("Falta pouco. Último esforço!", "Respira e vai: a meta está logo ali.",
+             "Cada peça agora conta em dobro na cabeça.", "Mais um pouco e a meta cai."),
+    'fechamento': ("Bom trabalho hoje. Descansa a espada.", "Mais um dia no placar.",
+                   "Amanhã a gente continua de onde parou.", "Isso é constância de verdade."),
+    'faixa': ("Dá para fechar a faixa no sábado!", "O sábado decide o preço da semana.",
+              "Meio período, faixa inteira."),
+    'resumo': ("Semana fechada. Hora de colher!", "Pagamento chegando: missão cumprida.",
+               "Que semana! Eu vi tudo daqui."),
+    'faixa_nova': ("Subiu de faixa! Cada peça vale mais agora.", "Faixa nova desbloqueada!",
+                   "Isso! A semana inteira ficou mais cara."),
+}
+POSES = {'lancar': 'guarda', 'risco': 'susto', 'meta': 'meta', 'fechamento': 'vitoria',
+         'faixa': 'meta', 'resumo': 'vitoria', 'faixa_nova': 'vitoria'}
 
 
 def _as(dia, hm):
@@ -41,53 +74,148 @@ def _br(v, casas=0):
     return s.replace(',', '#').replace('.', ',').replace('#', '.')
 
 
-def planejar(agora, memorias, registros, cfg):
-    """[{'id', 'tipo', 'quando' (datetime), 'titulo', 'texto'}] - os avisos que
-    valem a partir de `agora`, com os numeros de agora."""
+def _fala(tipo, dia):
+    """A fala do Yoru para o aviso `tipo` no dia (a mesma o dia todo)."""
+    lista = FALAS.get(tipo) or ("",)
+    return random.Random(f"{dia.isoformat()}-{tipo}").choice(lista)
+
+
+def _xp_hoje(memorias, registros, hoje):
+    xp = 0
+    for m in memorias or ():
+        if metas._dia_de(m.get('data', '')) == hoje:
+            try:
+                xp += int(m.get('xp', 0))
+            except (TypeError, ValueError):
+                pass
+    for r in registros or ():
+        try:
+            d = metas._dia_de(r[3]) if len(r) > 3 and r[3] else hoje
+            if d == hoje:
+                xp += int(r[2])
+        except (TypeError, ValueError, IndexError):
+            pass
+    return xp
+
+
+def _card(tipo, dia, prog=0, prog_max=0, rotulo='', semana=''):
+    return {'pose': POSES.get(tipo, 'guarda'), 'fala': _fala(tipo, dia), 'prog': int(max(0, prog)),
+            'prog_max': int(max(0, prog_max)), 'rotulo': rotulo, 'semana': semana}
+
+
+def planejar(agora, memorias, registros, cfg, seq=0):
+    """[{'id', 'tipo', 'quando' (datetime), 'titulo', 'texto', + o card: 'pose',
+    'fala', 'prog', 'prog_max', 'rotulo', 'semana'}] - os avisos que valem a
+    partir de `agora`, com os numeros de agora. `seq`: a sequencia de dias
+    que ainda vale (para o aviso de sequencia em risco)."""
     cfg = metas.completar_cfg(cfg)
     hoje = agora.date()
     sem, hj = metas.pecas_da_semana(memorias or [], registros or [], hoje)
+    ganho_sem = metas.ganho(sem, cfg)
+    linha_semana = f"Semana: {_br(sem)} peças · R$ {_br(ganho_sem, 2)}"
     planos = []
+
+    # a meta da semana: a proxima faixa (ou a ultima, se ja passou de todas)
+    prox = metas.proxima_faixa(sem, cfg)
+    alvo = prox['inicio'] if prox else int(cfg['meta_bonus'])
+    md_hoje = metas.meta_diaria(alvo, sem, hj, hoje, cfg['pecas_sabado'])
 
     # 1) lembrete de lancar: hoje (se ainda nao lancou e ainda nao passou da
     #    hora) ou no proximo dia de trabalho
     dia = hoje
     if hoje.weekday() == 6 or hj > 0 or agora >= _as(hoje, HORA_LANCAR):
         dia = _dia_util(hoje + timedelta(days=1))
-    planos.append({'id': IDS['lancar'], 'tipo': 'lancar', 'quando': _as(dia, HORA_LANCAR),
-                   'titulo': "⚔ Hora de lançar",
-                   'texto': "O Yoru está esperando os lotes de hoje. Abre o TraveteFocus e lança o primeiro!"})
+    meta_l = md_hoje['hoje_meta'] if dia == hoje else 0
+    p = {'id': IDS['lancar'], 'tipo': 'lancar', 'quando': _as(dia, HORA_LANCAR),
+         'titulo': "⚔ Hora de lançar",
+         'texto': "O Yoru está esperando os lotes de hoje. Abre o TraveteFocus e lança o primeiro!"}
+    p.update(_card('lancar', dia, 0, meta_l, f"Meta de hoje: 0 / {_br(meta_l)}" if meta_l else '', linha_semana))
+    planos.append(p)
 
-    # a meta da semana: a proxima faixa (ou a ultima, se ja passou de todas)
-    prox = metas.proxima_faixa(sem, cfg)
-    alvo = prox['inicio'] if prox else int(cfg['meta_bonus'])
+    # 2) sequencia em risco (seg a sab, 15h): nada lancado hoje e 2+ dias seguidos
+    if hoje.weekday() <= 5 and hj == 0 and int(seq or 0) >= 2 and agora < _as(hoje, HORA_RISCO):
+        p = {'id': IDS['risco'], 'tipo': 'risco', 'quando': _as(hoje, HORA_RISCO),
+             'titulo': f"🔥 Sequência de {int(seq)} dias em risco",
+             'texto': f"Se hoje passar em branco, a sequência de {int(seq)} dias quebra. "
+                      "Um lote já salva!"}
+        p.update(_card('risco', hoje, 0, 0, '', linha_semana))
+        planos.append(p)
 
-    # 2) meta do dia (seg a sex), as 16h de hoje, se ainda falta
+    # 3) meta do dia (seg a sex), as 16h de hoje, se ainda falta
     if hoje.weekday() <= 4 and agora < _as(hoje, HORA_META):
-        md = metas.meta_diaria(alvo, sem, hj, hoje, cfg['pecas_sabado'])
+        md = md_hoje
         if md['hoje_meta'] > 0 and md['hoje_falta'] > 0:
-            planos.append({'id': IDS['meta'], 'tipo': 'meta', 'quando': _as(hoje, HORA_META),
-                           'titulo': "🎯 Meta de hoje",
-                           'texto': f"Faltam {_br(md['hoje_falta'])} peças para a meta de hoje "
-                                    f"({_br(md['hoje_meta'])}). Já saíram {_br(hj)}."})
+            p = {'id': IDS['meta'], 'tipo': 'meta', 'quando': _as(hoje, HORA_META),
+                 'titulo': "🎯 Meta de hoje",
+                 'texto': f"Faltam {_br(md['hoje_falta'])} peças para a meta de hoje "
+                          f"({_br(md['hoje_meta'])}). Já saíram {_br(hj)}."}
+            p.update(_card('meta', hoje, hj, md['hoje_meta'],
+                           f"Hoje: {_br(hj)} / {_br(md['hoje_meta'])}", linha_semana))
+            planos.append(p)
 
-    # 3) faixa: no sabado desta semana, as 8h, se a proxima faixa cabe no sabado
+    # 4) fechamento do dia (seg a sex 20h, sabado 13h), se ja saiu algo hoje
+    hora_f = HORA_FECHAMENTO_SAB if hoje.weekday() == 5 else HORA_FECHAMENTO
+    if hoje.weekday() <= 5 and hj > 0 and agora < _as(hoje, hora_f):
+        xp = _xp_hoje(memorias, registros, hoje)
+        if prox:
+            falta_txt = f"faltam {_br(prox['falta'])} para R$ {_br(prox['valor'], 2)}"
+        else:
+            falta_txt = "já está na faixa máxima"
+        p = {'id': IDS['fechamento'], 'tipo': 'fechamento', 'quando': _as(hoje, hora_f),
+             'titulo': "📊 Fechamento do dia",
+             'texto': f"Hoje: {_br(hj)} peças · +{_br(xp)} XP. Na semana, {falta_txt}. "
+                      "Não esquece de finalizar o turno."}
+        p.update(_card('fechamento', hoje, sem, alvo, f"Semana: {_br(sem)} / {_br(alvo)}",
+                       f"R$ {_br(ganho_sem, 2)}"))
+        planos.append(p)
+
+    # 5) faixa: no sabado desta semana, as 8h, se a proxima faixa cabe no sabado
     sabado = hoje + timedelta(days=(5 - hoje.weekday()) % 7) if hoje.weekday() != 6 else None
     if sabado is not None and prox and agora < _as(sabado, HORA_FAIXA):
         if 0 < prox['falta'] <= int(cfg['pecas_sabado']) * 1.5:
-            planos.append({'id': IDS['faixa'], 'tipo': 'faixa', 'quando': _as(sabado, HORA_FAIXA),
-                           'titulo': f"⭐ Faixa de R$ {_br(prox['valor'], 2)} ao alcance",
-                           'texto': f"Faltam {_br(prox['falta'])} peças para todas as peças da semana "
-                                    f"valerem R$ {_br(prox['valor'], 2)} (+R$ {_br(prox['a_mais'], 2)})."})
+            p = {'id': IDS['faixa'], 'tipo': 'faixa', 'quando': _as(sabado, HORA_FAIXA),
+                 'titulo': f"⭐ Faixa de R$ {_br(prox['valor'], 2)} ao alcance",
+                 'texto': f"Faltam {_br(prox['falta'])} peças para todas as peças da semana "
+                          f"valerem R$ {_br(prox['valor'], 2)} (+R$ {_br(prox['a_mais'], 2)})."}
+            p.update(_card('faixa', sabado, sem, prox['inicio'], f"Semana: {_br(sem)} / {_br(prox['inicio'])}",
+                           f"R$ {_br(ganho_sem, 2)}"))
+            planos.append(p)
 
-    # 4) resumo da semana: sabado, 14h
+    # 6) resumo da semana: sabado, 14h
     if sabado is not None and agora < _as(sabado, HORA_RESUMO) and sem > 0:
         _i, _ini, valor, _n = metas.faixa_de(sem, cfg)
-        planos.append({'id': IDS['resumo'], 'tipo': 'resumo', 'quando': _as(sabado, HORA_RESUMO),
-                       'titulo': "💰 Resumo da semana",
-                       'texto': f"{_br(sem)} peças na semana · R$ {_br(metas.ganho(sem, cfg), 2)} "
-                                f"(cada peça a R$ {_br(valor, 2)}). Bom pagamento!"})
+        topo = int(cfg['meta_bonus'])
+        p = {'id': IDS['resumo'], 'tipo': 'resumo', 'quando': _as(sabado, HORA_RESUMO),
+             'titulo': "💰 Resumo da semana",
+             'texto': f"{_br(sem)} peças na semana · R$ {_br(ganho_sem, 2)} "
+                      f"(cada peça a R$ {_br(valor, 2)}). Bom pagamento!"}
+        p.update(_card('resumo', sabado, min(sem, topo), topo, f"{_br(sem)} peças · R$ {_br(valor, 2)} cada",
+                       f"R$ {_br(ganho_sem, 2)}"))
+        planos.append(p)
     return planos
+
+
+def aviso_faixa_nova(antes, depois, cfg, hoje=None):
+    """O aviso de FAIXA NOVA quando as pecas da semana passam de `antes` para
+    `depois` cruzando o inicio de uma faixa (ou None)."""
+    cfg = metas.completar_cfg(cfg)
+    i0 = metas.faixa_de(antes, cfg)[0]
+    i1, ini, valor, _n = metas.faixa_de(depois, cfg)
+    if i1 <= i0:
+        return None
+    hoje = hoje or datetime.now().date()
+    prox = metas.proxima_faixa(depois, cfg)
+    p = {'id': ID_FAIXA_NOVA, 'tipo': 'faixa_nova', 'quando': None,
+         'titulo': f"⭐ Faixa nova: R$ {_br(valor, 2)}",
+         'texto': f"A semana passou de {_br(ini)} peças: todas as peças da semana valem "
+                  f"R$ {_br(valor, 2)} agora!"}
+    if prox:
+        p.update(_card('faixa_nova', hoje, depois, prox['inicio'], f"Próxima: {_br(prox['inicio'])} peças",
+                       f"Semana: {_br(depois)} · R$ {_br(metas.ganho(depois, cfg), 2)}"))
+    else:
+        p.update(_card('faixa_nova', hoje, 1, 1, "Faixa máxima!",
+                       f"Semana: {_br(depois)} · R$ {_br(metas.ganho(depois, cfg), 2)}"))
+    return p
 
 
 # ── Android ──────────────────────────────────────────────────────────────
@@ -123,25 +251,17 @@ def pedir_permissao():
         print(f"[lembretes] permissao: {e}")
 
 
-def _agendar(nid, titulo, texto, quando_ms, cancelar_so=False):
-    """Agenda (ou so cancela) o aviso `nid` no AlarmManager -> o recebedor
-    org.travetefocus.Lembrete mostra o aviso na hora, com o app fechado."""
-    from jnius import autoclass, cast
-    PA = autoclass('org.kivy.android.PythonActivity')
-    Context = autoclass('android.content.Context')
+CAMPOS_CARD = ('pose', 'fala', 'prog', 'prog_max', 'rotulo', 'semana')
+
+
+def _intent(ctx, nid, titulo, texto, card=None):
+    """O Intent para o recebedor, com o texto e o card do aviso `nid`."""
+    from jnius import autoclass
     Intent = autoclass('android.content.Intent')
-    PendingIntent = autoclass('android.app.PendingIntent')
-    AlarmManager = autoclass('android.app.AlarmManager')
-    sdk = _sdk()
-    ctx = PA.mActivity
-    am = cast('android.app.AlarmManager', ctx.getSystemService(Context.ALARM_SERVICE))
-    flags = PendingIntent.FLAG_UPDATE_CURRENT
-    if sdk >= 23:
-        flags |= PendingIntent.FLAG_IMMUTABLE
     it = Intent()
     it.setClassName(ctx.getPackageName(), RECEBEDOR)
     it.setAction('org.travetefocus.LEMBRETE_%d' % nid)
-    if not cancelar_so:
+    if titulo is not None:
         # os textos vao num Bundle com putString: o putExtra tem varias versoes
         # e o pyjnius escolhia a errada para texto do Python (chegava como
         # bytes: o aviso aparecia so com "TraveteFocus", sem titulo nem texto)
@@ -150,7 +270,30 @@ def _agendar(nid, titulo, texto, quando_ms, cancelar_so=False):
         b.putString('id', str(nid))
         b.putString('titulo', str(titulo))
         b.putString('texto', str(texto))
+        for k in CAMPOS_CARD:
+            v = (card or {}).get(k)
+            if v is not None and v != '':
+                b.putString(k, str(v))                 # os numeros tambem vao como texto
         it.putExtras(b)
+    return it
+
+
+def _agendar(nid, titulo, texto, quando_ms, cancelar_so=False, card=None):
+    """Agenda (ou so cancela) o aviso `nid` no AlarmManager -> o recebedor
+    org.travetefocus.Lembrete mostra o aviso na hora, com o app fechado.
+    `card`: o plano (pose, fala, prog...) para o card HUD."""
+    from jnius import autoclass, cast
+    PA = autoclass('org.kivy.android.PythonActivity')
+    Context = autoclass('android.content.Context')
+    PendingIntent = autoclass('android.app.PendingIntent')
+    AlarmManager = autoclass('android.app.AlarmManager')
+    sdk = _sdk()
+    ctx = PA.mActivity
+    am = cast('android.app.AlarmManager', ctx.getSystemService(Context.ALARM_SERVICE))
+    flags = PendingIntent.FLAG_UPDATE_CURRENT
+    if sdk >= 23:
+        flags |= PendingIntent.FLAG_IMMUTABLE
+    it = _intent(ctx, nid, None if cancelar_so else titulo, texto, card)
     pi = PendingIntent.getBroadcast(ctx, nid, it, flags)
     am.cancel(pi)
     if cancelar_so:
@@ -226,7 +369,7 @@ def aplicar(planos, ligado=True):
             if p is None:
                 _agendar(nid, '', '', 0, cancelar_so=True)
             else:
-                _agendar(nid, p['titulo'], p['texto'], p['quando'].timestamp() * 1000)
+                _agendar(nid, p['titulo'], p['texto'], p['quando'].timestamp() * 1000, card=p)
     except Exception as e:
         print(f"[lembretes] agendar: {e}")
 
@@ -237,10 +380,36 @@ def replanejar(app):
         return
     try:
         ligado = bool(getattr(app, 'lembretes', True))
-        planos = planejar(datetime.now(), app.memorias, app.registros, app.config_ganhos) if ligado else []
+        planos = planejar(datetime.now(), app.memorias, app.registros, app.config_ganhos,
+                          _seq(app)) if ligado else []
         aplicar(planos, ligado)
     except Exception as e:
         print(f"[lembretes] {e}")
+
+
+def _seq(app, hoje=None):
+    """A sequencia de dias do app, se ainda vale hoje (senao 0)."""
+    try:
+        hoje = hoje or datetime.now().date()
+        ultimo = metas._dia_de(getattr(app, 'ultima_data', ''))
+        return int(getattr(app, 'streak', 0)) if metas.sequencia_vale(ultimo, hoje) else 0
+    except Exception:
+        return 0
+
+
+def avisar_agora(plano):
+    """Mostra o card `plano` NA HORA pelo recebedor (o mesmo card dos
+    agendados): o aviso de FAIXA NOVA. Devolve '' ou o erro."""
+    if not _android() or not plano:
+        return 'Os avisos só funcionam no celular.'
+    try:
+        from jnius import autoclass
+        ctx = autoclass('org.kivy.android.PythonActivity').mActivity
+        ctx.sendBroadcast(_intent(ctx, int(plano['id']), plano['titulo'], plano['texto'], plano))
+        return ''
+    except Exception as ex:
+        print(f"[lembretes] avisar agora: {ex}")
+        return str(ex)[:160]
 
 
 # ── diagnostico (o painel AVISOS do menu) ────────────────────────────────
@@ -298,7 +467,9 @@ def testar(seg=5):
         import time
         _agendar(ID_TESTE, "⚔ TraveteFocus: teste 2 de 2",
                  "Aviso agendado: é assim que os lembretes vão chegar na hora certa.",
-                 (time.time() + seg) * 1000)
+                 (time.time() + seg) * 1000,
+                 card={'pose': 'guarda', 'fala': "Se chegou, está tudo certo. Pode confiar nos avisos!",
+                       'prog': 2, 'prog_max': 2, 'rotulo': "Teste: 2 / 2", 'semana': "Card do TraveteFocus"})
         e2 = ''
     except Exception as ex:
         e2 = str(ex)[:160]
@@ -365,7 +536,7 @@ def proximos(app, agora=None):
     """[(quando 'qua 16:00', titulo)] dos avisos agendados com os dados de agora."""
     agora = agora or datetime.now()
     try:
-        planos = planejar(agora, app.memorias, app.registros, app.config_ganhos)
+        planos = planejar(agora, app.memorias, app.registros, app.config_ganhos, _seq(app, agora.date()))
     except Exception as ex:
         print(f"[lembretes] proximos: {ex}")
         return []

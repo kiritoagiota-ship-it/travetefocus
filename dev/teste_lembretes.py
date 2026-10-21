@@ -24,8 +24,8 @@ def turno(data, total):
     return {'data': f'{data}  17:00', 'total': total, 'xp': total * 3}
 
 
-def plano(agora, memorias=(), registros=()):
-    return {p['tipo']: p for p in lembretes.planejar(agora, list(memorias), list(registros), CFG)}
+def plano(agora, memorias=(), registros=(), seq=0):
+    return {p['tipo']: p for p in lembretes.planejar(agora, list(memorias), list(registros), CFG, seq)}
 
 
 # 20/10/2026 e terca-feira (segunda = 19/10, sabado = 24/10, domingo = 25/10)
@@ -91,6 +91,49 @@ caso('semana vazia: sem resumo', 'resumo' not in p)
 # 11) ids fixos e sempre os mesmos
 todos = lembretes.planejar(datetime(2026, 10, 23, 7, 0), [turno('19/10/2026', 2300)], [], CFG)
 caso('ids conhecidos', all(x['id'] in lembretes.IDS.values() for x in todos))
+
+# 12) sequencia em risco: terca 9h, nada hoje, 4 dias seguidos -> 15h
+p = plano(datetime(2026, 10, 20, 9, 0), seq=4)
+caso('risco 15h', 'risco' in p and p['risco']['quando'] == datetime(2026, 10, 20, 15, 0), p.get('risco'))
+caso('risco: texto com os dias', 'risco' in p and '4 dias' in p['risco']['titulo'], p.get('risco', {}).get('titulo'))
+caso('risco: Yoru assustado', p.get('risco', {}).get('pose') == 'susto')
+caso('risco: sequencia curta nao avisa', 'risco' not in plano(datetime(2026, 10, 20, 9, 0), seq=1))
+caso('risco: ja lancou nao avisa', 'risco' not in plano(
+    datetime(2026, 10, 20, 9, 0), registros=[['Camisa', '50', 150, '', datetime(2026, 10, 20, 8, 30).timestamp()]], seq=4))
+caso('risco: passou das 15h nao avisa', 'risco' not in plano(datetime(2026, 10, 20, 15, 30), seq=4))
+caso('risco: domingo nao avisa', 'risco' not in plano(datetime(2026, 10, 25, 9, 0), seq=4))
+caso('risco: sabado avisa', 'risco' in plano(datetime(2026, 10, 24, 9, 0), seq=4))
+
+# 13) fechamento do dia: terca 13h com 600 hoje -> 20h; sabado -> 13h
+mems = [turno(seg, 600)]
+regs = [['Calca', '600', 1800, '', datetime(2026, 10, 20, 10, 0).timestamp()]]
+p = plano(datetime(2026, 10, 20, 13, 0), mems, regs)
+caso('fechamento 20h', 'fechamento' in p and p['fechamento']['quando'] == datetime(2026, 10, 20, 20, 0), p.get('fechamento'))
+caso('fechamento: pecas e XP de hoje', 'fechamento' in p and '600 peças' in p['fechamento']['texto']
+     and '+1.800 XP' in p['fechamento']['texto'], p.get('fechamento', {}).get('texto'))
+caso('fechamento: barra da semana ate a faixa', p.get('fechamento', {}).get('prog') == 1200
+     and p['fechamento']['prog_max'] == 2500, p.get('fechamento'))
+caso('fechamento: sem lote nao avisa', 'fechamento' not in plano(datetime(2026, 10, 20, 13, 0), mems))
+regs_sab = [['Calca', '150', 450, '', datetime(2026, 10, 24, 8, 0).timestamp()]]
+p = plano(datetime(2026, 10, 24, 9, 0), mems, regs_sab)
+caso('fechamento sabado 13h', 'fechamento' in p and p['fechamento']['quando'] == datetime(2026, 10, 24, 13, 0))
+
+# 14) o card: todo aviso tem pose, fala e numeros coerentes
+todos = lembretes.planejar(datetime(2026, 10, 20, 9, 0), [turno(seg, 1200)], [], CFG, 3)
+caso('todos com o card', all(x.get('pose') in ('guarda', 'meta', 'vitoria', 'susto') and x.get('fala')
+                             and 0 <= x['prog'] and x['prog_max'] >= 0 for x in todos), todos)
+caso('fala igual o dia todo', lembretes._fala('meta', datetime(2026, 10, 20).date())
+     == lembretes._fala('meta', datetime(2026, 10, 20).date()))
+p = plano(datetime(2026, 10, 20, 9, 0), [turno(seg, 300)], [['Camisa', '50', 150, '', datetime(2026, 10, 20, 8, 30).timestamp()]])
+caso('meta: barra hoje/meta', p['meta']['prog'] == 50 and p['meta']['prog_max'] > 50, p.get('meta'))
+
+# 15) faixa nova (na hora): passar de 2.500 avisa; continuar na mesma faixa nao
+f = lembretes.aviso_faixa_nova(2450, 2530, CFG)
+caso('faixa nova: aviso', f is not None and '0,27' in f['titulo'] and f['id'] == lembretes.ID_FAIXA_NOVA, f)
+caso('faixa nova: barra ate a proxima', f is not None and f['prog_max'] == 3000 and f['prog'] == 2530, f)
+caso('faixa nova: mesma faixa nao avisa', lembretes.aviso_faixa_nova(2510, 2600, CFG) is None)
+f = lembretes.aviso_faixa_nova(2990, 3010, CFG)
+caso('faixa nova: a maxima', f is not None and '0,30' in f['titulo'] and f['rotulo'] == 'Faixa máxima!', f)
 
 print(f'{casos[0]} casos, {len(falhas)} falhas')
 sys.exit(1 if falhas else 0)

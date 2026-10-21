@@ -8,7 +8,7 @@ package.domain = com.travetefocus
 # ── CÓDIGO FONTE ─────────────────────────────────────────────────────────────
 source.dir = .
 source.include_exts = py,kv,ttf,json,wav,mp3,ogg,png,jpg,csv,bin,txt
-source.exclude_dirs = tests,bin,.buildozer,.git,__pycache__,.github,dev,java,res_notif,docs
+source.exclude_dirs = tests,bin,.buildozer,.git,__pycache__,.github,dev,java,res_notif,res_layout,docs
 
 # ── VERSÃO ───────────────────────────────────────────────────────────────────
 version = 1.0.4
@@ -38,7 +38,7 @@ android.permissions = WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, VIBRATE, PO
 # recebedor java/org/travetefocus/Lembrete.java mostra o aviso (o <receiver>
 # entra no AndroidManifest pelo .github/manifest_lembrete.py, no build)
 android.add_src = java
-android.add_resources = res_notif:drawable
+android.add_resources = res_notif:drawable, res_layout:layout
 
 # ── APIs ANDROID ─────────────────────────────────────────────────────────────
 # android.api     = versão alvo (Play Store exige 34+)

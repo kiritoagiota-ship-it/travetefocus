@@ -355,11 +355,25 @@ class TelaRegistro(Screen):
                 v = metas.faixas(cfg)[fx1][1]
                 Clock.schedule_once(lambda dt: self._festa(
                     "FAIXA NOVA!", f"Todas as peças da semana valem R$ {fmt_br(v, 2)}", True), atraso)
+                self._avisar_faixa(sem0, sem1, cfg)
             elif meta0 > 0 and hj0 < meta0 <= hj1:
                 Clock.schedule_once(lambda dt: self._festa(
                     "META DE HOJE BATIDA!", f"{fmt_br(hj1)} peças hoje", False), atraso)
         except Exception as e:
             print(f"[registro] comemorar: {e}")
+
+    def _avisar_faixa(self, antes, depois, cfg):
+        """O card de FAIXA NOVA tambem na barra do celular (fica la de registro)."""
+        try:
+            app = App.get_running_app()
+            if not getattr(app, 'lembretes', True):
+                return
+            import lembretes
+            plano = lembretes.aviso_faixa_nova(antes, depois, cfg)
+            if plano:
+                lembretes.avisar_agora(plano)
+        except Exception as e:
+            print(f"[registro] aviso faixa: {e}")
 
     def _festa(self, texto, sub, grande):
         try:
