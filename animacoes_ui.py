@@ -617,9 +617,10 @@ _ICONE_CORES = {
 }
 
 
-def icone_pixel(botao, nome, u=None, margem=None, lado='esq'):
+def icone_pixel(botao, nome, u=None, margem=None, lado='esq', onde=None):
     """Um icone de pixel art animado no lado esquerdo (ou direito) do `botao`
-    (30 quadros por segundo, so com o botao na tela)."""
+    (30 quadros por segundo, so com o botao na tela). onde(ic) -> (x, y): um
+    lugar proprio (ex.: o canto de cima dos cartoes do menu)."""
     from kivy.uix.widget import Widget
     mapa = _ICONES.get(nome)
     if mapa is None or getattr(botao, '_icone_ok_' + lado, False):
@@ -637,6 +638,10 @@ def icone_pixel(botao, nome, u=None, margem=None, lado='esq'):
     estado = {'t': 0.0, 'q': -1}
 
     def _onde(*_):
+        if onde is not None:
+            x, y = onde(ic)
+            ic.pos = (int(x), int(y))
+            return
         m = margem if margem is not None else dp(26)
         x = botao.x + m if lado == 'esq' else botao.right - m - ic.width
         ic.pos = (int(x), int(botao.center_y - ic.height / 2.0))

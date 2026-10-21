@@ -722,7 +722,8 @@ def roteiro_mem():
     """So a entrada nas Memorias (duas vezes), para ver quadro a quadro."""
     def ir(nome):
         return lambda: app().mudar_tela(nome)
-    passos = [(0.5, lambda: fase('entra memorias')), (0.01, ir('memorias')), (2.5, lambda: fase('volta menu')),
+    passos = [(float(os.environ.get('MENU_SEG', '0.5')), lambda: fase('entra memorias')),   # MENU_SEG: mais tempo no menu
+              (0.01, ir('memorias')), (2.5, lambda: fase('volta menu')),
               (0.01, ir('menu')), (1.5, lambda: fase('entra memorias 2')), (0.01, ir('memorias')), (2.5, fim)]
     Roteiro(passos).rodar()
 

@@ -67,10 +67,12 @@ class MenuPrincipal(Screen):
         except Exception as e:
             print(f"[menu] vida: {e}")
         try:
-            # o Link Start: dados correndo pelas bordas (a maquina e as setas
-            # sao do proprio botao, menu_hud.BotaoLinkStart)
-            from animacoes_ui import pacotes_de_luz
-            pacotes_de_luz(self.ids.btn_link_start)
+            # o Link Start: NerveGear a esquerda, setas a direita, dados correndo
+            from animacoes_ui import icone_pixel, pacotes_de_luz
+            ls = self.ids.btn_link_start
+            icone_pixel(ls, 'nervegear', u=max(2.0, round(dp(2.6))), margem=dp(20))
+            icone_pixel(ls, 'setas', u=max(2.0, round(dp(2.4))), margem=dp(22), lado='dir')
+            pacotes_de_luz(ls)
         except Exception as e:
             print(f"[menu] link start: {e}")
         self._painel()

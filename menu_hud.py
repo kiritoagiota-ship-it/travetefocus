@@ -1,8 +1,8 @@
 """
 menu_hud.py — TraveteFocus
 O menu no modelo HUD (1.10): cabecalho com o retrato do Yoru (o olho aceso),
-painel de 3 quadros (hoje / nivel / sequencia), SYSTEM LINK START com a
-maquina de costura, cartoes 2x2 com cenas em pixel art animadas, botoes com
+painel de 3 quadros (hoje / nivel / sequencia), SYSTEM LINK START com o
+capacete NerveGear, cartoes 2x2 com cenas em pixel art animadas, botoes com
 icone e o rodape com a versao.
 
 A pixel art e feita em codigo (Px): cada quadro de cada animacao vira uma
@@ -295,73 +295,6 @@ def _q_calendario():
     return quadros
 
 
-def _m_grafico():
-    p = Px(15, 14)
-    for x, h in ((1, 4), (5, 6), (9, 9)):
-        p.ret(x, 13 - h, 3, h, 'c')
-        p.ret(x, 13 - h, 3, 1, 'l')
-    p.linha(1, 7, 5, 4, 'l')
-    p.linha(5, 4, 8, 5, 'l')
-    p.linha(8, 5, 13, 1, 'l')
-    p.ret(11, 1, 3, 1, 'l')
-    p.ret(13, 1, 1, 3, 'l')
-    p.contorno()
-    return p.mapa()
-
-
-def _m_carteira(sobe=0):
-    p = Px(16, 14)
-    p.ret(3, 1 - sobe + 1, 9, 4, 'n')
-    p.ret(5, 2 - sobe + 1, 5, 1, 'g')
-    p.ret(0, 5, 15, 9, 'g')
-    p.ret(0, 5, 15, 2, 'h')
-    p.ret(10, 8, 5, 3, 'd')
-    p.p(12, 9, 'y')
-    p.contorno()
-    return p.mapa()
-
-
-_MAPA_CRISTAL = ["....KK....",
-                 "...KbbK...",
-                 "..KbzbbK..",
-                 ".KbzbbbbK.",
-                 "KbzbbbbbBK",
-                 "KbbbbbbbBK",
-                 ".KbbbbbBK.",
-                 "..KbbbBK..",
-                 "...KbBK...",
-                 "....KK...."]
-
-_MAPA_CALC = ["KKKKKKKKK",
-              "KoooooooK",
-              "KoVVVVVoK",
-              "KoVVVVVoK",
-              "KoooooooK",
-              "KoWoWoWoK",
-              "KoooooooK",
-              "KoWoWoWoK",
-              "KoooooooK",
-              "KKKKKKKKK"]
-
-
-def _m_maquina(agulha=2):
-    p = Px(20, 15)
-    p.ret(0, 12, 20, 3, 'd')
-    p.ret(1, 12, 18, 1, 'c')
-    p.ret(14, 3, 4, 9, 'c')
-    p.ret(3, 2, 15, 3, 'c')
-    p.ret(3, 2, 15, 1, 'l')
-    p.ret(2, 2, 4, 6, 'c')
-    p.ret(2, 2, 1, 6, 'l')
-    p.ret(9, 0, 2, 2, 'w')
-    p.circ(18.5, 5, 1.6, 'd')
-    p.ret(3, 8, 1, agulha, 'W')
-    p.ret(0, 11, 10, 1, 'f')
-    p.p(16, 6, 'G')
-    p.contorno()
-    return p.mapa()
-
-
 def _q_setas(n=3, larg=2):
     """Chevrons >>> que acendem em sequencia ('z' aceso, 'e' apagado)."""
     w = n * 4 + 1
@@ -609,18 +542,6 @@ def quadros(nome):
         mapas, cores = _q_nivel(), _P_ROXO
     elif nome == 'calendario':
         mapas, cores = _q_calendario(), _P_LARANJA
-    elif nome == 'grafico':
-        mapas, cores = _brilho_mapas(_m_grafico()), _P_CIANO
-    elif nome == 'carteira':
-        mapas, cores = [_m_carteira(0)] * 6 + [_m_carteira(1)] * 2 + [_m_carteira(2)] * 3 + [_m_carteira(1)] * 2, _P_VERDE
-    elif nome == 'cristal':
-        mapas, cores = _brilho_mapas(_MAPA_CRISTAL, nao=('K', '.', 'B')), _P_ROXO
-    elif nome == 'calculadora':
-        mapas, cores = _brilho_mapas(_MAPA_CALC, nao=('K', '.', 'o')), _P_LARANJA
-    elif nome == 'maquina':
-        mapas, cores = [_m_maquina(a) for a in (1, 2, 3, 2)], _P_CIANO
-    elif nome == 'setas':
-        mapas, cores = _q_setas(3), _P_CIANO
     elif nome.startswith('setas2_'):
         cor = nome.split('_', 1)[1]
         pal = {'roxo': _P_ROXO, 'ciano': _P_CIANO, 'verde': _P_VERDE, 'laranja': _P_LARANJA}[cor]
@@ -704,16 +625,19 @@ class SpritePixel(Widget):
 #  CABECALHO: moldura HUD + retrato do Yoru
 # ═══════════════════════════════════════════════════════════
 class CabecalhoMenu(FloatLayout):
-    """Moldura HUD do topo do menu; o retrato do Yoru (de perfil, respirando
-    e piscando, com o olho aceso) fica do lado direito, recortado pela
-    moldura e escurecido para os textos lerem por cima."""
+    """Moldura HUD do topo do menu; o retrato do Yoru em pixel art grande
+    (yoru_retrato.py, feito por dev/retrato_pixel.py) fica do lado direito,
+    recortado pela moldura e apagado para o lado dos textos. Animacoes: o
+    cabelo balanca, ele pisca (as vezes duas vezes), respira (1 pixel) e o
+    olho brilha com um rastro de luz."""
     FUNDO = (0.01, 0.03, 0.08)
+    CABELO = ('normal', 'vento_a', 'normal', 'vento_b')
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._k = None
-        self._ps = None
-        self._vivo = False
+        self._u = 2
+        self._base = (0, 0)
+        self._atual = None
         with self.canvas.before:
             Color(*self.FUNDO, 0.88)
             self._m_fundo = Mesh(mode='triangle_fan')
@@ -731,13 +655,14 @@ class CabecalhoMenu(FloatLayout):
         self.add_widget(self.linha_luz)
         self._sv = StencilView(size_hint=(None, None))
         self.add_widget(self._sv, index=len(self.children))          # atras dos textos
+        with self._sv.canvas:
+            Color(1, 1, 1, 1)
+            self._r_yoru = Rectangle()
         with self._sv.canvas.after:
-            Color(0.0, 0.04, 0.16, 0.34)
+            Color(0.0, 0.04, 0.16, 0.2)
             self._r_tinta = Rectangle()
             Color(*self.FUNDO, 1)
             self._r_degrade = Rectangle(texture=_tex_degrade())
-            Color(*self.FUNDO, 0.85)
-            self._r_baixo = Rectangle(texture=_tex_degrade())
             self._c_olho = Color(0.3, 0.85, 1.0, 0)
             self._r_olho = Rectangle(texture=_tex_brilho())
             self._c_olho2 = Color(0.85, 1.0, 1.0, 0)
@@ -746,6 +671,15 @@ class CabecalhoMenu(FloatLayout):
             self._r_rastro = Rectangle(texture=_tex_brilho())
         self.bind(pos=self._arrumar, size=self._arrumar)
         RELOGIO.add(self)
+
+    @staticmethod
+    def _quadros():
+        q = _QUADROS.get('retrato')
+        if q is None:
+            import yoru_retrato as YR
+            q = {nome: textura_mapa(m, YR.CORES, ('hud', 'retrato', nome)) for nome, m in YR.MAPAS.items()}
+            _QUADROS['retrato'] = q
+        return q
 
     def _arrumar(self, *_):
         x, y, w, h = self.x, self.y, self.width, self.height
@@ -765,88 +699,71 @@ class CabecalhoMenu(FloatLayout):
         self._marcas[4].pos, self._marcas[4].size = (x + w * 0.22, y - dp(1.5)), (w * 0.03, dp(3))
         self.linha_luz.pos, self.linha_luz.size = (x + dp(16), y), (w - dp(32), dp(1))
         # o retrato: metade direita, dentro da moldura
-        sx, sy = x + w * 0.5, y + dp(2)
+        sx, sy = x + w * 0.46, y + dp(2)
         sw, sh = x + w - dp(2) - sx, h - dp(4)
         self._sv.pos, self._sv.size = (sx, sy), (sw, sh)
         self._r_tinta.pos, self._r_tinta.size = (sx, sy), (sw, sh)
-        self._r_degrade.pos, self._r_degrade.size = (sx, sy), (sw * 0.36, sh)
-        self._r_baixo.pos, self._r_baixo.size = (sx, sy), (sw, dp(1))
-        self._por_yoru()
-
-    def _por_yoru(self):
+        self._r_degrade.pos, self._r_degrade.size = (sx, sy), (sw * 0.3, sh)
         try:
-            import kirito as K
+            import yoru_retrato as YR
+            q = self._quadros()
+            u = max(1, int(round(sh * 1.04 / YR.GH)))       # pixel inteiro: nitido
+            self._u = u
+            tw, th = YR.GW * u, YR.GH * u
+            # a direita, o queixo e a gola chegando embaixo da moldura
+            self._base = (int(sx + sw - tw * 0.97), int(sy - u * 3))
+            self._r_yoru.size = (tw, th)
+            self._r_yoru.pos = self._base
+            if self._atual is None:
+                self._atual = 'normal'
+                self._r_yoru.texture = q['normal']
         except Exception as e:
-            print(f"[cabecalho] yoru: {e}")
-            return
-        sv = self._sv
-        ps = max(K.R, int(round(sv.height / 13.5)))
-        if self._k is None or abs(ps - self._ps) > 1:
-            if self._k is not None:
-                try:
-                    self._k.parar()
-                except Exception:
-                    pass
-                sv.remove_widget(self._k)
-            k = K.KiritoPixel(ps=ps)
-            k.espelhar = True                              # olhando para o nome
-            sv.add_widget(k)
-            k.mostrar(K.POSE_A['guarda'])
-            self._k, self._ps = k, ps
-            if self._vivo:
-                self.retomar()
-        k = self._k
-        try:
-            ol = K.olhos_texel(K.POSE_A['guarda'])[0]
-            lx, ly = k._local_texel(*ol)
-            k.pos = (int(sv.x + sv.width * 0.56 - lx), int(sv.y + sv.height * 0.6 - ly))
-        except Exception as e:
-            print(f"[cabecalho] pos: {e}")
+            print(f"[cabecalho] retrato: {e}")
 
-    # o Yoru so respira com o menu na tela (antes ele seguiria desenhando
-    # escondido atras das outras telas e da abertura)
+    # (o retrato e animado pelo relogio unico, que so anda com o menu na tela)
     def retomar(self):
-        self._vivo = True
-        k = self._k
-        if k is None:
-            return
-        try:
-            import kirito as K
-            if k.parent is None:
-                self._sv.add_widget(k)
-            k.idle(base=K.POSE_A['guarda'])
-        except Exception as e:
-            print(f"[cabecalho] idle: {e}")
+        pass
 
     def pausar(self):
-        self._vivo = False
-        k = self._k
-        if k is not None and k.parent is not None:
-            self._sv.remove_widget(k)                     # (sem pai ele para o relogio dele)
+        pass
+
+    def _quadro_em(self, t):
+        """Qual desenho mostrar no tempo t: o cabelo balanca devagar e ele
+        pisca a cada ~4 s (de vez em quando duas vezes)."""
+        ciclo, f = divmod(t, 4.3)
+        for ini in ((0.0, 0.32) if int(ciclo) % 3 == 2 else (0.0,)):
+            k = f - ini
+            if 0 <= k < 0.05 or 0.13 <= k < 0.18:
+                return 'meio'
+            if 0.05 <= k < 0.13:
+                return 'fechado'
+        return self.CABELO[int(t / 0.45) % 4]
 
     def tique(self, t):
-        k = self._k
-        if k is None or k.parent is None:
-            return
         try:
-            import kirito as K
-            p = k._pose
-            ol = K.olhos_texel(p)[0]
-            lx, ly = k._local_texel(*ol)
-            ex, ey = k.x + lx, k.y + ly
-            fechado = p.get('olhos') == 'f'
+            import yoru_retrato as YR
+            nome = self._quadro_em(t)
+            if nome != self._atual:
+                self._atual = nome
+                self._r_yoru.texture = self._quadros()[nome]
+            u = self._u
+            dy = u if math.sin(t * 1.4) > 0.55 else 0          # respira: sobe 1 pixel
+            bx, by = self._base
+            self._r_yoru.pos = (bx, by + dy)
+            ex = bx + YR.OLHO[0] * u
+            ey = by + dy + (YR.GH - YR.OLHO[1]) * u
+            fechado = nome in ('meio', 'fechado')
             pulso = 0.5 + 0.5 * math.sin(t * 2.4)
-            a = 0.0 if fechado else (0.6 + 0.35 * pulso)
-            r = dp(28) + dp(8) * pulso
-            self._c_olho.a = a
+            r = dp(26) + dp(8) * pulso
+            self._c_olho.a = 0.0 if fechado else (0.45 + 0.3 * pulso)
             self._r_olho.pos, self._r_olho.size = (ex - r / 2.0, ey - r / 2.0), (r, r)
-            r2 = dp(8)
-            self._c_olho2.a = 0.0 if fechado else 0.95
+            r2 = dp(6)
+            self._c_olho2.a = 0.0 if fechado else 0.7
             self._r_olho2.pos, self._r_olho2.size = (ex - r2 / 2.0, ey - r2 / 2.0), (r2, r2)
             # o rastro: uma risca de luz saindo do olho para tras (para a direita)
-            rl, ra = dp(46) + dp(10) * pulso, dp(5)
-            self._c_rastro.a = 0.0 if fechado else (0.35 + 0.25 * pulso)
-            self._r_rastro.pos, self._r_rastro.size = (ex - dp(6), ey - ra / 2.0 + dp(1)), (rl, ra)
+            rl, ra = dp(40) + dp(10) * pulso, dp(4)
+            self._c_rastro.a = 0.0 if fechado else (0.25 + 0.2 * pulso)
+            self._r_rastro.pos, self._r_rastro.size = (ex - dp(4), ey - ra / 2.0), (rl, ra)
         except Exception:
             pass
 
@@ -1044,27 +961,11 @@ class PainelStatus(Widget):
 
 
 # ═══════════════════════════════════════════════════════════
-#  SYSTEM LINK START (com a maquina de costura)
+#  SYSTEM LINK START (o capacete NerveGear e as setas de sempre)
 # ═══════════════════════════════════════════════════════════
 class BotaoLinkStart(BotaoAngularMenu):
-    """O botao principal: a maquina de costura costurando a esquerda e as
-    setas acendendo a direita."""
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self._maq = SpritePixel('maquina', fps=10)
-        self._set = SpritePixel('setas', fps=7)
-        self.add_widget(self._maq)
-        self.add_widget(self._set)
-        self.bind(pos=self._arrumar_ic, size=self._arrumar_ic)
-
-    def _arrumar_ic(self, *_):
-        u = max(2, int(min(dp(2.4), self.height / 30.0)))
-        self._maq.mudar_u(u)
-        self._set.mudar_u(u)
-        m = dp(22)
-        self._maq.pos = (int(self.x + m), int(self.y + (self.height - self._maq.height) / 2.0))
-        self._set.pos = (int(self.right - m - self._set.width), int(self.y + (self.height - self._set.height) / 2.0))
+    """O botao principal (o capacete NerveGear e as setas de sempre sao
+    postos pelo menu com icone_pixel)."""
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1103,8 +1004,7 @@ class CartaoMenu(BotaoAngularMenu):
         with self._cena.canvas.after:                       # a cena some para o lado do texto
             self._c_deg = Color(r * 0.1 + 0.01, g * 0.1 + 0.015, b * 0.1 + 0.04, 1)
             self._r_deg = Rectangle(texture=_tex_degrade())
-        self._ic = SpritePixel(self.icone, fps=8)
-        self.add_widget(self._ic)
+        self._ic = None                                    # (o icone de sempre: posto no 1o layout)
         self._set = SpritePixel(self.nome_setas, fps=5)
         self.add_widget(self._set)
         with self.canvas.after:
@@ -1176,10 +1076,14 @@ class CartaoMenu(BotaoAngularMenu):
             cena.pos = (int(x + w - dp(3) - cena.width), int(y + dp(3)))
             self._r_deg.pos = (cena.x, cena.y)
             self._r_deg.size = (cena.width * 0.5, cena.height)
-        # icone em cima a esquerda
-        ui = max(2, int(min(dp(2.4), h / 40.0)))
-        self._ic.mudar_u(ui)
-        self._ic.pos = (int(x + dp(14)), int(y + h - dp(12) - self._ic.height))
+        # icone em cima a esquerda: o MESMO icone animado de antes do menu novo
+        # (cristal, estrela piscando, moeda girando, calculadora)
+        ui = max(2, int(round(dp(2.2))))                   # (o mesmo tamanho do menu de antes)
+        if self._ic is None and self.icone:
+            from animacoes_ui import icone_pixel
+            icone_pixel(self, self.icone, u=ui,
+                        onde=lambda ic: (self.x + dp(14), self.top - dp(12) - ic.height))
+            self._ic = True
         # setas embaixo a direita
         self._set.mudar_u(max(2, ui - 1))
         self._set.pos = (int(x + w - dp(12) - self._set.width), int(y + dp(12)))
