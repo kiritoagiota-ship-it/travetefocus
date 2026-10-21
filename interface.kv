@@ -383,11 +383,15 @@
                 size_hint:   1, 1
                 padding:     [0, dp(10), 0, dp(6)]
 
-                # ── Cabecalho: moldura HUD, nome e o retrato do Yoru ──
+                # ── Cabecalho: moldura HUD, nome e o emblema holografico ──
                 CabecalhoMenu:
                     id:          cabecalho_menu
                     pos_hint:    {"center_x": 0.5}
                     size_hint:   (0.92, 150)
+                    EmblemaCabecalho:
+                        id:        emblema_menu
+                        size_hint: (0.38, 0.92)
+                        pos_hint:  {"right": 0.98, "center_y": 0.5}
                     Label:
                         text:      "NERVEGEAR INTERFACE\n// TRAVETE FOCUS"
                         font_name: "orbitron.ttf"

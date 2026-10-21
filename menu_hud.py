@@ -601,6 +601,182 @@ class SpritePixel(Widget):
                 self._r.texture = self._qs[i]
 
 
+# ── emblema do cabecalho: o capacete NerveGear (no lugar do personagem) ──
+def _q_emb_nervegear():
+    """O capacete NerveGear grande, nas cores do icone do Link Start: casco
+    prateado-azulado com frestas no alto, o visor ciano envolvendo a frente e
+    os modulos dos lados acesos. A luz varre o visor de tempos em tempos e
+    os modulos pulsam."""
+    W_, H_ = 50, 37
+    D = 5                                                    # a cupula mais alta (capacete, nao bone)
+    p = Px(W_, H_)
+    cx, cy, rx, ry = 24.5, 19.0 + D, 22.5, 17.5 + D
+    for y in range(0, 20 + D):                               # o casco (meia cupula)
+        for x in range(W_):
+            d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2
+            if d <= 1.0:
+                if (x - cx) < -rx * 0.45 and y < 14 + D or d < 0.55 and (x - cx) < -2:
+                    p.p(x, y, 'l')                           # o lado da luz
+                elif (x - cx) > rx * 0.5:
+                    p.p(x, y, 'n')                           # o lado da sombra
+                else:
+                    p.p(x, y, 'm')
+    for x in range(5, 45):                                   # a borda de luz no alto
+        u = (x - cx) / rx
+        if abs(u) < 1:
+            y = int(round(cy - ry * (1 - u * u) ** 0.5)) + 1
+            p.p(x, y, 'w' if x < 30 else 'l')
+    for gx in (16, 21, 28, 33):                              # as frestas no alto do casco
+        for y in range(5, 12 + D // 2):
+            p.p(gx, y, 'n')
+            p.p(gx + 1, y, 'k')
+    p.ret(18, 3, 14, 1, 'n')
+    # a parte de baixo (mais escura) e a borda
+    for y in range(20 + D, 28 + D):
+        x0 = 4 + (y - 20 - D) // 2
+        p.ret(x0, y, W_ - 2 * x0 - 1, 1, 'n')
+    p.ret(7, 27 + D, 35, 1, 'k')
+    # o visor envolvendo a frente
+    for y in range(11 + D, 21 + D):
+        x0 = 2 + abs(y - 16 - D) // 2
+        p.ret(x0, y, W_ - 2 * x0 - 1, 1, 'K')
+    for y in range(12 + D, 20 + D):
+        x0 = 4 + abs(y - 16 - D) // 2
+        p.ret(x0, y, W_ - 2 * x0 - 1, 1, 'v')
+    p.ret(6, 12 + D, W_ - 13, 1, 'e')                        # o reflexo de cima do visor
+    p.ret(10, 13 + D, 8, 1, 'e')
+    # os modulos dos lados
+    for mx in (2, 46):
+        p.circ(mx, 21 + D, 4.4, 'm')
+        p.circ(mx, 21 + D, 3.0, 'K')
+        p.circ(mx, 21 + D, 2.0, 'v')
+    p.contorno()
+    base = p.mapa()
+    quadros = []
+    seq = list(range(-4, 50, 3)) + [None] * 12
+    for i, col in enumerate(seq):
+        q = [list(r) for r in base]
+        if col is not None:                                  # a luz varrendo o visor (inclinada)
+            for y in range(12 + D, 20 + D):
+                for x in (col - (y - 12 - D) // 2, col + 1 - (y - 12 - D) // 2):
+                    if 0 <= x < W_ and q[y][x] in ('v', 'e'):
+                        q[y][x] = 'z'
+        acesos = (i // 4) % 2 == 0                           # os modulos pulsam
+        for mx in (2, 46):
+            for y in range(19 + D, 24 + D):
+                for x in range(mx - 2, mx + 3):
+                    if 0 <= x < W_ and q[y][x] == 'v' and acesos and abs(x - mx) + abs(y - 21 - D) <= 1:
+                        q[y][x] = 'z'
+        quadros.append([''.join(r) for r in q])
+    return quadros
+
+
+_P_EMB = {
+    'nervegear': {'K': (0.02, 0.03, 0.07), 'm': (0.52, 0.56, 0.7), 'l': (0.72, 0.76, 0.88), 'w': (0.9, 0.93, 1.0),
+                  'n': (0.3, 0.32, 0.44), 'k': (0.16, 0.17, 0.26), 'v': (0.0, 0.42, 0.62), 'e': (0.0, 0.7, 0.95),
+                  'z': (0.75, 1.0, 1.0)},
+}
+
+
+class EmblemaCabecalho(Widget):
+    """No lado direito do cabecalho: o capacete NerveGear em pixel art
+    flutuando sobre um projetor holografico (aneis embaixo, um cone de luz
+    sumindo para cima, particulas subindo e uma linha de varredura passando)."""
+    tipo = StringProperty('nervegear')
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._qs = []
+        self._i = -1
+        self._u = 1
+        self._base = (0, 0)
+        self._proj = (0, 0, 1, 1)
+        rng = random.Random(11)
+        with self.canvas:
+            self._c_cone = Color(0.0, 0.75, 1.0, 0.16)
+            self._m_cone = Mesh(mode='triangle_fan', texture=_tex_degrade())
+            Color(0.0, 0.85, 1.0, 0.35)
+            self._l_anel1 = Line(width=dp(1.2))
+            Color(0.0, 0.85, 1.0, 0.18)
+            self._l_anel2 = Line(width=dp(1))
+            Color(1, 1, 1, 1)
+            self._r = Rectangle()
+            self._c_varre = Color(0.6, 0.95, 1.0, 0.0)
+            self._r_varre = Rectangle()
+            Color(0.4, 0.95, 1.0, 0.7)
+            self._parts = [Rectangle() for _ in range(9)]
+        self._fase = [rng.random() for _ in self._parts]
+        self._xs = [rng.random() for _ in self._parts]
+        self.bind(pos=self._arrumar, size=self._arrumar, tipo=self._trocar)
+        self._trocar()
+        RELOGIO.add(self)
+
+    def _trocar(self, *_):
+        nome = 'emb_' + self.tipo
+        q = _QUADROS.get(nome)
+        if q is None:
+            gerar = {'nervegear': _q_emb_nervegear}[self.tipo]
+            q = [textura_mapa(m, _P_EMB[self.tipo], ('hud', nome, i)) for i, m in enumerate(gerar())]
+            _QUADROS[nome] = q
+        self._qs = q
+        self._i = -1
+        self._arrumar()
+
+    def _arrumar(self, *_):
+        x, y, w, h = self.x, self.y, self.width, self.height
+        if w < 20 or h < 20 or not self._qs:
+            return
+        tw, th = self._qs[0].size
+        u = max(1, int(min(w * 0.82 / tw, h * 0.62 / th)))
+        self._u = u
+        ew, eh = tw * u, th * u
+        self._base = (int(x + (w - ew) / 2.0), int(y + h * 0.3))
+        self._r.size = (ew, eh)
+        self._r.pos = self._base
+        if self._i < 0:
+            self._r.texture = self._qs[0]
+            self._i = 0
+        # o projetor: dois aneis (elipses) embaixo e o cone de luz subindo
+        cx, cy = x + w / 2.0, y + h * 0.17
+        rx, ry = ew * 0.48, dp(7)
+        self._proj = (cx, cy, rx, ry)
+        pts1, pts2 = [], []
+        for i in range(41):
+            a = 2 * math.pi * i / 40.0
+            pts1 += [cx + math.cos(a) * rx, cy + math.sin(a) * ry]
+            pts2 += [cx + math.cos(a) * rx * 1.25, cy - dp(4) + math.sin(a) * ry * 1.25]
+        self._l_anel1.points = pts1
+        self._l_anel2.points = pts2
+        topo = self._base[1] + eh * 0.9
+        # (u = 0 embaixo, opaco; u = 1 em cima, transparente: o cone some para cima)
+        vs = [cx - rx, cy, 0, 0.5, cx + rx, cy, 0, 0.5, cx + rx * 1.15, topo, 1, 0.5, cx - rx * 1.15, topo, 1, 0.5]
+        self._m_cone.vertices, self._m_cone.indices = vs, [0, 1, 2, 3]
+
+    def tique(self, t):
+        if not self._qs:
+            return
+        fps = 12
+        i = int(t * fps) % len(self._qs)
+        if i != self._i:
+            self._i = i
+            self._r.texture = self._qs[i]
+        bx, by = self._base
+        flut = int(round(math.sin(t * 1.6) * 2)) * max(1, self._u // 2)       # flutua
+        self._r.pos = (bx, by + flut)
+        ew, eh = self._r.size
+        k = (t * 0.45) % 1.0                                  # a linha de varredura subindo
+        self._c_varre.a = 0.28 * math.sin(math.pi * k)
+        self._r_varre.pos, self._r_varre.size = (bx, by + flut + eh * k), (ew, max(1, self._u))
+        self._c_cone.a = 0.14 + 0.05 * math.sin(t * 2.2)
+        cx, cy, rx, ry = self._proj                           # particulas subindo do projetor
+        for j, r in enumerate(self._parts):
+            f = (t * 0.35 + self._fase[j]) % 1.0
+            px_ = cx + (self._xs[j] - 0.5) * 2 * rx * (1 - f * 0.3)
+            py_ = cy + f * (eh * 1.05)
+            s = max(1, self._u) * (1 if j % 3 else 2)
+            r.pos, r.size = (int(px_), int(py_)), (s, s)
+
+
 # ═══════════════════════════════════════════════════════════
 #  CABECALHO: moldura HUD
 # ═══════════════════════════════════════════════════════════
