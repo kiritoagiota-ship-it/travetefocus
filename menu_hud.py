@@ -1310,19 +1310,27 @@ class FundoTela(Widget):
                 Color(r, g, b, 0.13)
                 Rectangle(texture=_tex_brilho(), pos=(x + w * 0.5 - w * 0.6, y + h * 0.52 - w * 0.6),
                           size=(w * 1.2, w * 1.2))
-                Color(r, g, b, 0.05)
+                # a grade inteira numa malha so (antes: uma Line por hexagono =
+                # ~350 desenhos separados por quadro, pesado no celular)
+                Color(r, g, b, 0.07)
                 dx, dy = rr * 1.5, rr * math.sqrt(3)
+                vs, ids = [], []
                 j = 0
                 yy = y - rr
                 while yy < y + h + rr:
                     xx = x - rr + (dx if j % 2 else 0)
                     while xx < x + w + rr:
-                        Line(points=self._hexa(xx, yy, rr * 0.92), width=dp(1))
+                        b0 = len(vs) // 4
+                        pts = self._hexa(xx, yy, rr * 0.92)
+                        for k in range(6):
+                            vs += [pts[2 * k], pts[2 * k + 1], 0, 0]
+                            ids += [b0 + k, b0 + (k + 1) % 6]
                         if x + rr < xx < x + w - rr and y + h * 0.12 < yy < y + h * 0.9:
                             centros.append((xx, yy))
                         xx += dx * 2
                     yy += dy / 2.0
                     j += 1
+                Mesh(mode='lines', vertices=vs, indices=ids)
                 # as celulas que acendem (um punhado, trocando de lugar)
                 celulas = []
                 for i in range(self.N_CELULAS):

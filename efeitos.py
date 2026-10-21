@@ -2195,70 +2195,66 @@ def tremer_tela(intensidade=20):
 #  PARTÍCULAS DE FUNDO
 # ═══════════════════════════════════════════════════════════
 
-class ParticulaFundo(Widget):
-    """
-    Partícula circular com glow suave.
-    Glow é centralizado em relação ao core — sem artefato de quadradinho.
-    """
+class FundoAnimado(Widget):
+    """As particulas do fundo (o mesmo visual de antes: 22 pontos ciano/roxos
+    com brilho, subindo devagar e acendendo/apagando). Antes cada uma era um
+    widget com animacoes do Kivy, que seguiam rodando com o menu fora da tela
+    (~6.000 atualizacoes por segundo em qualquer tela) e faziam o layout do
+    menu se refazer a cada quadro. Agora e um widget so, num relogio que so
+    anda com ele na tela."""
+    N = 22
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.size_hint = (None, None)
-        t = random.randint(2, 4)          # menor: 2-4px (era 2-5px)
-        self.size    = (t, t)
-        self.pos     = (random.randint(0, Window.width), random.randint(0, Window.height))
-        self.opacity = 0
-        if random.random() > 0.5:
-            r, g, b = 0.0, 0.88, 1.0    # ciano
-        else:
-            r, g, b = 0.55, 0.10, 0.95  # roxo
-        self._r = r; self._g = g; self._b = b; self._t = t
+        self._ps = []
         with self.canvas:
-            # Glow: elipse grande, opacidade baixa, corretamente centrada
-            self._cg = Color(r, g, b, 0)
+            for _ in range(self.N):
+                t = random.randint(2, 4)
+                if random.random() > 0.5:
+                    r, g, b = 0.0, 0.88, 1.0
+                else:
+                    r, g, b = 0.55, 0.10, 0.95
+                cg = Color(r, g, b, 0)
+                gl = Ellipse(size=(t * 6, t * 6))
+                cc = Color(min(r + 0.2, 1), min(g + 0.1, 1), b, 0)
+                cr = Ellipse(size=(t, t))
+                p = {'t': t, 'cg': cg, 'gl': gl, 'cc': cc, 'cr': cr}
+                self._nova(p, inicio=True)
+                self._ps.append(p)
+        self._ev = Clock.schedule_interval(self._tick, 1 / 30.)
+
+    @staticmethod
+    def _nova(p, inicio=False):
+        p['d'] = random.uniform(6, 14)
+        p['x'] = random.randint(0, max(1, int(Window.width)))
+        p['y0'] = random.randint(-50, max(-49, int(Window.height) - 80))
+        p['y1'] = p['y0'] + random.randint(100, 300)
+        p['op'] = random.uniform(0.65, 1.0) if p['t'] >= 4 else random.uniform(0.45, 0.80)
+        p['k'] = random.random() if inicio else 0.0
+
+    def _tick(self, dt):
+        if self.get_root_window() is None:
+            return                                   # fora da tela: nada
+        dt = min(dt, 0.1)
+        for p in self._ps:
+            p['k'] += dt / p['d']
+            if p['k'] >= 1.0:
+                self._nova(p)
+            k = p['k']
+            # acende (1/4), fica (1/2, um pouco mais fraca) e apaga (1/4)
+            if k < 0.25:
+                op = p['op'] * (k / 0.25)
+            elif k < 0.75:
+                op = p['op'] * (1.0 - 0.3 * (k - 0.25) / 0.5)
+            else:
+                op = p['op'] * 0.7 * (1.0 - (k - 0.75) / 0.25)
+            t = p['t']
+            x, y = p['x'], p['y0'] + (p['y1'] - p['y0']) * k
             gw = t * 6
-            self._gl = Ellipse(
-                pos=(self.x - gw/2 + t/2, self.y - gw/2 + t/2),
-                size=(gw, gw))
-            # Core: ponto sólido
-            self._cc = Color(min(r + 0.2, 1), min(g + 0.1, 1), b, 0)
-            self._cr = Ellipse(pos=self.pos, size=self.size)
-        self.bind(pos=self._upd, opacity=self._upd)
-
-    def _upd(self, *_):
-        t  = self._t
-        gw = t * 6
-        # Glow centrado no mesmo ponto que o core
-        self._gl.pos  = (self.x - gw/2 + t/2, self.y - gw/2 + t/2)
-        self._cr.pos  = self.pos
-        self._cg.a    = self.opacity * 0.20   # glow mais sutil
-        self._cc.a    = self.opacity
-
-
-class FundoAnimado(FloatLayout):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        Clock.schedule_once(self._init, 0.1)
-
-    def _init(self, dt):
-        # 40 partículas ao invés de 25
-        for _ in range(22):    # 40 -> 22: menos carga no Android
-            p = ParticulaFundo()
-            self.add_widget(p)
-            self._anim(p)
-
-    def _anim(self, p):
-        d    = random.uniform(6, 14)
-        p.y  = random.randint(-50, Window.height - 80)
-        p.x  = random.randint(0, Window.width)
-        alvo = p.y + random.randint(100, 300)
-        # Opacidade mais alta para partículas maiores
-        op_max = random.uniform(0.65, 1.0) if p.size[0] >= 4 else random.uniform(0.45, 0.80)
-        anim = (Animation(opacity=op_max,          duration=d * 0.25) +
-                Animation(opacity=op_max * 0.7,    duration=d * 0.50) +
-                Animation(opacity=0,               duration=d * 0.25))
-        Animation(y=alvo, duration=d).start(p)
-        anim.bind(on_complete=lambda *_: self._anim(p))
-        anim.start(p)
+            p['gl'].pos = (x - gw / 2.0 + t / 2.0, y - gw / 2.0 + t / 2.0)
+            p['cr'].pos = (x, y)
+            p['cg'].a = op * 0.20
+            p['cc'].a = op
 
 
 # ═══════════════════════════════════════════════════════════

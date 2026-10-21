@@ -85,7 +85,7 @@ if CENA == 'meta':                     # a regra real: 2.500 / 3.000 por semana
     dados['config_ganhos'] = {'valor_base': 0.25, 'valor_bonus': 0.30, 'meta_bonus': 3000, 'tipo_periodo': 'semanal'}
 with open(os.path.join(pasta_app, 'dados.json'), 'w', encoding='utf-8') as f:
     json.dump(dados, f, ensure_ascii=False)
-if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas', 'mem', 'link', 'ajustes', 'toques', 'trans', 'perfil', 'polir', 'avisos'):
+if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas', 'mem', 'link', 'ajustes', 'toques', 'trans', 'perfil', 'polir', 'avisos', 'fluidez'):
     with open(os.path.join(pasta_app, '.tf_session'), 'w') as f:
         f.write(str(time.time()))
 
@@ -957,6 +957,88 @@ def roteiro_polir():
     Roteiro(passos).rodar()
 
 
+def roteiro_fluidez():
+    """Em cada tela parada (depois da entrada): o tempo de Python por quadro
+    (cProfile) e quantos desenhos a placa de video faz por quadro (as
+    instrucoes que desenham no canvas da janela; Line conta a parte, porque
+    cada Line grossa e um desenho proprio)."""
+    import cProfile
+    import pstats
+    from kivy.graphics.instructions import InstructionGroup, VertexInstruction
+    from kivy.graphics import Line
+    est = {}
+
+    def contar():
+        n = {'desenhos': 0, 'linhas': 0}
+
+        def anda(g):
+            for ins in getattr(g, 'children', []):
+                if isinstance(ins, VertexInstruction):
+                    vazio = False                  # (sem geometria nao desenha: nao conta)
+                    try:
+                        if isinstance(ins, Line):
+                            vazio = len(ins.points) < 4
+                        elif hasattr(ins, 'indices') and hasattr(ins, 'vertices'):
+                            vazio = len(ins.indices) == 0
+                        elif hasattr(ins, 'size'):
+                            vazio = ins.size[0] <= 0 or ins.size[1] <= 0
+                    except Exception:
+                        pass
+                    if not vazio:
+                        n['desenhos'] += 1
+                        if isinstance(ins, Line):
+                            n['linhas'] += 1
+                if isinstance(ins, InstructionGroup):
+                    anda(ins)
+        anda(Window.canvas)
+        return n
+
+    def liga(nome):
+        def _f():
+            est['nome'] = nome
+            est['q0'] = Q[0]
+            est['t0'] = time.perf_counter()
+            est['p'] = cProfile.Profile()
+            est['p'].enable()
+        return _f
+
+    def desliga():
+        p = est['p']
+        p.disable()
+        dur = time.perf_counter() - est['t0']
+        quadros = max(1, Q[0] - est['q0'])
+        st = pstats.Stats(p)
+        tot = sum(v[2] for v in st.stats.values())
+        n = contar()
+        # quem desenha mais: os widgets da tela com mais instrucoes de desenho
+        por = {}
+        for w in Window.walk(restrict=False) if False else app().root.walk():
+            k = 0
+            for cv in (w.canvas.before, w.canvas, w.canvas.after):
+                for ins in cv.children:
+                    if isinstance(ins, VertexInstruction):
+                        k += 1
+                    elif isinstance(ins, InstructionGroup):
+                        k += sum(1 for i2 in ins.children if isinstance(i2, VertexInstruction))
+            if k:
+                por[type(w).__name__] = por.get(type(w).__name__, 0) + k
+        top = sorted(por.items(), key=lambda kv: -kv[1])[:8]
+        fase('   ' + ', '.join(f'{a}={b}' for a, b in top))
+        fase(f"FLUIDEZ {est['nome']}: python {tot * 1000 / quadros:.2f} ms/quadro, "
+             f"{n['desenhos']} desenhos ({n['linhas']} linhas)")
+        with open(os.path.join(SAIDA, f"fluidez_{est['nome']}.txt"), 'w', encoding='utf-8') as f:
+            st.stream = f
+            st.sort_stats('tottime').print_stats(18)
+
+    def ir(nome):
+        return lambda: app().mudar_tela(nome)
+    passos = [(2.5, liga('menu')), (2.0, desliga)]
+    for t in ('registro', 'memorias', 'progresso', 'ganhos', 'calculadora'):
+        passos += [(0.3, ir(t)), (2.8, liga(t)), (2.0, desliga), (0.2, ir('menu')), (1.2, lambda: None)]
+    passos.append((0.3, fim))
+    Roteiro(passos).rodar()
+
+
 def roteiro_avisos():
     """O painel do botao AVISOS com toques de verdade: abre, TESTAR AGORA,
     DESLIGAR (confere que desligou), LIGAR de novo, FECHAR."""
@@ -1219,7 +1301,7 @@ def esperar_menu(dt):
               'mem': roteiro_mem, 'link': roteiro_link,
               'ajustes': roteiro_ajustes, 'toques': roteiro_toques, 'trans': roteiro_trans,
               'perfil': roteiro_perfil, 'polir': roteiro_polir,
-              'avisos': roteiro_avisos}.get(CENA, roteiro_app)(), 1.0)
+              'avisos': roteiro_avisos, 'fluidez': roteiro_fluidez}.get(CENA, roteiro_app)(), 1.0)
 
 
 def roteiro_pin():

@@ -226,8 +226,8 @@ def aplicar_brilho_toque(botao, cor=None):
     try:
         with botao.canvas.after:
             c_faixa = Color(1, 1, 1, 0)
-            m_faixa = Mesh(mode='triangle_fan', indices=[0, 1, 2, 3],
-                           vertices=[0] * 16)
+            # (vazia ate o toque: parada, nao custa um desenho por quadro)
+            m_faixa = Mesh(mode='triangle_fan', indices=[], vertices=[])
             c_pulso = Color(0, 0.9, 1, 0)
             l_pulso = Line(width=dp(1.4), close=True)
             c_pulso2 = Color(0, 0.9, 1, 0)
@@ -269,6 +269,8 @@ def aplicar_brilho_toque(botao, cor=None):
                   cx(x0 + larg + incl), y + h, 1, 0.5,
                   cx(x0 + incl), y + h, 0, 0.5]
             m_faixa.vertices = vs
+            if not m_faixa.indices:
+                m_faixa.indices = [0, 1, 2, 3]
             c_faixa.rgba = (0.6 + 0.4 * r, 0.6 + 0.4 * g, 0.6 + 0.4 * b,
                             0.42 * math.sin(math.pi * k))
             # anel de luz no formato do botao (chanfrado): expande e some.
@@ -290,6 +292,11 @@ def aplicar_brilho_toque(botao, cor=None):
                 c_faixa.a = 0
                 c_pulso.a = 0
                 c_pulso2.a = 0
+                # acabou: tira a geometria (parado, o efeito nao desenha nada)
+                m_faixa.indices = []
+                m_faixa.vertices = []
+                l_pulso.points = []
+                l_pulso2.points = []
                 estado['ev'] = None
                 return False
         except Exception as e:
@@ -617,6 +624,38 @@ _ICONE_CORES = {
 }
 
 
+_TEX_ICONE = {}
+
+
+def _tex_icone(nome, pixels, w, h):
+    """O quadro do icone como UMA textura (guardada e reaproveitada): antes
+    cada pixel era um retangulo proprio - dezenas de desenhos por icone, a
+    cada quadro."""
+    chave = (nome, tuple(pixels))
+    t = _TEX_ICONE.get(chave)
+    if t is not None:
+        return t
+    buf = bytearray(w * h * 4)
+    for (gx, gy, ch, larg) in pixels:
+        c = _ICONE_CORES.get(ch)
+        if c is None:
+            continue
+        cor = bytes((int(c[0] * 255), int(c[1] * 255), int(c[2] * 255), 255))
+        for k in range(larg):
+            x = gx + k
+            if 0 <= x < w and 0 <= gy < h:
+                i = (gy * w + x) * 4
+                buf[i:i + 4] = cor
+    dados = bytes(buf)
+    t = Texture.create(size=(w, h), colorfmt='rgba')
+    t.mag_filter = t.min_filter = 'nearest'
+    t.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte')
+    t.add_reload_observer(lambda tx: tx.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte'))
+    if len(_TEX_ICONE) < 600:
+        _TEX_ICONE[chave] = t
+    return t
+
+
 def icone_pixel(botao, nome, u=None, margem=None, lado='esq', onde=None):
     """Um icone de pixel art animado no lado esquerdo (ou direito) do `botao`
     (30 quadros por segundo, so com o botao na tela). onde(ic) -> (x, y): um
@@ -628,10 +667,10 @@ def icone_pixel(botao, nome, u=None, margem=None, lado='esq', onde=None):
     setattr(botao, '_icone_ok_' + lado, True)
     u = u or max(2.0, round(dp(2.2)))
     ic = Widget(size_hint=(None, None), size=(len(mapa[0]) * u, len(mapa) * u))
-    grupos = {}
+    TW, TH = max(len(r) for r in mapa) + 1, len(mapa) + 2      # (folga: o pulinho e a moeda)
     with ic.canvas:
-        for ch, c in _ICONE_CORES.items():
-            grupos[ch] = (Color(c[0], c[1], c[2], 1), [])
+        Color(1, 1, 1, 1)
+        r_ic = Rectangle(pos=(0, 0), size=(TW * u, TH * u))
         c_luz = Color(1, 1, 1, 0)
         r_luz = [Rectangle(pos=(0, 0), size=(0, 0)) for _ in range(3)]
     botao.add_widget(ic)
@@ -645,24 +684,13 @@ def icone_pixel(botao, nome, u=None, margem=None, lado='esq', onde=None):
         m = margem if margem is not None else dp(26)
         x = botao.x + m if lado == 'esq' else botao.right - m - ic.width
         ic.pos = (int(x), int(botao.center_y - ic.height / 2.0))
+        r_ic.pos = ic.pos
     botao.bind(pos=_onde, size=_onde)
     _onde()
 
     def _pinta(pixels):
-        usados = {ch: 0 for ch in grupos}
-        for (gx, gy, ch, larg) in pixels:
-            cc, rects = grupos[ch]
-            i = usados[ch]
-            if i >= len(rects):
-                r = Rectangle(pos=(0, 0), size=(0, 0))
-                ic.canvas.insert(ic.canvas.indexof(cc) + 1 + len(rects), r)
-                rects.append(r)
-            rects[i].pos = (ic.x + gx * u, ic.y + gy * u)
-            rects[i].size = (u * larg, u)
-            usados[ch] = i + 1
-        for ch, (cc, rects) in grupos.items():
-            for r in rects[usados[ch]:]:
-                r.size = (0, 0)
+        r_ic.texture = _tex_icone(nome, pixels, TW, TH)
+        r_ic.pos = ic.pos
 
     def _quadro(dt):
         try:
