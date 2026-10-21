@@ -933,7 +933,7 @@ def roteiro_polir():
             return
         fase(f'{len(cs)} cartoes; recordes: {sum(1 for c in cs if c.recorde)}')
         c = max(cs, key=lambda w: w.to_window(*w.center)[1])   # o de cima da lista
-        fase(f'toca no cartao {c._l_data.text} em {no_meio(c)}')
+        fase(f"toca no cartao {c._txt['data'].get('texto')} em {no_meio(c)}")
         toque['t'] = dedo_desce(*no_meio(c))
 
     def pecas_hoje(n):
@@ -1046,7 +1046,27 @@ def roteiro_perfil():
 
             def _m(self, *a, _o=o, _n=cls.__name__, **k):
                 t0 = time.perf_counter()
-                r = _o(self, *a, **k)
+                if os.environ.get('PROF') == _n:            # PROF=TelaMemorias: tempo de cada metodo
+                    import types
+                    medidos = []
+                    for nome in dir(self):
+                        f = getattr(type(self), nome, None)
+                        if not isinstance(f, types.FunctionType) or nome.startswith('__') or nome == 'on_enter':
+                            continue
+
+                        def _t(*aa, _f=f, _nm=nome, **kk):
+                            t1 = time.perf_counter()
+                            try:
+                                return _f(*aa, **kk)
+                            finally:
+                                medidos.append((_nm, (time.perf_counter() - t1) * 1000))
+                        setattr(self, nome, types.MethodType(_t, self))
+                    r = _o(self, *a, **k)
+                    for nome, _v in medidos:
+                        self.__dict__.pop(nome, None)
+                    fase('PROF ' + ', '.join(f'{nm} {v:.1f}' for nm, v in medidos))
+                else:
+                    r = _o(self, *a, **k)
                 fase(f'PERFIL {_n}.on_enter: {(time.perf_counter() - t0) * 1000:.1f} ms')
                 return r
             cls.on_enter = _m
@@ -1067,6 +1087,22 @@ def roteiro_perfil():
                  f'({len(app().registros)} lotes, num quadro so)')
             return r
         TelaRegistro.atualizar = _medido
+        # quanto custa cada cartao (montados 4 por quadro: 4x isso = o quadro)
+        for cls, nome in ((TelaMemorias, '_item'), (TelaRegistro, '_make_item')):
+            o = getattr(cls, nome)
+            soma = {'n': 0, 't': 0.0, 'max': 0.0}
+
+            def _c(self, *a, _o=o, _s=soma, _n=cls.__name__ + '.' + nome, **k):
+                t0 = time.perf_counter()
+                r = _o(self, *a, **k)
+                d = time.perf_counter() - t0
+                _s['n'] += 1
+                _s['t'] += d
+                _s['max'] = max(_s['max'], d)
+                if _s['n'] % 10 == 0:
+                    fase(f"PERFIL {_n}: {_s['t'] * 1000 / _s['n']:.2f} ms cada (max {_s['max'] * 1000:.2f}, {_s['n']} cartoes)")
+                return r
+            setattr(cls, nome, _c)
     passos = [(0.01, mede_atualizar), (0.3, lambda: app().mudar_tela('ganhos')), (1.5, lambda: app().mudar_tela('calculadora')),
               (1.5, lambda: app().mudar_tela('progresso')), (1.5, lambda: app().mudar_tela('menu')),
               (2.0, liga('menu_parado')), (4.0, desliga),

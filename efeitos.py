@@ -1293,6 +1293,88 @@ def _icone_roupa(nome):
     return textura_mapa(_MAPAS_ROUPA[tipo], cores, ('roupa', tipo)), cor
 
 
+def _render_texto(texto, fonte, tamanho, cor, bold=False, markup=False, larg=None):
+    """Textura de um texto (CoreLabel: sem widget). larg: encurta com '...'."""
+    if markup:
+        from kivy.core.text.markup import MarkupLabel as _L
+    else:
+        _L = CoreLabel
+    kw = dict(text=texto, font_name=fonte, font_size=tamanho, bold=bold, color=cor)
+    if larg is not None:
+        kw.update(text_size=(max(1, int(larg)), None), shorten=True, shorten_from='right',
+                  max_lines=1, halign='left')
+    l = _L(**kw)
+    l.refresh()
+    return l.texture
+
+
+def aquecer_cartoes():
+    """Carrega uma vez as fontes/tamanhos e os icones dos cartoes (o primeiro
+    cartao das Memorias levava ~30 ms so abrindo as fontes, no meio da troca
+    de tela). Chamado com o menu parado."""
+    from kivy.metrics import sp
+    try:
+        for fonte, tam, bold, markup in (('rajdhani.ttf', sp(17), True, False), ('rajdhani.ttf', sp(12), False, False),
+                                         ('rajdhani.ttf', sp(12.5), True, False),
+                                         ('orbitron.ttf', sp(19), True, True), ('orbitron.ttf', sp(20), True, True)):
+            _render_texto("0 un." if not markup else f"0[size={int(dp(11))}] un.[/size]", fonte, tam, (1, 1, 1, 1),
+                          bold, markup)
+        # (sem criar cartoes de mentira: o lixo deles era recolhido pelo gc
+        # bem na entrada das Memorias - 30 ms)
+        textura_mapa(_MAPA_CALENDARIO, _CORES_CALENDARIO, 'calendario')
+        textura_mapa(_MAPA_TROFEU, _CORES_TROFEU, 'trofeu')
+    except Exception as e:
+        print(f"[cartao] aquecer: {e}")
+
+
+class _TextosCartao:
+    """Textos do cartao desenhados direto no canvas (texturas de CoreLabel).
+    Um Label (widget) por texto custava ~1 ms por cartao e a lista montava
+    aos trancos no celular."""
+
+    def _textos_init(self, chaves):
+        self._txt = {}
+        with self.canvas:
+            Color(1, 1, 1, 1)
+            for k in chaves:
+                self._txt[k] = {'r': Rectangle(), 'cfg': None, 'nat': None, 'curta': None, 'larg': None}
+
+    def _por_texto(self, chave, texto, fonte, tamanho, cor, bold=False, markup=False):
+        d = self._txt[chave]
+        cfg = (texto, fonte, tamanho, tuple(cor), bold, markup)
+        if cfg == d['cfg']:
+            return
+        d['cfg'] = cfg
+        d['curta'] = d['larg'] = None
+        d['texto'] = texto
+        try:
+            d['nat'] = _render_texto(texto, fonte, tamanho, cor, bold, markup) if texto else None
+        except Exception as e:
+            print(f"[cartao] texto: {e}")
+            d['nat'] = None
+
+    def _colocar(self, chave, x, cy, larg, direita=False):
+        d = self._txt[chave]
+        r, tex = d['r'], d['nat']
+        if tex is None or d['cfg'] is None:
+            r.size = (0, 0)
+            return
+        if tex.width > larg + 1 and not d['cfg'][5] and self.width >= dp(160):
+            # (so com a largura de verdade: antes do layout o cartao tem 100 px)
+            if d['larg'] != int(larg):                 # nao cabe: versao com '...'
+                texto, fonte, tamanho, cor, bold, _m = d['cfg']
+                d['larg'] = int(larg)
+                try:
+                    d['curta'] = _render_texto(texto, fonte, tamanho, cor, bold, False, larg)
+                except Exception:
+                    d['curta'] = tex
+            tex = d['curta'] or tex
+        r.texture = tex
+        r.size = tex.size
+        x0 = x + larg - tex.width if direita else x
+        r.pos = (int(x0), int(cy - tex.height / 2.0))
+
+
 _MAPA_LIXEIRA = [
     "...KKK...",
     "KKKKKKKKK",
@@ -1306,7 +1388,7 @@ _MAPA_LIXEIRA = [
 ]
 
 
-class CartaoLote(ItemGesto):
+class CartaoLote(_TextosCartao, ItemGesto):
     """O lote do Registro como cartao: icone da peca (pelo nome), nome em
     destaque, a hora do lancamento, a quantidade grande e o XP. Toque: afunda
     de leve e o icone da um pulinho; segurar: a luz contorna a borda; arrastar:
@@ -1331,17 +1413,7 @@ class CartaoLote(ItemGesto):
             PopMatrix()
             self._c_div = Color(0, 0.9, 1, 0.14)
             self._r_div = Rectangle()
-        def rotulo(fs, cor, fonte='rajdhani.ttf', bold=False, halign='left'):
-            l = Label(font_name=fonte, font_size=fs, bold=bold, color=cor, markup=True,
-                      halign=halign, valign='middle', shorten=True, shorten_from='right',
-                      size_hint=(None, None))
-            self.add_widget(l)
-            return l
-        from kivy.metrics import sp
-        self._l_nome = rotulo(sp(17), (0.88, 0.96, 1.0, 1), bold=True)
-        self._l_sub = rotulo(sp(12), (0.5, 0.58, 0.75, 1))
-        self._l_qtd = rotulo(sp(20), (0.0, 0.9, 1.0, 1), fonte='orbitron.ttf', bold=True, halign='right')
-        self._l_xp = rotulo(sp(12.5), (0.25, 1.0, 0.6, 1), bold=True, halign='right')
+        self._textos_init(('nome', 'sub', 'qtd', 'xp'))
         self.bind(pos=self._arrumar, size=self._arrumar)
         if dado is not None:
             self.definir(dado)
@@ -1365,10 +1437,12 @@ class CartaoLote(ItemGesto):
             sub = "hoje  ·  " + _time.strftime('%H:%M', _time.localtime(float(ts)))
         else:
             sub = "hoje"
-        self._l_nome.text = nome
-        self._l_sub.text = sub
-        self._l_qtd.text = f"{fmt_br(qtd)}[size={int(dp(11))}] un.[/size]"
-        self._l_xp.text = f"+{fmt_br(xp)} XP"
+        from kivy.metrics import sp
+        self._por_texto('nome', nome, 'rajdhani.ttf', sp(17), (0.88, 0.96, 1.0, 1), bold=True)
+        self._por_texto('sub', sub, 'rajdhani.ttf', sp(12), (0.5, 0.58, 0.75, 1))
+        self._por_texto('qtd', f"{fmt_br(qtd)}[size={int(dp(11))}] un.[/size]", 'orbitron.ttf', sp(20),
+                        (0.0, 0.9, 1.0, 1), bold=True, markup=True)
+        self._por_texto('xp', f"+{fmt_br(xp)} XP", 'rajdhani.ttf', sp(12.5), (0.25, 1.0, 0.6, 1), bold=True)
         tex, cor = _icone_roupa(nome)
         self._r_icone.texture = tex
         self._c_tile_ln.rgba = (cor[0], cor[1], cor[2], 0.85)
@@ -1392,22 +1466,18 @@ class CartaoLote(ItemGesto):
         larg_dir = dp(104)
         xn = tx + s + dp(12)
         wn = max(dp(40), x + w - larg_dir - dp(10) - xn)
-        for l, yy, hh in ((self._l_nome, y + h * 0.58, dp(26)), (self._l_sub, y + h * 0.26, dp(18))):
-            l.size = (wn, hh)
-            l.text_size = l.size
-            l.pos = (xn, yy - hh / 2.0)
+        self._colocar('nome', xn, y + h * 0.58, wn)
+        self._colocar('sub', xn, y + h * 0.26, wn)
         xd = x + w - larg_dir - dp(14)
         self._r_div.pos, self._r_div.size = (xd - dp(6), y + dp(12)), (dp(1), h - dp(24))
-        for l, yy, hh in ((self._l_qtd, y + h * 0.6, dp(30)), (self._l_xp, y + h * 0.26, dp(18))):
-            l.size = (larg_dir, hh)
-            l.text_size = l.size
-            l.pos = (xd, yy - hh / 2.0)
+        self._colocar('qtd', xd, y + h * 0.6, larg_dir, direita=True)
+        self._colocar('xp', xd, y + h * 0.26, larg_dir, direita=True)
 
     def on_press(self):
         super().on_press()
-        # o cartao afunda so um pouco (0,93 era muito para uma linha inteira)
+        # o cartao afunda so um pouco (a moldura agora tem um Scale so: 0,955)
         Animation.cancel_all(self, 'escala')
-        Animation(escala=0.975, duration=0.07, transition='out_quad').start(self)
+        Animation(escala=0.955, duration=0.07, transition='out_quad').start(self)
         # o icone da um pulinho
         t = [0.0]
         tr = self._tile_tr
@@ -1450,18 +1520,19 @@ _MAPA_TROFEU = [
     "...KyyyydK..",
     "..KKKKKKKK..",
 ]
+_CORES_CALENDARIO = {'K': (0.04, 0.03, 0.1), 'c': (0.62, 0.3, 1.0), 'd': (0.4, 0.15, 0.75),
+                     'w': (0.82, 0.84, 1.0), 'k': (0.55, 0.58, 0.7)}
+_CORES_TROFEU = {'K': (0.12, 0.08, 0.0), 'y': (1.0, 0.8, 0.15), 'l': (1.0, 0.97, 0.7), 'd': (0.7, 0.48, 0.0)}
 _DIAS_SEMANA = ('segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo')
 
 
-class CartaoMemoria(ListaItem):
+class CartaoMemoria(_TextosCartao, ListaItem):
     """Um dia das Memorias no mesmo estilo dos cartoes do Registro: calendario
     (ou trofeu no dia recorde), a data em destaque, o dia da semana e a hora,
     as pecas grandes e o XP. Toque: afunda de leve e o icone da um pulinho.
     (`text` continua com o texto antigo - so nao aparece.)"""
 
     def __init__(self, mem=None, recorde=False, **kwargs):
-        from kivy.uix.label import Label
-        from kivy.metrics import sp
         super().__init__(**kwargs)
         self.height = dp(66)
         self.cor_texto = [0, 0, 0, 0]
@@ -1478,29 +1549,14 @@ class CartaoMemoria(ListaItem):
             PopMatrix()
             self._c_div = Color(0.62, 0.3, 1.0, 0.16)
             self._r_div = Rectangle()
-
-        def rotulo(fs, cor, fonte='rajdhani.ttf', bold=False, halign='left'):
-            l = Label(font_name=fonte, font_size=fs, bold=bold, color=cor, markup=True,
-                      halign=halign, valign='middle', shorten=True, shorten_from='right',
-                      size_hint=(None, None))
-            self.add_widget(l)
-            return l
-        ouro = (1.0, 0.86, 0.25, 1)
-        self._l_data = rotulo(sp(17), ouro if recorde else (0.9, 0.95, 1.0, 1), bold=True)
-        self._l_sub = rotulo(sp(12), (0.85, 0.7, 0.3, 1) if recorde else (0.55, 0.55, 0.78, 1))
-        self._l_qtd = rotulo(sp(19), ouro if recorde else (0.75, 0.55, 1.0, 1), fonte='orbitron.ttf',
-                             bold=True, halign='right')
-        self._l_xp = rotulo(sp(12.5), (0.25, 1.0, 0.6, 1), bold=True, halign='right')
+        self._textos_init(('data', 'sub', 'qtd', 'xp'))
         if recorde:
-            cores = {'K': (0.12, 0.08, 0.0), 'y': (1.0, 0.8, 0.15), 'l': (1.0, 0.97, 0.7), 'd': (0.7, 0.48, 0.0)}
-            self._r_icone.texture = textura_mapa(_MAPA_TROFEU, cores, 'trofeu')
+            self._r_icone.texture = textura_mapa(_MAPA_TROFEU, _CORES_TROFEU, 'trofeu')
             self._c_tile_ln.rgba = (1.0, 0.82, 0.2, 0.9)
             self._c_div.rgba = (1.0, 0.82, 0.2, 0.18)
             self._c_tile_bg.rgba = (0.1, 0.07, 0.0, 1)
         else:
-            cores = {'K': (0.04, 0.03, 0.1), 'c': (0.62, 0.3, 1.0), 'd': (0.4, 0.15, 0.75),
-                     'w': (0.82, 0.84, 1.0), 'k': (0.55, 0.58, 0.7)}
-            self._r_icone.texture = textura_mapa(_MAPA_CALENDARIO, cores, 'calendario')
+            self._r_icone.texture = textura_mapa(_MAPA_CALENDARIO, _CORES_CALENDARIO, 'calendario')
         self.bind(pos=self._arrumar, size=self._arrumar)
         if mem is not None:
             self.definir(mem)
@@ -1517,16 +1573,21 @@ class CartaoMemoria(ListaItem):
             semana = _DIAS_SEMANA[_dt.strptime(dia, '%d/%m/%Y').weekday()]
         except Exception:
             pass
-        self._l_data.text = dia
+        from kivy.metrics import sp
+        rec = self.recorde
+        ouro = (1.0, 0.86, 0.25, 1)
         sub = '  ·  '.join(x for x in (semana, hora) if x)
-        self._l_sub.text = ('RECORDE  ·  ' + sub) if self.recorde else sub
         try:
             total = int(mem.get('total', 0))
             xp = int(mem.get('xp', 0))
         except (TypeError, ValueError):
             total, xp = 0, 0
-        self._l_qtd.text = f"{fmt_br(total)}[size={int(dp(11))}] un.[/size]"
-        self._l_xp.text = f"+{fmt_br(xp)} XP"
+        self._por_texto('data', dia, 'rajdhani.ttf', sp(17), ouro if rec else (0.9, 0.95, 1.0, 1), bold=True)
+        self._por_texto('sub', ('RECORDE  ·  ' + sub) if rec else sub, 'rajdhani.ttf', sp(12),
+                        (0.85, 0.7, 0.3, 1) if rec else (0.55, 0.55, 0.78, 1))
+        self._por_texto('qtd', f"{fmt_br(total)}[size={int(dp(11))}] un.[/size]", 'orbitron.ttf', sp(19),
+                        ouro if rec else (0.75, 0.55, 1.0, 1), bold=True, markup=True)
+        self._por_texto('xp', f"+{fmt_br(xp)} XP", 'rajdhani.ttf', sp(12.5), (0.25, 1.0, 0.6, 1), bold=True)
         self._arrumar()
 
     def _arrumar(self, *_):
@@ -1545,21 +1606,17 @@ class CartaoMemoria(ListaItem):
         larg_dir = dp(104)
         xn = tx + s + dp(12)
         wn = max(dp(40), x + w - larg_dir - dp(10) - xn)
-        for l, yy, hh in ((self._l_data, y + h * 0.6, dp(26)), (self._l_sub, y + h * 0.27, dp(18))):
-            l.size = (wn, hh)
-            l.text_size = l.size
-            l.pos = (xn, yy - hh / 2.0)
+        self._colocar('data', xn, y + h * 0.6, wn)
+        self._colocar('sub', xn, y + h * 0.27, wn)
         xd = x + w - larg_dir - dp(14)
         self._r_div.pos, self._r_div.size = (xd - dp(6), y + dp(12)), (dp(1), h - dp(24))
-        for l, yy, hh in ((self._l_qtd, y + h * 0.6, dp(30)), (self._l_xp, y + h * 0.27, dp(18))):
-            l.size = (larg_dir, hh)
-            l.text_size = l.size
-            l.pos = (xd, yy - hh / 2.0)
+        self._colocar('qtd', xd, y + h * 0.6, larg_dir, direita=True)
+        self._colocar('xp', xd, y + h * 0.27, larg_dir, direita=True)
 
     def on_press(self):
         super().on_press()
         Animation.cancel_all(self, 'escala')
-        Animation(escala=0.975, duration=0.07, transition='out_quad').start(self)
+        Animation(escala=0.955, duration=0.07, transition='out_quad').start(self)
         t = [0.0]
         tr = self._tile_tr
 
@@ -1609,7 +1666,8 @@ class PainelMenu(Widget):
             c = Label(text=nome, font_name='orbitron.ttf', font_size=sp(8), color=(r, g, b, 0.6),
                       halign='center', valign='middle', size_hint=(None, None))
             v = Label(text='-', font_name='orbitron.ttf', font_size=sp(17), bold=True, markup=True,
-                      color=(r, g, b, 1), halign='center', valign='middle', size_hint=(None, None))
+                      color=(r, g, b, 1), halign='center', valign='middle', size_hint=(None, None),
+                      shorten=True, max_lines=1)
             self.add_widget(c)
             self.add_widget(v)
             self._cap.append(c)

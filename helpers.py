@@ -492,7 +492,6 @@ def _abrir_popup(caixa, pop):
                 return False
         anim['ev'] = Clock.schedule_interval(_abre, 1 / 60.)
 
-
     def _on_dismiss(*_):
         # fecha o teclado SAO dos campos do popup (senao ele ficava aberto
         # sobre a tela). Nao devolver nada: valor "verdadeiro" cancela o fechar.

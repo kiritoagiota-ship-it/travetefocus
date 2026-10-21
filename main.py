@@ -70,6 +70,9 @@ class MenuPrincipal(Screen):
         except Exception as e:
             print(f"[menu] icones: {e}")
         self._painel()
+        if not getattr(self, '_aquecido', False):          # uma vez: fontes dos cartoes
+            self._aquecido = True
+            Clock.schedule_once(lambda dt: aquecer_cartoes(), 2.5)
 
     def _painel(self):
         """O painel vivo: pecas de hoje, nivel (e a barrinha do XP) e a sequencia."""

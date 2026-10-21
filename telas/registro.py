@@ -95,38 +95,44 @@ class TelaRegistro(Screen):
 
         self._montar_lista(list(registros), inicio)
 
-    POR_QUADRO = 4          # cartoes montados por quadro da tela
+    ORCAMENTO = 0.006       # s por quadro montando cartoes (o resto do quadro e da tela)
 
     def _montar_lista(self, fila, inicio=0.0):
-        """Monta os cartoes POR_QUADRO por quadro (a tela nunca para) e acende
-        todos em cascata no fim. Quem mexe na lista antes de acabar chama
+        """Monta os cartoes aos poucos (ORCAMENTO por quadro, pelo menos um:
+        a tela nunca para, nem no celular lento) e cada um acende assim que fica
+        pronto, no ritmo da cascata. Quem mexe na lista antes de acabar chama
         _terminar_lista() (monta o resto na hora)."""
         self._cancelar_montagem()
         cont = self.ids.lista_container
-        est = self._montagem = {'fila': fila, 'novos': [], 'ev': None, 'inicio': inicio}
+        n = max(1, len(fila))
+        passo = 0.045 if n * 0.045 <= 0.55 else 0.55 / n         # (o mesmo da entrada_cascata)
+        est = self._montagem = {'fila': fila, 'ev': None, 'feitos': 0, 't0': time.perf_counter()}
 
-        def _um(r):
+        def _um(r, visivel=False):
             btn = self._make_item(self._texto_item(r), r)
             btn.bind(on_release=lambda x, dado=r, w=btn: self.confirmar_delete(dado, w))
-            btn.opacity = 0                          # a cascata acende no fim
+            btn.opacity = 1 if visivel else 0
             cont.add_widget(btn)
-            est['novos'].append(btn)
+            return btn
 
         def _passo(dt=0):
             try:
-                parte, est['fila'] = est['fila'][:self.POR_QUADRO], est['fila'][self.POR_QUADRO:]
-                for r in parte:
-                    _um(r)
+                t = time.perf_counter()
+                prontos = []
+                while est['fila'] and (not prontos or time.perf_counter() - t < self.ORCAMENTO):
+                    prontos.append(_um(est['fila'].pop(0)))
+                # a vez de cada um na cascata, contada do comeco da montagem
+                vez = inicio + est['feitos'] * passo - (time.perf_counter() - est['t0'])
+                est['feitos'] += len(prontos)
+                entrada_cascata(prontos, atraso=passo, atraso_max=99, inicio=max(0.0, vez))
                 if est['fila']:
                     est['ev'] = Clock.schedule_once(_passo, 0)
                     return
                 est['ev'] = None
                 self._montagem = None
-                entrada_cascata(est['novos'], inicio=est['inicio'])
             except Exception as e:
                 print(f"[registro] montar lista: {e}")
                 self._montagem = None
-        est['passo'] = _passo
         est['um'] = _um
         est['ev'] = Clock.schedule_once(_passo, 0)
 
@@ -144,11 +150,9 @@ class TelaRegistro(Screen):
         if est.get('ev') is not None:
             est['ev'].cancel()
         for r in est['fila']:
-            est['um'](r)
+            est['um'](r, visivel=True)
         est['fila'] = []
         self._montagem = None
-        for b in est['novos']:
-            b.opacity = 1
 
     @staticmethod
     def _dia_do_item(r):
@@ -457,6 +461,7 @@ class TelaRegistro(Screen):
         self.atualizar_meta()
 
     def finalizar_dia(self):
+        self._terminar_lista()                       # (as pecas voam de onde estao na lista)
         app = App.get_running_app()
         if not app.registros:
             som.tocar_erro()

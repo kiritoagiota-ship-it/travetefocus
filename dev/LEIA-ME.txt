@@ -52,7 +52,9 @@ ANIMACAO QUADRO A QUADRO (relogio simulado: 60 quadros/s exatos, a foto nao atra
                     Memorias abrindo, barra do grafico tocada, teclas, anel e chamas, icones
                     CENA=link CADA=2: o botao SYSTEM LINK START (tunel) e os cartoes do
                     Registro (toque, segurar, arrastar, lote novo). CENA=mem: so a entrada
-                    nas Memorias. MEMS=N: so os ultimos N turnos. Para imitar o celular
+                    nas Memorias. MEMS=N: so os ultimos N turnos. CENA=polir: painel do
+                    menu, aviso HUD e cartao das Memorias com toques de verdade.
+                    CENA=perfil PROF=TelaMemorias: tempo de cada metodo no on_enter. Para imitar o celular
                     do usuario: tour.sh 540 1158 SAIDA 1.3125
   analisa_filme.py  PASTA [quadros]: por trecho, desenhos novos x deslizando x
                     girando; desenhos por segundo do corpo, sobretudo e cabeca

@@ -12,6 +12,7 @@ from kivy.core.window import Window
 from kivy.metrics import dp
 from kivy.properties import StringProperty
 from datetime import datetime
+import time
 
 from efeitos import (BotaoAngular, BotaoAngularAlerta, ListaItem, CartaoMemoria,
                      InputHolografico, tremer_tela, explodir_estilhacos)
@@ -22,7 +23,7 @@ from helpers import (aplicar_fundo_holografico, _make_popup, _abrir_popup, vibra
 import tatil
 
 PAGINA = 30          # turnos desenhados de cada vez (anos de dados abrem rapido)
-POR_QUADRO = 4       # ... montados aos poucos, alguns por quadro (a tela nunca para)
+ORCAMENTO = 0.006    # ... montados aos poucos: s por quadro (pelo menos 1; a tela nunca para)
 
 
 def _mes_de(data_str):
@@ -341,8 +342,8 @@ class TelaMemorias(Screen):
         self._carregando = False
 
     def _desenhar_lote(self, ancora):
-        """Poe mais PAGINA turnos no fim da lista, POR_QUADRO por quadro (e o
-        botao 'mais' se sobrar). ancora: pixels do topo da lista ate a vista,
+        """Poe mais PAGINA turnos no fim da lista, aos poucos (ORCAMENTO por quadro), e o
+        botao 'mais' se sobrar. ancora: pixels do topo da lista ate a vista,
         mantidos enquanto a lista cresce embaixo."""
         cont = self.ids.memorias_container
         self._cancelar_lote()
@@ -352,16 +353,24 @@ class TelaMemorias(Screen):
             cont.remove_widget(self._btn_mais)
             self._btn_mais = None
         lote, self._pendentes = self._pendentes[:PAGINA], self._pendentes[PAGINA:]
-        fila, novos = list(lote), []
+        fila = list(lote)
+        ini, self._inicio_lista = getattr(self, '_inicio_lista', 0.0), 0.0
+        n = max(1, len(fila))
+        vez_passo = 0.045 if n * 0.045 <= 0.4 else 0.4 / n         # (o mesmo da entrada_cascata)
+        est = {'feitos': 0, 't0': time.perf_counter()}
 
         def _passo(dt=0):
             try:
-                parte, fila[:] = fila[:POR_QUADRO], fila[POR_QUADRO:]
-                for m in parte:
-                    b = self._item(m)
-                    b.opacity = 0                  # a cascata acende no fim
+                t = time.perf_counter()
+                prontos = []
+                while fila and (not prontos or time.perf_counter() - t < ORCAMENTO):
+                    b = self._item(fila.pop(0))
+                    b.opacity = 0                  # acende ja, no ritmo da cascata
                     cont.add_widget(b)
-                    novos.append(b)
+                    prontos.append(b)
+                vez = ini + est['feitos'] * vez_passo - (time.perf_counter() - est['t0'])
+                est['feitos'] += len(prontos)
+                entrada_cascata(prontos, atraso=vez_passo, atraso_max=99, inicio=max(0.0, vez))
                 if fila:
                     self._lote_ev = Clock.schedule_once(_passo, 0)
                     return
@@ -373,9 +382,6 @@ class TelaMemorias(Screen):
                     b.bind(on_release=lambda *_: self._carregar_mais())
                     cont.add_widget(b)
                     self._btn_mais = b
-                ini, self._inicio_lista = getattr(self, '_inicio_lista', 0.0), 0.0
-                ini = max(0.0, ini - 0.05 * len(novos) / float(POR_QUADRO))   # (ja passou tempo montando)
-                entrada_cascata(novos, atraso_max=0.4, inicio=ini)
                 # solta a ancora depois que o layout assentar
                 Clock.schedule_once(lambda dt: self._soltar_ancora(), 0.12)
             except Exception as e:

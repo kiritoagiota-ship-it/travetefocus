@@ -134,6 +134,44 @@
     canvas.after:
         PopMatrix
 
+# Cartoes do Registro e das Memorias: SO a moldura do ListaItem. Sem o "-"
+# eles herdavam tambem a do BotaoAngular (inteira escondida embaixo, com o
+# Scale aplicado duas vezes) e o texto do Label (escondido): 2/3 do custo de
+# cada cartao. Os textos sao desenhados pelo proprio cartao. (O "-" vale
+# para os dois nomes: no Kivy ele so pode vir no primeiro.)
+<-CartaoLote,CartaoMemoria>:
+    background_normal: ""
+    background_color:  0, 0, 0, 0
+    size_hint_y:       None
+    canvas.before:
+        PushMatrix
+        Scale:
+            xyz:    (self.escala, self.escala, 1)
+            origin: self.center
+        Color:
+            rgba: (0, 0.9, 1, 0.10) if self.state == "down" else self.cor_fundo
+        Rectangle:
+            pos:  self.pos
+            size: self.size
+        Color:
+            rgba: 0.02, 0.02, 0.04, 1
+        Triangle:
+            points: [self.right-dp(12), self.y, self.right, self.y, self.right, self.y+dp(12)]
+        Triangle:
+            points: [self.right, self.top-dp(12), self.right-dp(12), self.top, self.right, self.top]
+        Color:
+            rgba: self.cor_borda
+        Rectangle:
+            pos:  (self.x, self.y + dp(8))
+            size: (dp(3), self.height - dp(16))
+        Color:
+            rgba: self.cor_borda
+        Line:
+            points: [self.x, self.y, self.right-dp(12), self.y, self.right, self.y+dp(12), self.right, self.top-dp(12), self.right-dp(12), self.top, self.x, self.top, self.x, self.y]
+            width:  1.3
+    canvas.after:
+        PopMatrix
+
 # ════════════════════════════════════════════════════════════
 #  INPUT HOLOGRÁFICO
 #  ─────────────────────────────────────────────────────────
