@@ -1087,17 +1087,32 @@ class GraficoBarras(Widget):
     def on_barra(self, i):
         """Tocaram na barra i (a tela decide o que mostrar)."""
 
+    LARG_MAX = 46          # dp: com poucos dias a barra nao vira um blocao
+
+    def _layout(self):
+        """Medidas em dp (o celular tem pixels bem menores que o PC)."""
+        n = max(1, len(self.dados))
+        px, pb, pt, esp = dp(10), dp(20), dp(28), dp(8)
+        wu = self.width - px * 2
+        larg = min((wu - esp * (n - 1)) / float(n), dp(self.LARG_MAX))
+        total = n * larg + (n - 1) * esp
+        x0 = self.x + px + (wu - total) / 2.0
+        return {'px': px, 'pb': pb, 'pt': pt, 'esp': esp, 'larg': larg, 'x0': x0,
+                'hmax': self.height - pb - pt}
+
+    def centro_barra(self, i):
+        lo = self._layout()
+        return lo['x0'] + i * (lo['larg'] + lo['esp']) + lo['larg'] / 2.0
+
     def _barra_em(self, x):
         n = len(self.dados)
         if n == 0:
             return None
-        px, esp = 14, 7
-        larg = (self.width - px * 2 - esp * (n - 1)) / float(n)
-        rel = x - self.x - px
-        i = int(rel // (larg + esp)) if rel >= 0 else -1
-        if 0 <= i < n and rel - i * (larg + esp) <= larg + esp * 0.5:
-            return i
-        return None
+        lo = self._layout()
+        passo = lo['larg'] + lo['esp']
+        rel = x - lo['x0'] + lo['esp'] / 2.0
+        i = int(rel // passo) if rel >= 0 else -1
+        return i if 0 <= i < n else None
 
     def on_touch_down(self, touch):
         if not self.collide_point(*touch.pos) or not self.dados:
@@ -1179,7 +1194,9 @@ class GraficoBarras(Widget):
         if key not in self._tex_cache:
             try:
                 from kivy.core.text import Label as CoreLabel
-                lbl = CoreLabel(text=str(text), font_size=size, color=cor)
+                from kivy.metrics import sp
+                lbl = CoreLabel(text=str(text), font_size=sp(size), color=cor,
+                                font_name='rajdhani.ttf', bold=size >= 11)
                 lbl.refresh()
                 self._tex_cache[key] = lbl.texture
             except Exception:
@@ -1199,31 +1216,29 @@ class GraficoBarras(Widget):
             return
         with self.canvas:
             Color(0.03, 0.03, 0.09, 0.96)
-            RoundedRectangle(pos=self.pos, size=self.size, radius=[8])
+            RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(6)])
             Color(0, 0.9, 1, 0.12)
-            Line(rounded_rectangle=[self.x, self.y, self.width, self.height, 8],
-                 width=1)
+            Line(rounded_rectangle=[self.x, self.y, self.width, self.height, dp(6)],
+                 width=dp(1))
 
             if not self.dados:
-                self._txt('SEM DADOS', self.center_x, self.center_y - 8,
+                self._txt('SEM DADOS', self.center_x, self.center_y - dp(8),
                           (0.4, 0.4, 0.6, 0.7), 12)
                 return
 
-            n      = len(self.dados)
-            px, pb, pt, esp = 14, 28, 20, 7
-            wu   = self.width - px * 2
-            larg = (wu - esp * (n - 1)) / max(n, 1)
-            hmax = self.height - pb - pt
+            lo = self._layout()
+            px, pb, pt, esp = lo['px'], lo['pb'], lo['pt'], lo['esp']
+            larg, hmax = lo['larg'], lo['hmax']
 
             self._txt(self.titulo,
-                      self.center_x, self.top - pt + 4, (0, 0.9, 1, 0.35), 9)
+                      self.center_x, self.top - dp(15), (0, 0.9, 1, 0.45), 9)
             Color(0, 0.9, 1, 0.12)
             Line(points=[self.x + px, self.y + pb - 1,
-                         self.right - px, self.y + pb - 1], width=1)
+                         self.right - px, self.y + pb - 1], width=dp(1))
 
             vistas = []
             for i, (item, alvo) in enumerate(zip(self.dados, self._alvos())):
-                bx   = self.x + px + i * (larg + esp)
+                bx   = lo['x0'] + i * (larg + esp)
                 # (a barra recorde vai ate 90% para nao dominar toda a area)
                 h_rel, kb = self._altura(i, alvo)
                 vistas.append(h_rel)
@@ -1246,9 +1261,9 @@ class GraficoBarras(Widget):
                 Color(fc[0] + 0.15, fc[1] + 0.15, fc[2] + 0.15, fc[3] * 0.55)
                 Rectangle(pos=(bx, by + alt * 0.8), size=(larg, alt * 0.2))
                 Color(*bc)
-                Line(rectangle=[bx, by, larg, alt], width=1)
+                Line(rectangle=[bx, by, larg, alt], width=dp(0.8))
                 Color(1, 1, 1, 0.28)
-                Line(points=[bx + 1, by + alt, bx + larg - 1, by + alt], width=2)
+                Line(points=[bx + 1, by + alt, bx + larg - 1, by + alt], width=dp(1.2))
 
                 if self._destaque is not None and self._destaque[0] == i:
                     # a barra tocada acende e apaga
@@ -1256,20 +1271,20 @@ class GraficoBarras(Widget):
                     Color(1, 1, 1, 0.22 * a)
                     Rectangle(pos=(bx, by), size=(larg, alt))
                     Color(1, 1, 1, 0.95 * a)
-                    Line(rectangle=[bx - 2, by - 2, larg + 4, alt + 4], width=1.4)
+                    Line(rectangle=[bx - dp(2), by - dp(2), larg + dp(4), alt + dp(4)], width=dp(1.2))
                 if kb < 1:
                     # a ponta da barra subindo brilha
                     Color(bc[0], bc[1], bc[2], 0.5 * (1 - kb))
-                    Rectangle(pos=(bx - 1, by + alt - 2), size=(larg + 2, 4))
+                    Rectangle(pos=(bx - 1, by + alt - dp(2)), size=(larg + 2, dp(4)))
 
                 val = item.get('valor', 0)
                 if val > 0 and kb > 0.35:
-                    self._txt(str(val), cx, by + alt + 3, (1, 1, 1, 0.9), 10)
-                if item.get('record') and kb > 0.6:
-                    self._txt('*', cx, by + alt + 14, (1, 0.88, 0, 1), 11)
+                    # (o recorde em dourado: o '*' de antes nao cabia sem tapar o titulo)
+                    cor_v = (1, 0.86, 0.25, 1) if item.get('record') else (1, 1, 1, 0.92)
+                    self._txt(str(val), cx, by + alt + dp(2), cor_v, 11)
                 lbl = item.get('label', '')
                 if lbl:
-                    self._txt(lbl, cx, self.y + 5, (0.5, 0.5, 0.78, 0.88), 9)
+                    self._txt(lbl, cx, self.y + dp(4), (0.62, 0.62, 0.86, 0.95), 9.5)
             self._vistas = vistas
 
 

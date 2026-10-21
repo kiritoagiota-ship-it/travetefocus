@@ -249,10 +249,7 @@ class TelaMemorias(Screen):
             pass
         try:
             from animacoes_ui import faixa_aviso
-            n = len(grafico.dados)
-            px, esp = 14, 7
-            larg = (grafico.width - px * 2 - esp * (n - 1)) / float(n)
-            bx = grafico.x + px + i * (larg + esp) + larg / 2.0
+            bx = grafico.centro_barra(i)
             self._balao(f"{item.get('data_curta', item.get('label', ''))}  ·  [b]{item.get('valor', 0)}[/b] peças",
                         *grafico.to_window(bx, grafico.top - dp(40)))
         except Exception as e:

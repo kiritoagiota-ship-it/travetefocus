@@ -67,6 +67,8 @@ if CENA == 'varre':
     if memorias:
         memorias[-1]['itens'] = [[nomes[j % len(nomes)] + ' %d' % j, '10', 30] for j in range(_ni)]
     registros = [[nomes[j % len(nomes)] + ' %d' % j, '10', 30] for j in range(_nr)]
+if os.environ.get('MEMS'):              # so os ultimos N turnos (ex.: celular com 2 dias)
+    memorias = memorias[-int(os.environ['MEMS']):]
 dados = {
     'memorias': memorias, 'total_geral': sum(m['total'] for m in memorias), 'meta_geral': 10000,
     'total_xp': sum(m['xp'] for m in memorias) + sum(r[2] for r in registros),
@@ -678,10 +680,7 @@ def roteiro_novas():
 
     def barra_grafico():
         g = tela().ids.grafico_barras
-        n = len(g.dados)
-        px, esp = 14, 7
-        larg = (g.width - px * 2 - esp * (n - 1)) / float(n)
-        return g.to_window(g.x + px + 2 * (larg + esp) + larg / 2.0, g.y + g.height * 0.3)
+        return g.to_window(g.centro_barra(2), g.y + g.height * 0.3)
 
     def tecla(txt):
         return lambda: next(w for w in tela().walk()
