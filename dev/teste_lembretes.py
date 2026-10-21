@@ -31,29 +31,29 @@ def plano(agora, memorias=(), registros=(), seq=0):
 # 20/10/2026 e terca-feira (segunda = 19/10, sabado = 24/10, domingo = 25/10)
 seg, ter, sab, dom = '19/10/2026', '20/10/2026', '24/10/2026', '25/10/2026'
 
-# 1) terca 9h, nada lancado: lembrete hoje 11h; meta hoje 16h
-p = plano(datetime(2026, 10, 20, 9, 0))
-caso('lancar hoje 11h', p['lancar']['quando'] == datetime(2026, 10, 20, 11, 0), p['lancar']['quando'])
+# 1) terca 6h, nada lancado: lembrete hoje 7h; meta hoje 16h
+p = plano(datetime(2026, 10, 20, 6, 0))
+caso('lancar hoje 7h', p['lancar']['quando'] == datetime(2026, 10, 20, 7, 0), p['lancar']['quando'])
 caso('meta hoje 16h', 'meta' in p and p['meta']['quando'] == datetime(2026, 10, 20, 16, 0))
 
 # 2) terca 9h, ja lancou hoje: lembrete so amanha
 p = plano(datetime(2026, 10, 20, 9, 0), registros=[['Camisa', '50', 150, '', datetime(2026, 10, 20, 8, 30).timestamp()]])
-caso('ja lancou: lembrete amanha', p['lancar']['quando'] == datetime(2026, 10, 21, 11, 0), p['lancar']['quando'])
+caso('ja lancou: lembrete amanha', p['lancar']['quando'] == datetime(2026, 10, 21, 7, 0), p['lancar']['quando'])
 caso('ja lancou: meta conta o que saiu', 'meta' in p and 'Já saíram 50' in p['meta']['texto'], p.get('meta'))
 
-# 3) terca 12h sem lote: passou da hora -> amanha
+# 3) terca 12h sem lote: passou da hora (7h) -> amanha
 p = plano(datetime(2026, 10, 20, 12, 0))
-caso('passou da hora: amanha', p['lancar']['quando'] == datetime(2026, 10, 21, 11, 0))
+caso('passou da hora: amanha', p['lancar']['quando'] == datetime(2026, 10, 21, 7, 0))
 
 # 4) sabado 15h: o proximo lembrete e segunda (domingo e folga)
 p = plano(datetime(2026, 10, 24, 15, 0))
-caso('sabado tarde: lembrete na segunda', p['lancar']['quando'] == datetime(2026, 10, 26, 11, 0), p['lancar']['quando'])
+caso('sabado tarde: lembrete na segunda', p['lancar']['quando'] == datetime(2026, 10, 26, 7, 0), p['lancar']['quando'])
 caso('sabado tarde: sem resumo (ja passou)', 'resumo' not in p)
 caso('sabado: sem aviso de meta do dia', 'meta' not in p)
 
 # 5) domingo: lembrete na segunda; sem meta/faixa/resumo
 p = plano(datetime(2026, 10, 25, 10, 0))
-caso('domingo: lembrete segunda', p['lancar']['quando'] == datetime(2026, 10, 26, 11, 0))
+caso('domingo: lembrete segunda', p['lancar']['quando'] == datetime(2026, 10, 26, 7, 0))
 caso('domingo: nada mais', set(p) == {'lancar'}, set(p))
 
 # 6) meta do dia batida: sem aviso da meta

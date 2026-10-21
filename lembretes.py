@@ -2,7 +2,7 @@
 lembretes.py — TraveteFocus
 Avisos na barra do celular, com o app fechado (escolha do usuario):
 
-  lancar      seg a sab, 11h: se ainda nao saiu nenhum lote no dia, o Yoru lembra
+  lancar      seg a sab, 7h (a hora de chegar no trabalho): se ainda nao saiu nenhum lote no dia, o Yoru lembra
   risco       seg a sab, 15h: nenhum lote hoje e a sequencia (2+ dias) vai quebrar
   meta        seg a sex, 16h: se a meta do dia ainda nao foi batida, quanto falta
   fechamento  seg a sex 20h / sabado 13h: o dia (pecas, XP) e a faixa da semana
@@ -26,7 +26,7 @@ from datetime import datetime, timedelta
 
 import metas
 
-HORA_LANCAR = (11, 0)
+HORA_LANCAR = (7, 0)
 HORA_RISCO = (15, 0)
 HORA_META = (16, 0)
 HORA_FECHAMENTO = (20, 0)
