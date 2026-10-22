@@ -67,6 +67,37 @@ if CENA == 'varre':
     if memorias:
         memorias[-1]['itens'] = [[nomes[j % len(nomes)] + ' %d' % j, '10', 30] for j in range(_ni)]
     registros = [[nomes[j % len(nomes)] + ' %d' % j, '10', 30] for j in range(_nr)]
+if CENA == 'video':
+    # VIDEO de apresentacao: turnos de seg a sab desde 3 semanas atras ate
+    # ontem (sequencia longa), periodos fechados por semana e 2 lotes hoje
+    import datetime as _dt
+    _hoje = _dt.date.today()
+    _seg = _hoje - _dt.timedelta(days=_hoje.weekday())
+    _ini = _seg - _dt.timedelta(days=21)
+    _pecas = ['Camisa polo', 'Calça jeans', 'Vestido longo', 'Bermuda', 'Blusa manga longa', 'Jaqueta']
+    _rnd = random.Random(16)
+    memorias = []
+    _d = _ini
+    _i = 0
+    while _d < _hoje:
+        if _d.weekday() != 6:
+            _tot = _rnd.randint(170, 230) if _d.weekday() == 5 else _rnd.randint(420, 560)
+            _a = _rnd.randint(int(_tot * 0.35), int(_tot * 0.65))
+            _n1, _n2 = _rnd.sample(_pecas, 2)
+            _it = [[_n1, str(_a), _a * 3], [_n2, str(_tot - _a), (_tot - _a) * 3]]
+            memorias.append({'data': _d.strftime('%d/%m/%Y') + '  17:%02d' % _rnd.randint(5, 40),
+                             'total': _tot, 'xp': _tot * 3, 'itens': _it, 'ts': 1790000000 + _i})
+            _i += 1
+        _d += _dt.timedelta(days=1)
+    _t0 = _dt.datetime.combine(_hoje, _dt.time(7, 40)).timestamp()
+    registros = [['Vestido longo', '140', 420, '', _t0], ['Calça jeans', '110', 330, '', _t0 + 5400]]
+    # o relogio do app marca 10h40 de hoje (gravado de madrugada, o lote novo
+    # aparecia como "hoje 00:07"): so a hora do texto, a conta do quadro e do relogio simulado
+    _OFF = _dt.datetime.combine(_hoje, _dt.time(10, 40)).timestamp() - time.time()
+    _rt, _rl, _rs = time.time, time.localtime, time.strftime
+    time.time = lambda: _rt() + _OFF
+    time.localtime = lambda s=None: _rl(time.time() if s is None else s)
+    time.strftime = lambda f, t=None: _rs(f, time.localtime() if t is None else t)
 if os.environ.get('MEMS'):              # so os ultimos N turnos (ex.: celular com 2 dias)
     memorias = memorias[-int(os.environ['MEMS']):]
 dados = {
@@ -83,9 +114,24 @@ dados = {
 }
 if CENA == 'meta':                     # a regra real: 2.500 / 3.000 por semana
     dados['config_ganhos'] = {'valor_base': 0.25, 'valor_bonus': 0.30, 'meta_bonus': 3000, 'tipo_periodo': 'semanal'}
+if CENA == 'video':
+    # a regra real (2.500 / 3.000) e cada semana fechada no sabado
+    dados['config_ganhos'] = {'tipo_periodo': 'semanal'}
+    sys.path.insert(0, REPO)
+    import metas as _metas
+    _cfg = _metas.completar_cfg({})
+    dados['periodos_ganhos'] = []
+    for _k in range(3):
+        _a, _b = _ini + _dt.timedelta(days=7 * _k), _ini + _dt.timedelta(days=7 * _k + 5)
+        _p = sum(m['total'] for m in memorias if _a <= _dt.datetime.strptime(m['data'][:10], '%d/%m/%Y').date() <= _b)
+        dados['periodos_ganhos'].append({'tipo': 'semanal', 'data_inicio': _a.strftime('%d/%m/%Y'),
+                                         'data_fim': _b.strftime('%d/%m/%Y'), 'total_pecas': _p,
+                                         'total_ganho': _metas.ganho(_p, _cfg)})
+    dados['periodos_ganhos'].append({'tipo': 'semanal', 'data_inicio': _seg.strftime('%d/%m/%Y'),
+                                     'data_fim': None, 'total_pecas': 0, 'total_ganho': 0.0})
 with open(os.path.join(pasta_app, 'dados.json'), 'w', encoding='utf-8') as f:
     json.dump(dados, f, ensure_ascii=False)
-if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas', 'mem', 'link', 'ajustes', 'toques', 'trans', 'perfil', 'polir', 'avisos', 'fluidez'):
+if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas', 'mem', 'link', 'ajustes', 'toques', 'trans', 'perfil', 'polir', 'avisos', 'fluidez', 'video'):
     with open(os.path.join(pasta_app, '.tf_session'), 'w') as f:
         f.write(str(time.time()))
 
@@ -221,6 +267,26 @@ def _textos_cortados(nome):
     print(f'[cenas] cortes {nome}: {len(achados)}')
 
 
+VID = {}
+
+
+def _video_quadro():
+    """VIDEO=saida.mp4: manda o quadro cru para o ffmpeg (H.264, 60/CADA
+    quadros por segundo). O som e posto depois (dev/video_demo.py)."""
+    import subprocess
+    w, h = Window.size
+    if 'p' not in VID:
+        import imageio_ffmpeg
+        VID['q0'] = Q[0]
+        VID['p'] = subprocess.Popen(
+            [imageio_ffmpeg.get_ffmpeg_exe(), '-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgba',
+             '-s', f'{w}x{h}', '-r', str(60 // CADA), '-i', '-', '-vf', 'vflip,format=yuv420p',
+             '-c:v', 'libx264', '-preset', 'slow', '-crf', '17', '-profile:v', 'high',
+             os.environ['VIDEO']], stdin=subprocess.PIPE)
+        LOG['video'] = {'q0': Q[0], 'fps': 60 // CADA, 'tam': [w, h]}
+    VID['p'].stdin.write(glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE))
+
+
 def _quadro(*_):
     Q[0] += 1
     if FOTO[0]:
@@ -248,7 +314,12 @@ def _quadro(*_):
         except Exception as e:
             LOG['erros'].append(f'yoru: {e}')
     LOG['quadros'].append([Q[0], reg])
-    if CADA and Q[0] % CADA == 0:
+    if CADA and Q[0] % CADA == 0 and os.environ.get('VIDEO'):
+        try:
+            _video_quadro()
+        except Exception as e:
+            LOG['erros'].append(f'video: {e}')
+    elif CADA and Q[0] % CADA == 0:
         try:
             w, h = Window.size
             dados_px = glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE)
@@ -262,6 +333,9 @@ Window.bind(on_flip=_quadro)
 
 
 def fim(*_):
+    if 'p' in VID:
+        VID['p'].stdin.close()
+        VID['p'].wait()
     with open(os.path.join(SAIDA, 'filme.json'), 'w', encoding='utf-8') as f:
         json.dump(LOG, f)
     print('[cenas] fim', len(LOG['quadros']), 'quadros', len(LOG['erros']), 'erros')
@@ -1355,7 +1429,156 @@ def esperar_menu(dt):
               'mem': roteiro_mem, 'link': roteiro_link,
               'ajustes': roteiro_ajustes, 'toques': roteiro_toques, 'trans': roteiro_trans,
               'perfil': roteiro_perfil, 'polir': roteiro_polir,
-              'avisos': roteiro_avisos, 'fluidez': roteiro_fluidez}.get(CENA, roteiro_app)(), 1.0)
+              'avisos': roteiro_avisos, 'fluidez': roteiro_fluidez,
+              'video': roteiro_video}.get(CENA, roteiro_app)(), 1.0)
+
+
+def roteiro_video():
+    """VIDEO de apresentacao (calmo): o menu, lancar um lote com o teclado do
+    app (sugestao + numeros), o +XP e a meta do dia batida, Memorias (rolar e
+    abrir um dia), Progresso, Ganhos, uma conta na Calculadora e o menu de
+    novo. Toques de verdade; cada toque fica em LOG['toques'] (o video
+    desenha o dedo)."""
+    LOG['toques'] = []
+    # como no celular: o campo com o teclado do app nao liga o teclado do
+    # sistema (no PC o Kivy tira o foco a cada toque fora do campo e o
+    # teclado do app fechava)
+    import efeitos as _ef
+    _orig_bind = _ef.InputHolografico._bind_keyboard
+
+    def _bind_como_android(self):
+        if getattr(self, '_teclado_custom_ok', False):
+            return
+        _orig_bind(self)
+    _ef.InputHolografico._bind_keyboard = _bind_como_android
+
+    def alvo(txt, exato=True):
+        for topo in Window.children:
+            for w in topo.walk():
+                tx = str(getattr(w, 'text', '') or '').strip()
+                ok = (tx == txt) if exato else (txt in tx)
+                if ok and w.get_root_window() is not None and w.opacity > 0.05 and w.width > 4:
+                    return w
+        return None
+
+    def marca(x, y, dur=0.5, r0=13, r1=34):
+        """O dedo: um circulo claro que encosta e uma onda que abre."""
+        from kivy.uix.widget import Widget
+        from kivy.graphics import Color, Ellipse, Line
+        from kivy.metrics import dp
+        w = Widget(size_hint=(None, None), size=(1, 1), pos=(-10, -10))
+        with w.canvas:
+            c1 = Color(1, 1, 1, 0.5)
+            e = Ellipse()
+            c2 = Color(0.55, 0.95, 1, 0.9)
+            ln = Line(width=dp(2))
+        Window.add_widget(w)
+        t0 = [0.0]
+
+        def _passo(dt):
+            t0[0] += dt
+            k = min(1.0, t0[0] / dur)
+            r_dedo = dp(r0) * (1 - 0.25 * k)
+            e.pos, e.size = (x - r_dedo, y - r_dedo), (2 * r_dedo, 2 * r_dedo)
+            c1.a = 0.5 * (1 - k) ** 1.5
+            r = dp(r0) + (dp(r1) - dp(r0)) * (1 - (1 - k) ** 2)
+            ln.circle = (x, y, r)
+            c2.a = 0.9 * (1 - k)
+            if k >= 1:
+                Window.remove_widget(w)
+                return False
+        Clock.schedule_interval(_passo, 0)
+
+    def toque_em(x, y, segura=0.12):
+        LOG['toques'].append([Q[0], x, y])
+        marca(x, y)
+        t_ = dedo_desce(x, y)
+        Clock.schedule_once(lambda dt: dedo_sobe(t_), segura)
+
+    def tocar(txt, exato=True):
+        def _f():
+            w = alvo(txt, exato)
+            if w is None:
+                LOG['erros'].append('video: nao achei ' + txt)
+                return
+            toque_em(*no_meio(w))
+        return _f
+
+    def tocar_w(pegar):
+        def _f():
+            w = pegar()
+            if w is None:
+                LOG['erros'].append('video: widget nao achado')
+                return
+            toque_em(*no_meio(w))
+        return _f
+
+    def ids(nome):
+        return lambda: tela().ids.get(nome)
+
+    def teclas(txt, passo=0.4):
+        return [(passo, tocar(c)) for c in txt]
+
+    def arrastar(dx_frac, dy_frac, passos=14, dur=0.7):
+        def _f():
+            x0, y0 = Window.width * 0.5, Window.height * 0.42
+            LOG['toques'].append([Q[0], x0, y0])
+            t_ = dedo_desce(x0, y0)
+            marca(x0, y0, dur=0.3, r1=20)
+            for k in range(1, passos + 1):
+                def _m(dt, k=k):
+                    x, y = x0 + Window.width * dx_frac * k / passos, y0 + Window.height * dy_frac * k / passos
+                    dedo_move(t_, x, y)
+                    marca(x, y, dur=0.22, r1=16)
+                    LOG['toques'].append([Q[0], x, y, 'm'])
+                Clock.schedule_once(_m, dur * k / passos)
+            Clock.schedule_once(lambda dt: dedo_sobe(t_), dur + 0.05)
+        return _f
+
+    def primeiro_cartao():
+        from efeitos import CartaoMemoria
+        cs = [w for w in tela().walk(restrict=True) if isinstance(w, CartaoMemoria)]
+        cs.sort(key=lambda w: -w.to_window(*w.center)[1])
+        return cs[0] if cs else None
+
+    def versao():
+        try:
+            app().versao = open(os.path.join(REPO, 'VERSAO'), encoding='utf-8').read().strip()
+        except Exception:
+            pass
+    versao()
+    passos = [(3.2, lambda: fase('menu calmo')),
+              (0.1, tocar('SYSTEM LINK START', exato=False)),
+              (2.8, lambda: fase('registro')),
+              (0.2, tocar_w(ids('nome_input')))]
+    passos += teclas('CAM', 0.5)
+    passos += [(0.9, tocar('Camisa polo')),
+               (1.0, tocar_w(ids('qtd_input')))]
+    passos += teclas('220', 0.45)
+    passos += [(0.7, tocar('OK')),
+               (1.0, tocar('Adicionar Lote', exato=False)),
+               (1.2, tocar_w(campo_do_popup)),
+               (0.8, tocar('3')),
+               (0.8, tocar('OK')),
+               (0.8, lambda: (fase('xp'), tocar('CONFIRMAR', exato=False)())),
+               (8.5, lambda: fase('voltar')),
+               (0.1, tocar('<<  Voltar')),
+               (2.2, tocar('>>  MEMÓRIAS')),
+               (3.0, arrastar(0, 0.22)),
+               (2.0, arrastar(0, -0.22)),
+               (1.8, tocar_w(primeiro_cartao)),
+               (3.2, tocar('>>  FECHAR')),
+               (1.2, tocar('<<  Voltar')),
+               (2.0, tocar('>>  PROGRESSO')),
+               (4.2, tocar('<<  Voltar')),
+               (2.0, tocar('>>  GANHOS')),
+               (4.2, tocar('<<  Voltar')),
+               (2.0, tocar('>>  CALCULADORA')),
+               (1.8, lambda: fase('conta'))]
+    passos += teclas('2500', 0.42) + [(0.42, tocar('×'))] + teclas('0,27', 0.42) + [(0.6, tocar('='))]
+    passos += [(3.2, tocar('<<  Voltar')),
+               (4.5, lambda: fase('fim video')), (0.2, fim)]
+    Roteiro(passos).rodar()
 
 
 def roteiro_pin():
@@ -1381,6 +1604,11 @@ def roteiro_pin():
 def inicio(dt):
     SIM[0] = _tempo_real()
     GRAVA[0] = True
+    if CENA == 'video':                     # o rodape mostra a versao de verdade (no PC seria 'dev')
+        try:
+            app().versao = open(os.path.join(REPO, 'VERSAO'), encoding='utf-8').read().strip()
+        except Exception:
+            pass
     if CENA == 'pin':
         Clock.schedule_once(lambda dt: roteiro_pin(), 0.5)
     else:

@@ -61,6 +61,12 @@ ANIMACAO QUADRO A QUADRO (relogio simulado: 60 quadros/s exatos, a foto nao atra
                     altura - o Kivy apaga a linha inteira, nem que falte 1 pixel - ou
                     texto mais largo que o botao). Usar com KIVY_METRICS_FONTSCALE=1.15
                     (letra grande); a bateria curta ja roda (b_letra).
+                    CENA=video: VIDEO de apresentacao (entrada rapida, lancar um lote com
+                    o teclado, meta batida, Memorias, Progresso, Ganhos, Calculadora), com
+                    toques de verdade e o dedo desenhado. Com VIDEO=arquivo.mp4 os quadros
+                    vao direto para o ffmpeg (pip install imageio-ffmpeg):
+                      VIDEO=$S/so_imagem.mp4 CENA=video CADA=2 TOUR_PY=dev/filme_cenas.py                           bash dev/tour.sh 1080 2090 $S 2.8125
+  video_demo.py     Poe o som do app no video: video_demo.py filme.json so_imagem.mp4 SAIDA.mp4 [720]
   analisa_filme.py  PASTA [quadros]: por trecho, desenhos novos x deslizando x
                     girando; desenhos por segundo do corpo, sobretudo e cabeca
                     (alvo desde 20/10/2026: 24 por segundo - kirito.DESENHOS; efeitos 30 a 60)
