@@ -16,6 +16,7 @@ os dois caiam no mesmo dia).
 from kivy.uix.screenmanager import Screen
 from kivy.uix.label import Label
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.anchorlayout import AnchorLayout
 from kivy.app import App
 from kivy.animation import Animation
 from kivy.clock import Clock
@@ -26,7 +27,7 @@ from datetime import datetime
 from efeitos import BotaoAngular, BotaoAngularAlerta, ListaItem, tremer_tela
 import som
 from animacoes_ui import entrada_cascata, contar, fmt_br
-from helpers import aplicar_fundo_holografico, _make_popup, _abrir_popup, em, anexar_teclado, uma_vez
+from helpers import texto_que_cabe, aplicar_fundo_holografico, _make_popup, _abrir_popup, em, anexar_teclado, uma_vez
 import tatil
 import metas
 
@@ -347,11 +348,15 @@ class TelaGanhos(Screen):
             lbl = ListaItem(
                 text=(f"  {bonus_icon}{tipo}  {di} - {df}\n"
                       f"  {fmt_br(pecas)} un.   [color=#00ff88]{_reais(ganho)}[/color]"),
-                markup=True, size_hint_x=0.82)
+                markup=True)
+            # o X menor, no meio da altura (o octogono vermelho do tamanho da
+            # linha chamava mais atencao que o proprio periodo)
             btn_del = BotaoAngularAlerta(
-                text=em('✕'), size_hint_x=0.18, font_size="18sp")
+                text=em('✕'), size_hint=(None, None), size=(dp(46), dp(46)), font_size="15sp")
+            ancora = AnchorLayout(size_hint_x=None, width=dp(50))
+            ancora.add_widget(btn_del)
             row.add_widget(lbl)
-            row.add_widget(btn_del)
+            row.add_widget(ancora)
             cont.add_widget(row)
             linhas.append(row)
 
@@ -379,11 +384,11 @@ class TelaGanhos(Screen):
                     spacing=dp(12), size_hint=(0.82, None),
                     height=min(dp(180), int(Window.height * 0.32)))
                 aplicar_fundo_holografico(cx2, (1.0, 0.08, 0.22, 0.9))
-                cx2.add_widget(Label(
+                cx2.add_widget(texto_que_cabe(Label(
                     text=(f"[color=#ff2244]!!  APAGAR PERÍODO?[/color]\n"
                           f"[color=#cccccc]{tipo}  {di} - {df}\n{_reais(ganho)}[/color]"),
                     markup=True, font_name="orbitron.ttf", font_size="12sp",
-                    halign="center", size_hint_y=None, height=dp(80)))
+                    halign="center", size_hint_y=None, height=dp(80)), cx2))
                 bts = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(12))
                 bs  = BotaoAngularAlerta(text="APAGAR")
                 bn  = BotaoAngular(text="CANCELAR")
@@ -631,7 +636,7 @@ class TelaGanhos(Screen):
             markup=True, font_name="rajdhani.ttf", font_size="16sp",
             halign="center", valign="middle", size_hint_y=None, height=dp(210)))
         texto = caixa.children[0]
-        texto.bind(size=lambda i, s: setattr(i, 'text_size', s))     # linha comprida quebra dentro da caixa
+        texto_que_cabe(texto, caixa)     # linha comprida quebra dentro da caixa (e nenhuma some)
 
         btn = BotaoAngular(text=">>  OK", size_hint_y=None, height=dp(50))
         btn.bind(on_release=lambda *_: pop.dismiss())

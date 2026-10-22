@@ -56,6 +56,11 @@ ANIMACAO QUADRO A QUADRO (relogio simulado: 60 quadros/s exatos, a foto nao atra
                     menu, aviso HUD e cartao das Memorias com toques de verdade.
                     CENA=perfil PROF=TelaMemorias: tempo de cada metodo no on_enter. Para imitar o celular
                     do usuario: tour.sh 540 1045 SAIDA 1.40625 (area do app sem as barras do Android, densidade 2,8125)
+                    CORTE=1 (com qualquer CENA): a cada foto confere os textos da tela e
+                    grava em cortes.txt os que NAO cabem (linha que some por falta de
+                    altura - o Kivy apaga a linha inteira, nem que falte 1 pixel - ou
+                    texto mais largo que o botao). Usar com KIVY_METRICS_FONTSCALE=1.15
+                    (letra grande); a bateria curta ja roda (b_letra).
   analisa_filme.py  PASTA [quadros]: por trecho, desenhos novos x deslizando x
                     girando; desenhos por segundo do corpo, sobretudo e cabeca
                     (alvo desde 20/10/2026: 24 por segundo - kirito.DESENHOS; efeitos 30 a 60)

@@ -169,6 +169,58 @@ def foto(nome):
     Window.canvas.ask_update()
 
 
+def _textos_cortados(nome):
+    """CORTE=1: em cada foto, os textos que NAO cabem no espaco deles (linha
+    que some por falta de altura, ou texto mais largo que o botao/caixa)."""
+    from kivy.uix.label import Label
+
+    def visivel(w):
+        while w is not None and w is not Window:
+            if getattr(w, 'opacity', 1) <= 0.01 or getattr(w, 'disabled', False) and w.opacity < 0.5:
+                return False
+            w = w.parent
+        return True
+
+    def todos(w):
+        yield w
+        for c in list(getattr(w, 'children', [])):
+            yield from todos(c)
+    achados = []
+    for raiz in list(Window.children):
+        for w in todos(raiz):
+            if not isinstance(w, Label) or not (w.text or '').strip() or w.width < 4 or w.height < 4:
+                continue
+            if not visivel(w):
+                continue
+            x0, y0 = w.to_window(w.x, w.y)
+            if x0 > Window.width or y0 > Window.height or x0 + w.width < 0 or y0 + w.height < 0:
+                continue
+            try:
+                ts = w.text_size
+                larg = ts[0] if ts and ts[0] else None
+                t = Label(text=w.text, markup=w.markup, font_name=w.font_name, font_size=w.font_size,
+                          line_height=w.line_height, padding=w.padding, halign=w.halign,
+                          text_size=(larg, None), bold=w.bold, max_lines=w.max_lines or 0)
+                t.texture_update()
+                tw, th = t.texture_size
+                pad_x = w.padding[0] + w.padding[2] if len(w.padding) == 4 else 2 * w.padding[0]
+                txt = w.text.replace('\n', ' / ')[:60]
+                n_tem = len(getattr(w._label, '_cached_lines', None) or [])
+                n_quer = len(getattr(t._label, '_cached_lines', None) or [])
+                if (ts and ts[1]) and n_tem < n_quer:
+                    achados.append(f'LINHA SOME {nome}: "{txt}" tem {n_quer} linhas, aparecem {n_tem} '
+                                   f'(precisa {th:.0f}px, tem {w.height:.0f}px)')
+                elif larg is None and tw > w.width + 2 and not getattr(w, 'shorten', False):
+                    achados.append(f'LARGURA {nome}: "{txt}" precisa {tw:.0f}px, tem {w.width:.0f}px '
+                                   f'({type(w).__name__})')
+            except Exception as e:
+                achados.append(f'erro {nome}: {e}')
+    with open(os.path.join(SAIDA, 'cortes.txt'), 'a', encoding='utf-8') as f:
+        for a in achados:
+            f.write(a + '\n')
+    print(f'[cenas] cortes {nome}: {len(achados)}')
+
+
 def _quadro(*_):
     Q[0] += 1
     if FOTO[0]:
@@ -179,6 +231,8 @@ def _quadro(*_):
             im = Image.frombytes('RGBA', (w, h), dados_px).transpose(Image.FLIP_TOP_BOTTOM).convert('RGB')
             im.save(os.path.join(SAIDA, f'tela_{nome}.png'), compress_level=3)
             print(f'[cenas] foto {nome}')
+            if os.environ.get('CORTE') == '1':
+                _textos_cortados(nome)
         except Exception as e:
             LOG['erros'].append(f'foto {nome}: {e}')
     if not GRAVA[0]:

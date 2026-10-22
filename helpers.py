@@ -425,6 +425,29 @@ def _make_popup():
     return pop, layout
 
 
+def texto_que_cabe(lbl, caixa=None):
+    """O rotulo cresce ate caber o texto todo e a `caixa` do aviso cresce
+    junto. Com a letra grande do celular o Kivy APAGA a linha que nao cabe
+    (nem que falte 1 pixel: o nome do lote sumia no LOTE DETECTADO) e o texto
+    sem quebra passava da borda. A altura de antes vira o minimo; o texto
+    fica no meio, como antes."""
+    minimo = lbl.height
+    lbl.size_hint_y = None
+
+    def _largura(i, w):
+        i.text_size = (max(1, w), None)
+
+    def _altura(i, ts):
+        novo = max(minimo, ts[1] + dp(2))
+        if abs(novo - i.height) > 0.5:
+            if caixa is not None:
+                caixa.height += novo - i.height
+            i.height = novo
+    lbl.bind(width=_largura, texture_size=_altura)
+    _largura(lbl, lbl.width)
+    return lbl
+
+
 def largura_coluna():
     """Largura util do app: tela toda no celular, coluna central no PC."""
     return min(Window.width, dp(560))
@@ -727,7 +750,7 @@ def popup_pedir_xp(nome: str, quantidade: int, on_save, titulo=">> LOTE DETECTAD
               f"[size=14sp][color=#aab4c8]{pergunta}[/color][/size]"),
         markup=True, font_name="rajdhani.ttf", font_size="18sp", shorten=False,
         halign="center", valign="middle", size_hint_y=None, height=dp(52))
-    lbl_info.bind(size=lambda w, s: setattr(w, 'text_size', s))
+    texto_que_cabe(lbl_info, caixa)
 
     inp = InputHolografico(
         input_filter='int', font_name="orbitron.ttf", font_size="30sp",
@@ -784,6 +807,7 @@ def popup_editar_qtd(nome, qtd, xp_un, on_save):
               f"[color=#444444]Quantidade certa:[/color]"),
         markup=True, font_name="orbitron.ttf", font_size="12sp",
         halign="center", size_hint_y=None, height=dp(72))
+    texto_que_cabe(lbl_info, caixa)
     inp = InputHolografico(
         input_filter='int', font_name="orbitron.ttf", font_size="30sp",
         background_color=(0, 0, 0, 0), foreground_color=(0, 0.9, 1, 1),
@@ -960,7 +984,7 @@ def popup_aviso(texto, cor='#00e5ff', titulo=None):
                                halign="center"))
     lbl = Label(text=f"[color=#c8d2e6]{texto}[/color]", markup=True, font_name="rajdhani.ttf", font_size="16sp",
                 halign="center", valign="middle")
-    lbl.bind(size=lambda i, s: setattr(i, 'text_size', s))
+    texto_que_cabe(lbl, caixa)
     caixa.add_widget(lbl)
     btn = BotaoAngular(text=">>  OK", size_hint_y=None, height=dp(50))
     btn.bind(on_release=lambda *_: pop.dismiss())
@@ -1130,7 +1154,7 @@ def popup_confirmar(pergunta, on_sim, sim=">>  SIM", nao="CORRIGIR", titulo="CON
                            font_size="13sp", size_hint_y=None, height=dp(26), halign="center"))
     lbl = Label(text=f"[color=#c8d2e6]{pergunta}[/color]", markup=True, font_name="rajdhani.ttf", font_size="17sp",
                 halign="center", valign="middle")
-    lbl.bind(size=lambda i, s: setattr(i, 'text_size', s))
+    texto_que_cabe(lbl, caixa)
     caixa.add_widget(lbl)
     bts = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(12))
     b_nao = BotaoAngular(text=nao)
@@ -1155,12 +1179,12 @@ def popup_delete_engracado(on_confirm, pergunta="Desintegrar este registro?", bo
         spacing=dp(14), size_hint=(0.84, None), height=h)
     aplicar_fundo_holografico(caixa, (1.0, 0.08, 0.22, 0.9))
 
-    caixa.add_widget(Label(
+    caixa.add_widget(texto_que_cabe(Label(
         text=("[color=#ff2244]!!  ATENÇÃO[/color]\n"
               f"[color=#cccccc]{pergunta}\n"
               "Esta ação é irreversível.[/color]"),
         markup=True, font_name="orbitron.ttf", font_size="13sp",
-        halign="center", size_hint_y=None, height=dp(74) + dp(20) * linhas))
+        halign="center", size_hint_y=None, height=dp(74) + dp(20) * linhas), caixa))
 
     botoes  = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(14))
     btn_sim = BotaoAngularAlerta(text=botao)
@@ -1282,7 +1306,7 @@ def popup_trocar_senha():
     lbl_status = Label(
         text="", markup=True, font_name="rajdhani.ttf", font_size="14sp",
         size_hint_y=None, height=dp(24), halign="center", valign="middle")
-    lbl_status.bind(size=lambda i, s: setattr(i, 'text_size', s))
+    texto_que_cabe(lbl_status, caixa)
     caixa.add_widget(lbl_status)
 
     botoes = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(12))
@@ -1367,9 +1391,9 @@ def popup_resumo_dia(tot_pecas, tot_xp, on_confirm, dias=None, pede_data=True):
               size_hint_y=None, height=dp(38), halign="center"),
         sep,
         Label(text=(f"[color=#888888]Total Produzido[/color]   "
-                    f"[color=#00e5ff][b]{tot_pecas} un.[/b][/color]\n\n"
+                    f"[color=#00e5ff][b]{fmt_br(tot_pecas)} un.[/b][/color]\n\n"
                     f"[color=#888888]Experiência Obtida[/color]   "
-                    f"[color=#00ff88][b]+{tot_xp} XP[/b][/color]"),
+                    f"[color=#00ff88][b]+{fmt_br(tot_xp)} XP[/b][/color]"),
               markup=True, font_name="rajdhani.ttf", font_size="18sp",
               halign="center", size_hint_y=None, height=dp(88)),
     ]:
@@ -1407,7 +1431,7 @@ def popup_resumo_dia(tot_pecas, tot_xp, on_confirm, dias=None, pede_data=True):
     lbl_aviso = Label(
         text="", markup=True, font_name="rajdhani.ttf", font_size="14sp",
         size_hint_y=None, height=dp(22), halign="center", valign="middle")
-    lbl_aviso.bind(size=lambda i, s: setattr(i, 'text_size', s))
+    texto_que_cabe(lbl_aviso, caixa)
     btn = BotaoAngular(text=">>  SALVAR TURNO  <<", size_hint_y=None, height=dp(52))
     # o campo vem antes do botao: o teclado sobe a caixa inteira
     if pede_data:
@@ -1475,7 +1499,7 @@ def popup_meta_producao():
     def texto(t, alt=dp(40), tam="15sp"):
         lbl = Label(text=t, markup=True, font_name="rajdhani.ttf", font_size=tam, halign="center",
                     valign="middle", size_hint_y=None, height=alt)
-        lbl.bind(size=lambda i, s: setattr(i, 'text_size', s))
+        texto_que_cabe(lbl, caixa)
         caixa.add_widget(lbl)
         return lbl
 

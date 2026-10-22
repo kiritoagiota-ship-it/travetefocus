@@ -17,7 +17,8 @@ import time
 from efeitos import (BotaoAngular, BotaoAngularAlerta, ListaItem, CartaoMemoria,
                      InputHolografico, tremer_tela, explodir_estilhacos)
 import som
-from helpers import (aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, _bind_teclado,
+from animacoes_ui import fmt_br
+from helpers import (texto_que_cabe, aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, _bind_teclado,
                      anexar_teclado, formatar_data_digitada, ler_data, tremer_widget,
                      popup_delete_engracado)
 import tatil
@@ -469,7 +470,7 @@ class TelaMemorias(Screen):
             text=(f"[color=#8a2be2]TOTAL:[/color] "
                   f"[color=#00e5ff][b]{memoria['total']}[/b] un.[/color]\n"
                   f"[color=#8a2be2]XP:[/color] "
-                  f"[color=#00ff88][b]+{memoria.get('xp', 0)}[/b][/color]"),
+                  f"[color=#00ff88][b]+{fmt_br(memoria.get('xp', 0))}[/b][/color]"),
             markup=True, font_name="orbitron.ttf", font_size="11sp",
             halign="left", valign="middle",
             size_hint_x=0.50)
@@ -535,8 +536,8 @@ class TelaMemorias(Screen):
                 xp_item   = item[2] if len(item) > 2 else 0
                 row = Label(
                     text=(f"  [b]{nome_item}[/b]"
-                          f"   {qtd_item} un."
-                          f"   [color=#00ff88]+{xp_item} XP[/color]"),
+                          f"   {fmt_br(qtd_item)} un."
+                          f"   [color=#00ff88]+{fmt_br(xp_item)} XP[/color]"),
                     markup=True,
                     font_name="rajdhani.ttf", font_size="15sp",
                     size_hint_y=None, height=dp(34),
@@ -654,7 +655,7 @@ class TelaMemorias(Screen):
             dia = memoria['data'].strip().split()[0]
             popup_delete_engracado(
                 _deletar,
-                pergunta=f"Apagar o turno de {dia}?\n{memoria['total']} peças  -  +{memoria.get('xp', 0)} XP",
+                pergunta=f"Apagar o turno de {dia}?\n{fmt_br(memoria['total'])} peças  -  +{fmt_br(memoria.get('xp', 0))} XP",
                 botao="APAGAR")
         btn_a.bind(on_release=_perguntar_apagar)
         _abrir_popup(caixa, pop)
@@ -738,11 +739,11 @@ class TelaMemorias(Screen):
             spacing=dp(16),
             size_hint=(0.84, None), height=dp(220))
         aplicar_fundo_holografico(caixa, (1.0, 0.08, 0.22, 0.9))
-        caixa.add_widget(Label(
+        caixa.add_widget(texto_que_cabe(Label(
             text=("[color=#ff2244]  WIPE TOTAL[/color]\n"
                   "[color=#cccccc]Apagar TODAS as memórias e XP?\nSem volta.[/color]"),
             markup=True, font_name="orbitron.ttf", font_size="13sp",
-            halign="center", size_hint_y=None, height=dp(84)))
+            halign="center", size_hint_y=None, height=dp(84)), caixa))
         botoes = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(14))
         btn_s  = BotaoAngularAlerta(text="FORMATAR TUDO")
         btn_n  = BotaoAngular(text="CANCELAR")

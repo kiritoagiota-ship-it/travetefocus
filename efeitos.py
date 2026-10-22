@@ -829,6 +829,31 @@ class BotaoAngular(Button):
             aplicar_brilho_toque(self)
         except Exception as e:
             print(f"[BotaoAngular] brilho indisponivel: {e}")
+        # texto que nao cabe entre as quinas encolhe (letra grande do celular:
+        # "FORMATAR TUDO" passava do chanfro)
+        self._fs_orig = None
+        self._cabendo = False
+        self.bind(texture_size=self._caber, width=self._caber)
+
+    def _caber(self, *_):
+        if self._cabendo or self.width < dp(20) or '\n' in (self.text or '') or self.text_size[0]:
+            return
+        tw = self.texture_size[0]
+        if tw <= 0:
+            return
+        if self._fs_orig is None:
+            self._fs_orig = self.font_size
+        livre = self.width - dp(14)                       # (o texto fica no meio da altura: la o chanfro quase nao come)
+        # a conta e sempre a partir do tamanho original (no 1o layout o botao
+        # ainda e estreito: encolhia demais e nao voltava)
+        natural = tw * self._fs_orig / float(self.font_size)
+        alvo = self._fs_orig if natural <= livre else max(self._fs_orig * 0.6, self._fs_orig * livre / natural)
+        if abs(alvo - self.font_size) > 0.5:
+            self._cabendo = True
+            try:
+                self.font_size = alvo
+            finally:
+                self._cabendo = False
 
     def on_kv_post(self, base_widget):
         # Salva cor original assim que o KV terminar de aplicar valores
@@ -2113,7 +2138,7 @@ class GraficoBarras(Widget):
             larg, hmax = lo['larg'], lo['hmax']
 
             self._txt(self.titulo,
-                      self.center_x, self.top - dp(15), (0, 0.9, 1, 0.45), 9)
+                      self.center_x, self.top - dp(15), (0, 0.9, 1, 0.75), 10)
             Color(0, 0.9, 1, 0.12)
             Line(points=[self.x + px, self.y + pb - 1,
                          self.right - px, self.y + pb - 1], width=dp(1))

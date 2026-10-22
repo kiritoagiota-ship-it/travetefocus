@@ -448,7 +448,13 @@ class TelaRegistro(Screen):
             # o Yoru corta o lote com o saque relampago e depois vem a explosao de cacos
             from cenas import kirito_fatiar
             kirito_fatiar(btn, lambda: self.deletar(dado, btn), tipo='iai')
-        popup_delete_engracado(_fazer)
+        # diz QUAL lote vai sumir (antes era so "este registro")
+        try:
+            qual = f"[color=#00e5ff]{dado[0]}[/color]  -  {fmt_br(int(dado[1]))} un."
+        except (TypeError, ValueError, IndexError):
+            qual = ""
+        popup_delete_engracado(_fazer, pergunta=f"Desintegrar este lote?\n{qual}" if qual
+                               else "Desintegrar este registro?")
 
     def deletar(self, dado, btn=None):
         self._terminar_lista()

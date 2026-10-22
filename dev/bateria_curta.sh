@@ -23,6 +23,9 @@ r polir 540 1045 1.40625 CENA=polir CADA=0 TOUR_PY=dev/filme_cenas.py
 r avisos 540 1045 1.40625 CENA=avisos CADA=0 TOUR_PY=dev/filme_cenas.py
 r fluidez 540 1045 1.40625 CENA=fluidez CADA=0 TOUR_PY=dev/filme_cenas.py
 r perf 720 1560 1.75 FOTOS=0
+# letra grande do celular: texto que some ou passa da borda (CORTE=1 confere a cada foto)
+r letra 540 1045 1.40625 KIVY_METRICS_FONTSCALE=1.15 CORTE=1 CENA=telas CADA=0 TOUR_PY=dev/filme_cenas.py
+echo "cortes (letra grande): $(grep -v 'CartaoMemoria\|CartaoLote' $S/b_letra/cortes.txt 2>/dev/null | wc -l)"
 python dev/teste_metas.py 2>&1 | tail -1
 python dev/teste_dados.py 2>&1 | tail -1
 python dev/teste_lembretes.py 2>&1 | tail -1

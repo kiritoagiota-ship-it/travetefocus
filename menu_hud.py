@@ -1089,9 +1089,11 @@ class CartaoMenu(BotaoAngularMenu):
             self._t_tit = _render_texto(self.titulo, 'orbitron.ttf', sp(15), (min(1, r + 0.15), min(1, g + 0.15),
                                                                           min(1, b + 0.15), 1), True,
                                         contorno=(dp(2), escuro))
-            self._t_sub = _render_texto(self.sub, 'orbitron.ttf', sp(7.5), (min(1, r + 0.2), min(1, g + 0.2),
-                                                                        min(1, b + 0.2), 0.9),
-                                        contorno=(dp(1.5), escuro))
+            # descricao: mais clara e com o contorno mais grosso - por cima da
+            # cena (moedas, maquina...) ela se perdia
+            self._t_sub = _render_texto(self.sub, 'orbitron.ttf', sp(7.5), (min(1, r + 0.35), min(1, g + 0.35),
+                                                                        min(1, b + 0.35), 1),
+                                        contorno=(dp(2.5), escuro))
         except Exception as e:
             print(f"[cartao menu] texto: {e}")
             self._t_tit = self._t_sub = None
@@ -1146,8 +1148,8 @@ class CartaoMenu(BotaoAngularMenu):
         xt = x + dp(14)
         if self._t_tit is not None:
             tw, th = self._t_tit.size
-            if tw > w - dp(22):                              # nao cabe: encolhe
-                k = (w - dp(22)) / float(tw)
+            if tw > w - dp(32):                              # nao cabe: encolhe (longe da borda)
+                k = (w - dp(32)) / float(tw)
                 tw, th = tw * k, th * k
             self._r_tit.texture = self._t_tit
             self._r_tit.size = (tw, th)

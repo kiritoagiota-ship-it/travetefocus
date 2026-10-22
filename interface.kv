@@ -620,14 +620,14 @@
             on_release:   root.abrir_meta()
         InputHolografico:
             id:              nome_input
-            hint_text:       "   Nome da Peça"
+            hint_text:       "Nome da Peça"
             hint_text_color: 0.32, 0.32, 0.50, 1
             font_size:       "17sp"
             size_hint_y:     None
             height:          dp(58)
         InputHolografico:
             id:              qtd_input
-            hint_text:       "   Quantidade"
+            hint_text:       "Quantidade"
             hint_text_color: 0.32, 0.32, 0.50, 1
             font_size:       "17sp"
             size_hint_y:     None
@@ -677,7 +677,7 @@
             text:        "[ SEM LOTES REGISTRADOS ]\n\nDigite o nome e a quantidade\npara iniciar o turno."
             font_name:   "orbitron.ttf"
             font_size:   "13sp"
-            color:       rgba("#00e5ff22")
+            color:       rgba("#00e5ff80")      # (era 22: quase invisivel no fundo)
             halign:      "center"
             valign:      "middle"
             text_size:   self.size
@@ -1160,17 +1160,13 @@
                 cor_borda_kv: [0, 1, 0.55, 0.9]
                 cor_texto:    [0, 1, 0.55, 1]
                 on_press:   root.apertar("=")
-        # Linha final
-        BoxLayout:
+        # Linha final: o Voltar na largura toda, como nas outras telas
+        BotaoAngular:
+            text:        "<<  Voltar"
+            font_size:   "14sp"
             size_hint_y: None
-            height:      dp(48)
-            spacing:     dp(10)
-            BotaoAngular:
-                text:        "<<  Voltar"
-                size_hint_x: 0.34
-                font_size:   "13sp"
-                on_release:  app.mudar_tela("menu")
-            Widget:
+            height:      dp(50)
+            on_release:  app.mudar_tela("menu")
 
 # ════════════════════════════════════════════════════════════
 #  TELA GANHOS
