@@ -17,7 +17,7 @@ Animacoes de interface usadas por todas as telas:
   expandir_de(origem, l, a)      o item cresce ate virar o detalhe (Memorias)
   chamas_em_volta(label)         chamas de pixel subindo (sequencia de 5+ dias)
   icone_pixel(botao, nome)       icone de pixel art animado no botao (menu)
-  tunel_link_start(centro, ...)  o tunel de aneis do Link Start (entrar no Registro)
+  entrada_costura(centro, ...)   entrar no Registro: a costura de luz (suave)
   pacotes_de_luz(botao)          pacotes de luz correndo por dentro do botao
   corte_parte_tela(cor, ...)     troca de tela: a espada corta e a tela se parte
   deslize_voltar(...)            Voltar: a tela escorrega e some (mais leve)
@@ -760,28 +760,16 @@ def icone_pixel(botao, nome, u=None, margem=None, lado='esq', onde=None):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  LINK START: o tunel de aneis coloridos (como no anime) ao entrar
+#  ENTRADA DO REGISTRO: a COSTURA DE LUZ (escolha do usuario, out/2026). O
+#  tunel de aneis de antes dava vertigem: aqui nada vem na direcao de quem
+#  olha, nada de zoom nem clarao - so esmaecer e movimentos curtos
 # ═══════════════════════════════════════════════════════════════════
-_CORES_TUNEL = [(0.0, 0.9, 1.0), (0.85, 0.25, 1.0), (1.0, 0.85, 0.2), (0.2, 1.0, 0.55),
-                (0.3, 0.45, 1.0), (1.0, 0.38, 0.55), (0.75, 1.0, 1.0)]
-
-
-def tunel_link_start(centro, on_meio=None, on_fim=None, dur=1.05):
-    """O SYSTEM LINK START como um tunel de verdade (escolha do usuario):
-      0,00-0,15  a tela escurece e o ponto de fuga sai do botao para o meio
-      0,05-0,64  aneis coloridos vem do fundo NA DIRECAO de quem olha
-                 (perspectiva: longe sao finos e apagados, perto grossos e
-                 brilhantes, com um brilho em volta) e riscos de luz saem do
-                 centro; a velocidade acelera e o ponto de fuga acende
-      0,60-0,70  o clarao branco abre do centro e cobre a tela
-      0,70       troca de tela (on_meio)
-      0,70-1,05  a tela nova se materializa do centro: o branco abre um
-                 buraco que cresce ate a borda, com um anel ciano de varredura
-    Segura o toque enquanto acontece."""
+def _sobreposicao(on_meio, on_fim, nome):
+    """Uma camada por cima de tudo que segura o toque, com on_meio/on_fim
+    chamados uma vez so (mesmo se der erro no meio)."""
     from kivy.core.window import Window
-    from kivy.uix.widget import Widget
 
-    class _Tunel(Widget):
+    class _Sobre(Widget):
         def on_touch_down(self, touch):
             return True
 
@@ -791,42 +779,84 @@ def tunel_link_start(centro, on_meio=None, on_fim=None, dur=1.05):
         def on_touch_up(self, touch):
             return True
     W, H = Window.size
-    tn = _Tunel(size_hint=(None, None), size=(W, H), pos=(0, 0))
-    N_ANEIS, N_RISCOS, LADOS = 14, 44, 48
-    rmax = math.hypot(W, H) * 0.62
-    R0 = min(W, H) * 0.16                     # raio de um anel na profundidade z = 1
-    tex_brilho = _textura_brilho_redondo()
-    tex_deg = _textura_degrade()
-    with tn.canvas:
-        c_fundo = Color(0.0, 0.0, 0.035, 0)
-        Rectangle(pos=(0, 0), size=(W, H))
-        c_fuga = Color(0.7, 0.95, 1.0, 0)
-        r_fuga = Rectangle(texture=tex_brilho)
-        riscos = []
-        for i in range(N_RISCOS):
-            c = Color(1, 1, 1, 0)
-            l = Line(points=[0, 0, 0, 0], width=dp(1.2))
-            riscos.append({'c': c, 'l': l, 'ang': random.uniform(0, 2 * math.pi),
-                           'fase': random.random(), 'rgb': random.choice(_CORES_TUNEL),
-                           'vel': random.uniform(1.6, 2.6)})
-        aneis = []
-        for i in range(N_ANEIS):
-            cg = Color(1, 1, 1, 0)
-            lg = Line(circle=(0, 0, 1), width=dp(4))
-            cc = Color(1, 1, 1, 0)
-            lc = Line(circle=(0, 0, 1), width=dp(1))
-            aneis.append({'cg': cg, 'lg': lg, 'cc': cc, 'lc': lc, 'z': None, 'rgb': None})
-        # o clarao (sobe abrindo do centro) e a "materializacao" (o buraco)
-        c_luz = Color(1, 1, 1, 0)
-        r_luz = Rectangle(texture=tex_brilho)
-        c_branco = Color(1, 1, 1, 0)
-        m_borda = Mesh(mode='triangle_strip', texture=tex_deg)
-        m_fora = Mesh(mode='triangle_strip')
-        c_scan = Color(0.4, 0.95, 1.0, 0)
-        l_scan = Line(circle=(0, 0, 1), width=dp(2))
-    Window.add_widget(tn)
-    est = {'t': 0.0, 'z_prox': 0.0, 'cor': 0, 'meio': False}
-    T_FLASH0, T_MEIO = 0.60, 0.70
+    ov = _Sobre(size_hint=(None, None), size=(W, H), pos=(0, 0))
+    est = {'meio': False, 'fim': False}
+
+    def meio():
+        if not est['meio']:
+            est['meio'] = True
+            if on_meio:
+                try:
+                    on_meio()
+                except Exception as e:
+                    print(f"[{nome}] meio: {e}")
+
+    def fim():
+        meio()
+        if not est['fim']:
+            est['fim'] = True
+            try:
+                if ov.parent is not None:
+                    Window.remove_widget(ov)
+            except Exception:
+                pass
+            if on_fim:
+                try:
+                    on_fim()
+                except Exception as e:
+                    print(f"[{nome}] fim: {e}")
+    return ov, W, H, meio, fim
+
+
+def _suave(k):
+    k = max(0.0, min(1.0, k))
+    return k * k * (3 - 2 * k)
+
+
+def _rodar(dur, passo, fim, nome):
+    t = [0.0]
+
+    def _q(dt):
+        try:
+            t[0] += min(dt, 1 / 20.)
+            passo(t[0])
+            if t[0] >= dur:
+                fim()
+                return False
+        except Exception as ex:
+            print(f"[{nome}] {ex}")
+            fim()
+            return False
+    Clock.schedule_interval(_q, 1 / 60.)
+
+
+def entrada_costura(centro, on_meio=None, on_fim=None, dur=1.25):
+    """COSTURA DE LUZ (entrar no Registro): a tela escurece e uma linha de pontos de costura
+    atravessa o meio da esquerda para a direita, puxada por uma agulha de
+    luz; a tela troca e o escuro se abre devagar a partir da costura (a
+    metade de cima sobe um pouco, a de baixo desce, as duas somem)."""
+    from kivy.core.window import Window
+    ov, W, H, meio, fim = _sobreposicao(on_meio, on_fim, 'costura')
+    cy = H * 0.5
+    passo_p = dp(14)
+    n = int(W / passo_p) + 2
+    with ov.canvas:
+        metades = []
+        for i in range(2):
+            PushMatrix()
+            tr = Translate(0, 0)
+            c = Color(0.015, 0.025, 0.07, 0)
+            Rectangle(pos=(0, cy) if i == 0 else (0, 0), size=(W, H - cy) if i == 0 else (W, cy))
+            PopMatrix()
+            metades.append((tr, c))
+        c_fio = Color(0.3, 0.95, 1, 0)                 # a linha fina por tras dos pontos
+        l_fio = Line(points=[], width=dp(0.6))
+        c_pts = Color(0.3, 0.95, 1, 0)
+        pontos = [Line(points=[], width=dp(1.3)) for _ in range(n)]
+        c_ag = Color(0.85, 1, 1, 0)
+        r_ag = Rectangle(texture=_textura_brilho_redondo())
+    Window.add_widget(ov)
+    T_PONTO0, T_PONTO1, T_MEIO = 0.18, 0.62, 0.66
     try:
         import som
         som.tocar('transicao')
@@ -838,137 +868,31 @@ def tunel_link_start(centro, on_meio=None, on_fim=None, dur=1.05):
     except Exception:
         pass
 
-    def _fim():
-        try:
-            Window.remove_widget(tn)
-        except Exception:
-            pass
-        if on_fim:
-            try:
-                on_fim()
-            except Exception as e:
-                print(f"[anim_ui] tunel fim: {e}")
-
-    def _buraco(cx, cy, r, borda, alfa):
-        """O branco cobrindo tudo menos um circulo de raio r no centro (com a
-        borda suave de largura `borda`)."""
-        vb, vf, ib, if_ = [], [], [], []
-        r2 = r + borda
-        for k in range(LADOS + 1):
-            a = 2 * math.pi * k / LADOS
-            ca, sa = math.cos(a), math.sin(a)
-            vb += [cx + ca * r, cy + sa * r, 1.0, 0.5, cx + ca * r2, cy + sa * r2, 0.0, 0.5]
-            vf += [cx + ca * r2, cy + sa * r2, 0, 0, cx + ca * rmax * 1.7, cy + sa * rmax * 1.7, 0, 0]
-            ib += [2 * k, 2 * k + 1]
-            if_ += [2 * k, 2 * k + 1]
-        m_borda.vertices, m_borda.indices = vb, ib
-        m_fora.vertices, m_fora.indices = vf, if_
-        c_branco.a = alfa
-
-    def _q(dt):
-        try:
-            dt = min(dt, 1 / 20.)
-            est['t'] += dt
-            t = est['t']
-            # o ponto de fuga sai do botao e vai para o meio da tela
-            e = min(1.0, t / 0.15)
-            e = e * e * (3 - 2 * e)
-            cx = centro[0] + (W / 2.0 - centro[0]) * e
-            cy = centro[1] + (H * 0.5 - centro[1]) * e
-            if t < T_MEIO:
-                c_fundo.a = 0.92 * min(1.0, t / 0.14)
+    def passo(t):
+        entra = _suave(t / 0.28)
+        abre = _suave((t - 0.70) / (dur - 0.70))
+        if t >= T_MEIO:
+            meio()
+        d = dp(26) * abre
+        for i, (tr, c) in enumerate(metades):
+            tr.y = d if i == 0 else -d
+            c.a = 0.96 * entra * (1 - abre)
+        # os pontos da costura: cada um aparece quando a agulha passa
+        kp = _suave((t - T_PONTO0) / (T_PONTO1 - T_PONTO0))
+        xa = -dp(10) + (W + dp(20)) * kp
+        for j, ln in enumerate(pontos):
+            x0 = j * passo_p
+            if x0 + passo_p * 0.55 <= xa:
+                ln.points = [x0, cy, x0 + passo_p * 0.55, cy]
             else:
-                c_fundo.a = 0.0
-            # a velocidade da "camera" acelera ate o clarao (cada anel atravessa
-            # o tunel em ~0,4 s: z cai exponencialmente, cada vez mais rapido)
-            vel = 4.5 + 12.0 * min(1.0, t / T_FLASH0) ** 2
-            # aneis: nascem no fundo (z = 7) um atras do outro e vem para perto
-            if t < T_FLASH0 - 0.04 and t >= est['z_prox']:
-                est['z_prox'] = t + 0.045
-                livre = next((a for a in aneis if a['z'] is None), None)
-                if livre is not None:
-                    livre['z'] = 7.0
-                    livre['rgb'] = _CORES_TUNEL[est['cor'] % len(_CORES_TUNEL)]
-                    est['cor'] += 1
-            for a in aneis:
-                if a['z'] is None:
-                    continue
-                a['z'] -= a['z'] * vel * dt
-                z = a['z']
-                r = R0 / max(0.05, z)
-                if z <= 0.08 or r > rmax or t >= T_MEIO:
-                    a['z'] = None
-                    a['cc'].a = a['cg'].a = 0
-                    continue
-                perto = min(1.0, 1.0 / z)                        # 0 longe .. 1 perto
-                nasce = min(1.0, (7.0 - z) / 2.0)                # acende ao nascer
-                sai = max(0.0, 1.0 - r / rmax) ** 0.6             # some passando da tela
-                al = nasce * sai * (0.25 + 0.75 * perto)
-                rr, gg, bb = a['rgb']
-                a['cc'].rgba = (min(1, rr + 0.25), min(1, gg + 0.25), min(1, bb + 0.25), al)
-                a['cg'].rgba = (rr, gg, bb, al * 0.35)
-                a['lc'].width = dp(0.8) + dp(3.2) * perto
-                a['lg'].width = dp(2.5) + dp(10) * perto
-                a["lc"].circle = (cx, cy, r)
-                a['lg'].circle = (cx, cy, r)
-            # riscos de luz saindo do centro, em perspectiva
-            for rs in riscos:
-                v = (t * rs['vel'] * (0.6 + vel / 12.0) + rs['fase']) % 1.0
-                r0 = rmax * (0.04 + 1.1 * v * v)
-                r1 = r0 + rmax * (0.03 + 0.3 * v * v)
-                ang = rs['ang']
-                rs['l'].points = [cx + math.cos(ang) * r0, cy + math.sin(ang) * r0,
-                                  cx + math.cos(ang) * r1, cy + math.sin(ang) * r1]
-                rs['l'].width = dp(0.7) + dp(2.2) * v
-                rgb = rs['rgb']
-                aa = 0.0 if t > T_MEIO else min(1.0, t / 0.18) * min(1.0, v * 3) * 0.9
-                rs['c'].rgba = (rgb[0], rgb[1], rgb[2], aa)
-            # o ponto de fuga acende cada vez mais
-            if t < T_MEIO:
-                k = min(1.0, t / T_FLASH0)
-                tam = dp(30) + dp(140) * k * k
-                c_fuga.a = min(1.0, t / 0.1) * (0.35 + 0.65 * k)
-                r_fuga.pos, r_fuga.size = (cx - tam / 2.0, cy - tam / 2.0), (tam, tam)
-            else:
-                c_fuga.a = 0.0
-            # o clarao abre do centro e cobre a tela
-            if T_FLASH0 <= t < T_MEIO:
-                k = (t - T_FLASH0) / (T_MEIO - T_FLASH0)
-                tam = rmax * (0.6 + 3.4 * k)
-                c_luz.a = min(1.0, 0.5 + k)
-                r_luz.pos, r_luz.size = (cx - tam / 2.0, cy - tam / 2.0), (tam, tam)
-                _buraco(cx, cy, 0.0, dp(1), k * k)
-            elif t >= T_MEIO:
-                if not est['meio']:
-                    est['meio'] = True
-                    c_luz.a = 0.0
-                    if on_meio:
-                        try:
-                            on_meio()
-                        except Exception as ex:
-                            print(f"[anim_ui] tunel meio: {ex}")
-                # a tela nova se materializa do centro: o buraco cresce
-                k = min(1.0, (t - T_MEIO) / (dur - T_MEIO))
-                ek = 1 - (1 - k) ** 3
-                r = rmax * 1.1 * ek
-                borda = dp(40) + dp(120) * ek
-                _buraco(W / 2.0, H * 0.5, r, borda, 1.0 - 0.25 * k)
-                c_scan.a = 0.9 * (1 - k)
-                l_scan.circle = (W / 2.0, H * 0.5, max(dp(2), r + borda * 0.15))
-                l_scan.width = dp(1.2) + dp(2.5) * (1 - k)
-            if t >= dur:
-                _fim()
-                return False
-        except Exception as ex:
-            print(f"[anim_ui] tunel: {ex}")
-            if not est['meio'] and on_meio:
-                try:
-                    on_meio()
-                except Exception:
-                    pass
-            _fim()
-            return False
-    Clock.schedule_interval(_q, 1 / 60.)
+                ln.points = []
+        c_pts.a = 0.85 * (1 - abre) if t > T_PONTO0 else 0
+        l_fio.points = [0, cy, max(0.0, xa), cy] if xa > 0 else []
+        c_fio.a = 0.28 * (1 - abre) if t > T_PONTO0 else 0
+        tam = dp(26)
+        r_ag.pos, r_ag.size = (xa - tam / 2.0, cy - tam / 2.0), (tam, tam)
+        c_ag.a = 0.9 if T_PONTO0 < t < T_PONTO1 else max(0.0, 0.9 - (t - T_PONTO1) * 6)
+    _rodar(dur, passo, fim, 'costura')
 
 
 def _textura_brilho_redondo():
@@ -991,23 +915,6 @@ def _textura_brilho_redondo():
     return t
 
 
-def _textura_degrade():
-    """64x1: opaco a esquerda -> transparente a direita (u=0 opaco, u=1 nada)."""
-    global _TEX_DEGRADE
-    t = globals().get('_TEX_DEGRADE')
-    if t is None:
-        n = 64
-        buf = bytearray()
-        for i in range(n):
-            a = 1.0 - i / float(n - 1)
-            a = a * a * (3 - 2 * a)
-            buf += bytes((255, 255, 255, int(255 * a)))
-        dados = bytes(buf)
-        t = Texture.create(size=(n, 1), colorfmt='rgba')
-        t.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte')
-        t.add_reload_observer(lambda tx: tx.blit_buffer(dados, colorfmt='rgba', bufferfmt='ubyte'))
-        _TEX_DEGRADE = t
-    return t
 
 
 def pacotes_de_luz(botao, cor=(0, 0.9, 1), periodo=2.4):

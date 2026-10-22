@@ -302,8 +302,8 @@ def transicao_tela(app, destino):
 
 
 def transicao_link_start(app, destino, centro):
-    """Entrar pelo SYSTEM LINK START: o tunel de aneis no lugar do corte de
-    espada; a tela troca no pico do clarao."""
+    """Entrar pelo SYSTEM LINK START: a costura de luz (suave) no lugar do
+    corte de espada; a tela troca no escuro, logo depois da costura."""
     try:
         sm = app.root.ids.sm
     except Exception as e:
@@ -323,8 +323,8 @@ def transicao_link_start(app, destino, centro):
     def _fim():
         _transicao['ativa'] = False
     try:
-        from animacoes_ui import tunel_link_start
-        tunel_link_start(centro, on_meio=_meio, on_fim=_fim)
+        from animacoes_ui import entrada_costura
+        entrada_costura(centro, on_meio=_meio, on_fim=_fim)
     except Exception as e:
         print(f"[link start] {e}")
         _transicao['ativa'] = False

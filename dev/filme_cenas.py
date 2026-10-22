@@ -280,7 +280,7 @@ def _video_quadro():
         VID['q0'] = Q[0]
         VID['p'] = subprocess.Popen(
             [imageio_ffmpeg.get_ffmpeg_exe(), '-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgba',
-             '-s', f'{w}x{h}', '-r', str(60 // CADA), '-i', '-', '-vf', 'vflip,format=yuv420p',
+             '-s', f'{w}x{h}', '-r', str(60 // CADA), '-i', '-', '-vf', 'vflip,crop=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p',
              '-c:v', 'libx264', '-preset', 'slow', '-crf', '17', '-profile:v', 'high',
              os.environ['VIDEO']], stdin=subprocess.PIPE)
         LOG['video'] = {'q0': Q[0], 'fps': 60 // CADA, 'tam': [w, h]}
@@ -858,8 +858,8 @@ def roteiro_mem():
 
 
 def roteiro_link():
-    """O botao SYSTEM LINK START (icone, setas, luz correndo e o tunel ao
-    tocar) e os cartoes novos do Registro: toque, segurar, arrastar e um lote
+    """O botao SYSTEM LINK START (icone, setas, luz correndo e a costura de luz
+    ao tocar) e os cartoes novos do Registro: toque, segurar, arrastar e um lote
     novo chegando - tudo com toques de verdade."""
     est = {}
 
@@ -896,8 +896,8 @@ def roteiro_link():
 
     passos = [(1.5, lambda: fase('menu')), (2.6, lambda: foto('l1-menu')),
               (0.2, lambda: fase('toque link start')), (0.01, toca(lambda: tela().ids.btn_link_start)),
-              (0.3, lambda: foto('l2-tunel')), (0.25, lambda: foto('l3-tunel-clarao')),
-              (1.6, soltar_foco), (0.6, lambda: foto('l4-cartoes')),
+              (0.4, lambda: foto('l2-costura')), (0.5, lambda: foto('l3-costura-abrindo')),
+              (1.3, soltar_foco), (0.6, lambda: foto('l4-cartoes')),
               (0.3, lambda: fase('toque no cartao')), (0.01, toca(lambda: cartao(2), 0.12)),
               (0.06, lambda: foto('l5-toque')), (0.6, fechar_popups),
               (0.6, lambda: fase('segurar cartao')), (0.01, segura_ini), (0.45, lambda: foto('l6-segurando')),
@@ -1578,6 +1578,9 @@ def roteiro_video():
     passos += teclas('2500', 0.42) + [(0.42, tocar('×'))] + teclas('0,27', 0.42) + [(0.6, tocar('='))]
     passos += [(3.2, tocar('<<  Voltar')),
                (4.5, lambda: fase('fim video')), (0.2, fim)]
+    if os.environ.get('SO_ENTRADA'):            # so o menu -> SYSTEM LINK START -> Registro
+        passos = [(1.6, lambda: fase('menu')), (0.1, tocar('SYSTEM LINK START', exato=False)),
+                  (3.0, lambda: fase('fim entrada')), (0.1, fim)]
     Roteiro(passos).rodar()
 
 
