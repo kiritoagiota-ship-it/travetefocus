@@ -100,8 +100,9 @@ outro jeito. Sugestões e correções são bem-vindas pelas *Issues*.
 | `helpers.py` | Avisos (popups), o teclado do app e as trocas de tela |
 | `metas.py` | As contas: semana, faixas de pagamento e meta do dia |
 | `lembretes.py` + `java/` + `res_notif/`, `res_yoru/`, `res_layout/` | Avisos na barra do celular (AlarmManager + recebedor em Java que monta o card) |
-| `kirito.py`, `cenas.py`, `yoru_*`, `bankai/` | O Yoru: desenho em pixel art, poses e as cenas animadas |
-| `chefe*.py`, `chefe/`, `espadachim.py`, `infinito.py` | A abertura (a luta contra o chefe) e os efeitos de espada |
+| `kirito.py`, `cenas.py`, `yoru_*` | O Yoru: desenho em pixel art, poses e as cenas animadas |
+| `aberturas.py`, `espadachim.py`, `infinito.py` | A abertura depois da senha (o Yoru chega e cumprimenta) e os efeitos de espada |
+| `guardado/` | Coisas guardadas fora do APK: a antiga abertura da luta contra o chefe (`guardado/abertura_luta/`) |
 | `notificacoes.py`, `som.py`, `tatil.py` | LEVEL UP, sons e vibração |
 | `importar_zap.py`, `exportar.py`, `seguranca.py` | WhatsApp, exportação e a senha |
 | `sons/`, `*.ttf`, `*.png` | Sons, fontes e ícones (créditos em `sons/CREDITOS.txt` e `OFL-*.txt`) |

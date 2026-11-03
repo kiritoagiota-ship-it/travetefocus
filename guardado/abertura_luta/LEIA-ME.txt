@@ -1,0 +1,32 @@
+ABERTURA DA LUTA CONTRA O CHEFE (THE ABYSS WARDEN) — GUARDADA
+==============================================================
+Guardada em 03/11/2026 a pedido do usuario ("guarda essa animacao do comeco,
+tira ela do app, vamos colocar algo mais simples"). No app, depois da senha,
+entrou a abertura simples aberturas.abertura_chegada (o Yoru aparece, o titulo
+acende letra por letra e ele cumprimenta). A entrada rapida nao mudou.
+
+Esta pasta NAO vai para o APK (buildozer.spec: source.exclude_dirs = ...,guardado).
+
+O QUE TEM AQUI
+  cenas_luta.py    as pecas que ficavam no cenas.py e so a luta usava (texto
+                   igual): cena_titulo (a luta inteira), o cenario, a barra de
+                   vida, o chefe surgindo, chamas/lua/pilar do Bankai, closes...
+  chefe.py, chefe_poses.py, chefe/   o chefe (desenho, poses e cenario)
+  bankai/clipes.bin                   os desenhos do Bankai (so a luta usava)
+  sons/            os 9 sons que so a luta tocava (rugido, getsuga, kiai do
+                   Bankai...) e uma copia dos creditos (sons/CREDITOS.txt)
+
+VER A LUTA FUNCIONANDO (o jeito facil)
+  No git ha a etiqueta "abertura-luta-chefe" = a versao 1.17 inteira, com a luta:
+    git checkout abertura-luta-chefe        (volta: git checkout main)
+
+TRAZER A LUTA DE VOLTA PARA O APP
+  1. Mover de volta para app/: chefe.py, chefe_poses.py, chefe/, bankai/ e os
+     sons (para app/sons/).
+  2. Colar as pecas de cenas_luta.py de volta no cenas.py (sem o cabecalho
+     com os imports).
+  3. Em telas/loading.py (animar_materializacao), trocar abertura_chegada por
+     cenas.cena_titulo; em ignicao() a luta tinha clarao + tremida antes.
+  4. Ferramentas do chefe e do Bankai (ficaram em dev/): chefe_arte.py,
+     chefe_rig.py, chefe_ref.py, cenario_chefe.py, sons_chefe.py,
+     bankai_rig.py - elas gravam em app/chefe e app/bankai.

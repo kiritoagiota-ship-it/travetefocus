@@ -427,18 +427,17 @@ class TelaLoading(Screen):
         a.start(self.ids.barra_loading)
 
     def ignicao(self, *_):
-        _safe_treme(30)
-        self.ids.flash_overlay.opacity = 1
-        Animation(opacity=0, duration=0.8).start(self.ids.flash_overlay)
-        self.ids.terminal_box.opacity  = 0
+        # a abertura e calma (escolha do usuario, 03/11/2026): sem o clarao
+        # e a tremida que vinham antes da luta - o terminal so esmaece
+        Animation(opacity=0, duration=0.4).start(self.ids.terminal_box)
         # (verificar_e_notificar / lembrete.py nao existe mais no projeto: a
         # chamada agendada aqui dava NameError 3s depois e derrubava o app)
         self.animar_materializacao()
 
     def animar_materializacao(self, rapida=False):
-        """O Yoru escreve TRAVETE FOCUS com as espadas: a abertura inteira
-        (cenas.cena_titulo) logo depois da senha; com a senha ainda valendo,
-        a entrada rapida (cenas.cena_entrada_rapida). Depois: espadas
+        """O titulo TRAVETE FOCUS com o Yoru: a abertura simples
+        (aberturas.abertura_chegada) logo depois da senha; com a senha ainda
+        valendo, a entrada rapida (cenas.cena_entrada_rapida). Depois: espadas
         holograficas, versao e menu. Se a cena falhar, o titulo aparece
         direto."""
         if not self._typing_ativo:
@@ -473,8 +472,8 @@ class TelaLoading(Screen):
                 from cenas import cena_entrada_rapida
                 self._cena = cena_entrada_rapida(self, t, on_fim=_fim, texto="TRAVETE FOCUS")
             else:
-                from cenas import cena_titulo
-                self._cena = cena_titulo(self, t, on_fim=_fim, texto="TRAVETE FOCUS")
+                from aberturas import abertura_chegada
+                self._cena = abertura_chegada(self, t, on_fim=_fim, texto="TRAVETE FOCUS")
         except Exception as e:
             print(f"[loading] cena do titulo ignorada: {e}")
             t.text = "TRAVETE FOCUS"

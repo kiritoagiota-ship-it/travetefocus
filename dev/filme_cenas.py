@@ -1601,6 +1601,9 @@ def roteiro_pin():
               (1.2, lambda: foto('21-senha-errada')),
               (2.3, lambda: (fase('pin certo'), _digita('2004'))),
               (3.0, lambda: fase('fim pin')), (0.3, fim)]
+    if os.environ.get('ABERTURA_SEG'):       # so a senha certa e a abertura inteira (ate o menu)
+        passos = [(5.0, lambda: (fase('pin certo'), _digita('2004'))),
+                  (float(os.environ['ABERTURA_SEG']), lambda: fase('fim abertura')), (0.3, fim)]
     Roteiro(passos).rodar()
 
 

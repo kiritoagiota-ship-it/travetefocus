@@ -1,0 +1,41 @@
+Efeitos sonoros das espadas (TraveteFocus)
+==========================================
+
+Montados (cortados, mixados, equalizados e normalizados) a partir de
+gravacoes em dominio publico - licenca CC0 1.0
+(https://creativecommons.org/publicdomain/zero/1.0/):
+
+- "Sword" e "Sword Clash" - StarNinjas (OpenGameArt.org)
+    corte, corte2, carga, golpe_final, titulo, transicao, fusao, reiatsu,
+    absorve, getsuga
+- "Swishes Sound Pack" - artisticdude (OpenGameArt.org)
+    corte, corte2, sacar_iai, pulo, susto, teleporte, transicao, getsuga,
+    habilidade
+- "RPG Sound Pack" - artisticdude (OpenGameArt.org)
+    sacar, sacar_iai, golpe_final, pulo, corte2, titulo, teleporte, fusao,
+    reiatsu, absorve, getsuga, separa, materializa, habilidade
+- "RPG Audio" - Kenney (www.kenney.nl)
+    koiguchi, desliza, embainhar, pouso, agarra, susto
+
+- "Impact Sounds" - Kenney (www.kenney.nl)
+    vidro, cristal, moedas (sino)
+- "RPG Audio" - Kenney (www.kenney.nl)
+    moedas, papel
+- Sintetizados aqui (ruido, varreduras e graves): fogo, trevas, giro, fitas
+
+CC0 nao exige credito; fica registrado por gentileza aos autores.
+
+Vozes do Yoru (gritos de espadachim gravados)
+---------------------------------------------
+- kiai_ha1, kiai_ha2, kiai_sei1, kiai_sei2, kiai_sei3, kiai_seiya, kiai_fun
+    "Nota no Mori" (notanomori.net) - licenca Creative Commons Atribuicao 3.0
+    (CC BY 3.0, https://creativecommons.org/licenses/by/3.0/). Credito:
+    "ノタの森 / Nota no Mori". Cortados e com o volume igualado aqui.
+- kiai_kai ("Haaaa!" do KAI!! no BAN-KAI): o kiai_ha1 com a vogal esticada
+    aqui (ferramentas/vozes_kiai/kiai_kai.py) - mesma licenca e credito acima.
+- fala_tou ("Tou!"), fala_kurae ("Kurae!"), fala_ougi ("Ukete miro! Ougi!"),
+  fala_ikuzo ("Saa, iku zo!"), fala_yatta ("Yatta!")
+    "Efeito Lab" / 効果音ラボ (soundeffect-lab.info) - uso livre, inclusive
+    comercial, sem credito obrigatorio (voz: 吉田史記). Cortados aqui.
+Os originais e o script que prepara os arquivos ficam em
+travetefocus/ferramentas/vozes_kiai (para_app.py).
