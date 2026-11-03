@@ -2315,6 +2315,11 @@ def cena_entrada_rapida(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         oficina.pedir('frase', arco, 'katana')
 
         def _mergulha():
+            try:                                   # o texto LOADING sai de cima do titulo
+                from kivy.animation import Animation
+                Animation(texto_alfa=0, duration=0.35).start(tela.reator)
+            except Exception:
+                pass
             p_pulo = _com(P['pulo'], olhos='s')
             ini = (-kk.extensao(p_pulo)[2] - dp(10), H + ps * 10)
             kk.ancorar(*ini)
@@ -2503,10 +2508,11 @@ class KiritoPin:
         return x0, y0 + c.height, x0 + c.width
 
     def _linha_local(self):
-        """Altura (local do sprite) da borda: 2 linhas acima do topo do
-        tronco da pose sem dy (as poses 'espia*' foram feitas para ela)."""
+        """Altura (local do sprite) da borda: 1 linha abaixo do topo do tronco
+        da pose sem dy (as poses 'espia*' foram feitas para ela: o rosto
+        inteiro fica acima da borda e as maos agarram nela)."""
         topo = K._PES + K._PERNAS_P['repouso']['H'] + len(K._TRONCO) - 1
-        return (topo + 2) * self.k.ps
+        return (topo - 1) * self.k.ps
 
     def _seguir(self, dt=0):
         """Acompanha a caixa (ela sobe com o teclado, anima ao abrir...)."""
@@ -2675,7 +2681,7 @@ class KiritoPin:
             P = K.POSE_A
             self.k.empurrar(cabelo=18, lift=8)
             # encolhe um instante e salta de susto (!)
-            self.k.tocar(K.sequencia([(1, _com(P['espia'], olhos='u', dy=0, m1=(3, 4), m2=(-3, 4)), 'out'),
+            self.k.tocar(K.sequencia([(1, _com(P['espia'], olhos='u', dy=0, m1=(3, 2), m2=(-3, 2)), 'out'),
                                       (4, _com(P['espia_alto'], olhos='u'), 'segura'),
                                       (1, _com(P['espia_alto'], olhos='u')),
                                       (1, _com(P['espia_baixo'], olhos='u'))]))
@@ -2697,7 +2703,7 @@ class KiritoPin:
                 self.k.mostrar(_com(P['espia_baixo'], olhos='s'))
                 self._animar_desc(0.0, 0.45, on_fim=_de_volta)
             self._depois(0.2, lambda: self._animar_desc(
-                13 * ps, 0.12, on_fim=lambda: self._depois(0.7, _volta)))
+                16 * ps, 0.12, on_fim=lambda: self._depois(0.7, _volta)))
         except Exception as e:
             print(f"[kirito pin] susto: {e}")
 
@@ -2724,7 +2730,7 @@ class KiritoPin:
 
             def _afunda():
                 self.k.mostrar(_com(P['espia_baixo'], olhos='f'))
-                self._animar_desc(13 * ps, 0.9)
+                self._animar_desc(16 * ps, 0.9)
             # se estava escondido (susto do erro), volta para a borda antes
             self.k.mostrar(base)
             self._animar_desc(0.0, 0.15, on_fim=lambda: self.k.tocar(quadros, on_fim=_afunda))
@@ -2765,7 +2771,7 @@ class KiritoPin:
                 return
             # prepara o pulo: a cabeca afunda um pouco (impulso) e sobe
             k.tocar(K.sequencia([(2, P['espia'], 'out'),
-                                 (3, _com(P['espia'], dy=-1, m1=(3, 5), m2=(-3, 5)), 'segura'),
+                                 (3, _com(P['espia'], dy=-1, m1=(3, 3), m2=(-3, 3)), 'segura'),
                                  (1, P['espia_alto'])]))
 
             def _pula():
@@ -3256,7 +3262,8 @@ _EMOTE_CORES = (('K', (0.03, 0.03, 0.08, 1.0)), ('W', (1.0, 1.0, 1.0, 1.0)), ('b
                 ('B', (0.25, 0.55, 1.0, 1.0)), ('Y', (1.0, 0.86, 0.25, 1.0)), ('y', (0.95, 0.6, 0.1, 1.0)),
                 ('R', (1.0, 0.42, 0.55, 0.85)), ('r', (1.0, 0.7, 0.78, 0.85)))
 _EMOTE_MAPAS = {
-    'gota': [".K...", "KbK..", "KbK..", "KbbK.", "KWbbK", "KbbbK", ".KKK."],
+    'gota': ["...K...", "..KbK..", "..KbK..", ".KbbbK.", ".KbbbK.", "KbWbbbK", "KbWbbbK", "KbbbbbK",
+             "KbbbbbK", ".KbbbK.", "..KKK.."],
     '!!': ["KKK.KKK", "KYK.KYK", "KYK.KYK", "KYK.KYK", "KyK.KyK", "KKK.KKK", "KKK.KKK", "KYK.KYK",
            "KKK.KKK"],
     '?': [".KKKK.", "KYYYYK", "KYKKYK", "KKK.YK", "..KYYK", "..KYK.", "..KKK.", "..KYK.", "..KKK."],
@@ -3293,8 +3300,11 @@ class EmoteAnime(Widget):
         u = max(3.0, round(te * 3.4))         # grande o bastante para ler no celular
         h = len(self.mapa)
         w = len(self.mapa[0])
-        if self.tipo == 'gota':               # do lado da testa, na frente do rosto
-            return olho[0] + frente * te * 13 - w * u / 2.0, olho[1] + te * 2, u
+        if self.tipo == 'gota':               # na testa, na frente do rosto: do tamanho de
+            u = max(2.0, round(te * 1.4))     # uma gota de anime (antes era quase a cabeca)
+            return olho[0] + frente * te * 9 - w * u / 2.0, olho[1] + te * 3, u
+        if self.tipo == '!!':                 # proporcional a cabeca (antes passava dela)
+            u = max(2.0, round(te * 2.4))
         if self.tipo == 'brilho':             # em cima do olho
             u = max(1.0, round(te * 1.6))
             return olho[0] - w * u / 2.0, olho[1] - h * u / 2.0 + te, u

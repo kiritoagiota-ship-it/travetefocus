@@ -126,6 +126,7 @@ class InfinitoLoader(Widget):
     build_progress = NumericProperty(0.0)
     core_color     = ListProperty(list(_CIANO_PADRAO))
     texto          = StringProperty("")
+    texto_alfa     = NumericProperty(1.0)   # 0 = esconde so o texto (o infinito continua)
     velocidade     = NumericProperty(1.0)
 
     def __init__(self, **kwargs):
@@ -482,7 +483,7 @@ class InfinitoLoader(Widget):
                 self.texto = ""
                 return
         self._c_txt.rgba = (_lerp(cor[0], 1, 0.6), _lerp(cor[1], 1, 0.6), _lerp(cor[2], 1, 0.6),
-                            0.35 + 0.3 * e)
+                            (0.35 + 0.3 * e) * self.texto_alfa)
 
     def on_texto(self, *_):
         if hasattr(self, '_trilho'):      # kwargs chegam antes do canvas existir

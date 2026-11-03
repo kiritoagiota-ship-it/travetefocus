@@ -18,7 +18,7 @@ from kivy.graphics import Color, Rectangle
 
 import kirito as K
 from cenas import (TituloLuz, _Agenda, _Uma, _som, _precarregar_sons, _ps_titulo, _com, _PX,
-                   _no_quadro, balao)
+                   _no_quadro, balao, _materializar)
 
 
 def _saudacao():
@@ -113,7 +113,9 @@ def abertura_chegada(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         _PX[0] = ps / float(K.R)
         kk.opacity = 0
         camada.add_widget(kk)
-        _precarregar_sons(['titulo', 'embainhar'])
+        faiscas = K.Faiscas(n_max=40)
+        camada.add_widget(faiscas)
+        _precarregar_sons(['titulo', 'embainhar', 'materializa'])
         P = K.POSE_A
         th = titulo.th
         ox_t, oy_t = titulo._origem()
@@ -125,16 +127,19 @@ def abertura_chegada(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         kk.ancorar(*B)
         kk.idle(base=guarda)
 
-        def _surge():
-            t = [0.0]
+        # o infinito e o LOADING do carregamento saem devagar (a bolinha de
+        # luz passava por tras dele e do balao)
+        reator = getattr(tela, 'reator', None)
+        if reator is not None:
+            from kivy.animation import Animation
+            Animation(opacity=0, duration=0.5).start(reator)
 
-            def _q(dt):
-                t[0] += dt
-                kk.opacity = min(1.0, t[0] / 0.45)
-                return kk.opacity < 1.0
-            ag.cada(1 / 60., _q)
-        ag.depois(0.05, _surge)
-        acabou = _acender_letras(ag, titulo, texto, 0.55)
+        def _surge():
+            # ele chega num teleporte (sumiu num teleporte na caixa da senha)
+            kk.opacity = 1
+            _materializar(kk, camada, faiscas, dur=0.5)
+        ag.depois(0.15, _surge)
+        acabou = _acender_letras(ag, titulo, texto, 0.75)
         ag.depois(acabou, lambda: (_som('titulo'), _brilho_suave(titulo)))
 
         def _guarda_e_fala():

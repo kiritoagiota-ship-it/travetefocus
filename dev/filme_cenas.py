@@ -1601,6 +1601,28 @@ def roteiro_pin():
               (1.2, lambda: foto('21-senha-errada')),
               (2.3, lambda: (fase('pin certo'), _digita('2004'))),
               (3.0, lambda: fase('fim pin')), (0.3, fim)]
+    if os.environ.get('PIN_COMPLETO'):       # digito a digito: errada (susto, gota), certa, abertura ate o menu
+        def _tecla(d):
+            def _f():
+                for topo in Window.children:
+                    for w in topo.walk():
+                        if isinstance(w, TextInput):
+                            w.text = w.text + d
+                            return
+            return _f
+
+        def _valida():
+            for topo in Window.children:
+                for w in topo.walk():
+                    if isinstance(w, TextInput):
+                        w.dispatch('on_text_validate')
+                        return
+        passos = [(4.5, lambda: fase('digita errada'))]
+        passos += [(0.45, _tecla(d)) for d in '1111']
+        passos += [(0.5, lambda: (fase('pin errado'), _valida())), (3.8, lambda: fase('digita certa'))]
+        passos += [(0.45, _tecla(d)) for d in '2004']
+        passos += [(0.5, lambda: (fase('pin certo'), _valida())),
+                   (float(os.environ['PIN_COMPLETO']), lambda: fase('fim')), (0.3, fim)]
     if os.environ.get('ABERTURA_SEG'):       # so a senha certa e a abertura inteira (ate o menu)
         passos = [(5.0, lambda: (fase('pin certo'), _digita('2004'))),
                   (float(os.environ['ABERTURA_SEG']), lambda: fase('fim abertura')), (0.3, fim)]

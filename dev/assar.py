@@ -25,10 +25,12 @@ def gravar():
         ('entrada rapida', [bash, os.path.join(AQUI, 'tour.sh'), '720', '1560', os.path.join(SCR, 'gr_rap'), '1.75'],
          dict(FOTOS='0', RAPIDA='1', TOUR_PY=os.path.join(AQUI, 'tela_teste.py'))),
     ]
-    for i in range(2):                    # o Yoru espiando a caixa da senha (senha errada e certa)
+    # o Yoru espiando a caixa da senha (digito a digito, senha errada e certa) e a
+    # abertura depois dela, tambem no tamanho do celular do usuario
+    for i, (L, A, D) in enumerate((('720', '1560', '1.75'), ('1080', '2090', '2.8125'), ('540', '1045', '1.40625'))):
         rodadas.append(('senha %d' % (i + 1),
-                        [bash, os.path.join(AQUI, 'tour.sh'), '720', '1560', os.path.join(SCR, 'gr_pin%d' % i), '1.75'],
-                        dict(CENA='pin', CADA='0', TOUR_PY=os.path.join(AQUI, 'filme_cenas.py'))))
+                        [bash, os.path.join(AQUI, 'tour.sh'), L, A, os.path.join(SCR, 'gr_pin%d' % i), D],
+                        dict(CENA='pin', CADA='0', PIN_COMPLETO='10', TOUR_PY=os.path.join(AQUI, 'filme_cenas.py'))))
     # as cenas curtas dentro do app de verdade (o lugar e o tamanho mudam os desenhos pedidos)
     rodadas.append(('cenas no app', [bash, os.path.join(AQUI, 'tour.sh'), '720', '1560', os.path.join(SCR, 'gr_app'), '1.75'],
                     dict(CENA='app', CADA='0', TOUR_PY=os.path.join(AQUI, 'filme_cenas.py'))))
@@ -41,7 +43,10 @@ def gravar():
         rodadas.append(('cenas curtas %d' % (i + 1),
                         [sys.executable, '-u', os.path.join(AQUI, 'golpes_teste.py'), '720', '1560',
                          os.path.join(SCR, 'gr_mini%d' % i), '1.75', cenas], dict(PASSO_FOTO='1.0')))
+    so = globals().get('SO')
     for nome, cmd, extra in rodadas:
+        if so and not nome.startswith(so):
+            continue
         t = time.time()
         e = dict(env, **extra)
         r = subprocess.run(cmd, env=e, capture_output=True, text=True, encoding='utf-8', errors='replace')
@@ -160,4 +165,6 @@ def assar():
 
 
 if __name__ == '__main__':
+    if len(sys.argv) > 2 and sys.argv[1] == 'gravar':      # so as rodadas com esse nome (ex.: senha)
+        SO = sys.argv[2]
     {'gravar': gravar, 'assar': assar}[sys.argv[1]]()

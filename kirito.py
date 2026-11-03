@@ -3856,10 +3856,12 @@ POSE_A = {
     # nela e os olhos no codigo sendo digitado (o corpo fica escondido atras)
     # (a borda fica na linha topo+2 da pose sem dy; as maos ficam paradas nela
     # enquanto a cabeca sobe/desce: m_y = 4 - dy)
-    'espia':       pose(dy=1, m1=(3, 3), a1=None, m2=(-3, 3), a2=None, olhos='b', frente1=True),
-    'espia_olha':  pose(dy=1, m1=(3, 3), a1=None, m2=(-3, 3), a2=None, frente1=True),
-    'espia_alto':  pose(dy=3, m1=(3, 1), a1=None, m2=(-3, 1), a2=None, frente1=True),
-    'espia_baixo': pose(dy=-3, m1=(3, 7), a1=None, m2=(-3, 7), a2=None, frente1=True),
+    # espiar por cima da caixa do PIN: as maos agarram a borda (dy + m = 2) e o
+    # rosto inteiro fica acima dela (antes a borda cortava o rosto nos olhos)
+    'espia':       pose(dy=1, m1=(3, 1), a1=None, m2=(-3, 1), a2=None, olhos='b', frente1=True),
+    'espia_olha':  pose(dy=1, m1=(3, 1), a1=None, m2=(-3, 1), a2=None, frente1=True),
+    'espia_alto':  pose(dy=3, m1=(3, -1), a1=None, m2=(-3, -1), a2=None, frente1=True),
+    'espia_baixo': pose(dy=-3, m1=(3, 5), a1=None, m2=(-3, 5), a2=None, frente1=True),
     'susto':      pose(pernas='pulo', dx=-1, dy=1, m1=(3, 7), a1=None, m2=(-2, 7)),
     # agarrado na parede (espadas guardadas), corpo encolhido
     'grudado':    pose(pernas='grudado', dy=-2, m1=(3, 3), a1=None),

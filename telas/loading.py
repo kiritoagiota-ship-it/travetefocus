@@ -91,6 +91,11 @@ class TelaLoading(Screen):
     # ── Entrada ────────────────────────────────────────────────────────────
 
     def on_enter(self):
+        try:                                   # a abertura apaga o infinito e o LOADING
+            self.ids.reator_shader.opacity = 1
+            self.ids.reator_shader.texto_alfa = 1
+        except Exception:
+            pass
         Clock.schedule_once(self.preparar, 0.1)
 
     def on_leave(self, *_):
@@ -403,16 +408,16 @@ class TelaLoading(Screen):
             return
         self.printar_texto(
             "\n>[HACK] Forçando LIMIT BREAK...",
-            lambda: Clock.schedule_once(self.etapa_sucesso, 0.7))
+            lambda: Clock.schedule_once(self.etapa_sucesso, 0.3), 0.014)
         self.ids.barra_loading.cor_linha = [0.6, 0.1, 0.9, 1]
         self.reator.core_color           = [0.6, 0.1, 0.9]
-        Animation(progresso=85, duration=1.2).start(self.ids.barra_loading)
-        Animation(build_progress=0.9, duration=1.2).start(self.reator)
+        Animation(progresso=85, duration=0.7).start(self.ids.barra_loading)
+        Animation(build_progress=0.9, duration=0.7).start(self.reator)
 
     def etapa_sucesso(self, dt):
         self.printar_texto(
             "\n[color=#00ff00]>[OK] Acesso Concedido. Sistema Online.[/color]",
-            self.etapa_final, 0.02)
+            self.etapa_final, 0.012)
         self.ids.barra_loading.cor_linha = [0, 1, 0, 1]
         self.reator.core_color           = [0, 1, 0]
         Animation(progresso=100, duration=0.3).start(self.ids.barra_loading)
@@ -421,8 +426,8 @@ class TelaLoading(Screen):
         self.ids.barra_loading.progresso = 0
         self.ids.barra_loading.cor_linha = [0, 0.5, 1, 1]
         self.reator.core_color           = [0, 0.89, 1]
-        Animation(build_progress=1.0, duration=0.8, transition='out_expo').start(self.reator)
-        a = Animation(progresso=100, duration=0.8)
+        Animation(build_progress=1.0, duration=0.5, transition='out_expo').start(self.reator)
+        a = Animation(progresso=100, duration=0.5)       # (depois da senha: mais curto, pedido de 03/11)
         a.bind(on_complete=self.ignicao)
         a.start(self.ids.barra_loading)
 
