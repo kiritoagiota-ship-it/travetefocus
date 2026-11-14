@@ -4,6 +4,8 @@ AQUI="$(cd "$(dirname "$0")" && pwd)"
 ISO="/c/Users/kirit/travetefocus/ferramentas/saida_testes/iso_tour_$1x$2"
 rm -rf "$ISO"; mkdir -p "$ISO/appdata" "$ISO/home" "$ISO/kivy"
 rm -rf "$3"; mkdir -p "$3"
+# a janela de teste abre no SEGUNDO monitor (x=1920+), para nao atrapalhar o uso do PC
+KCFG_GRAPHICS_POSITION=custom KCFG_GRAPHICS_LEFT=${TESTE_LEFT:-2300} KCFG_GRAPHICS_TOP=${TESTE_TOP:-40} \
 APPDATA="$(cygpath -w "$ISO/appdata")" HOME="$(cygpath -w "$ISO/home")" KIVY_HOME="$(cygpath -w "$ISO/kivy")" \
 PYTHONUSERBASE='C:\Users\kirit\AppData\Roaming\Python' \
 timeout 230 python -u "${TOUR_PY:-$AQUI/tour.py}" "$1" "$2" "$(cygpath -w "$3")" $4 > "$3/saida.txt" 2>&1
