@@ -101,9 +101,85 @@ def _dia_de(texto):
         return None
 
 
+def dia_do_lote(r, hoje):
+    """O dia de um lote do Registro: o dia gravado (r[3], colado do WhatsApp);
+    senao o dia da hora em que foi lancado (r[4]); senao (lote antigo, sem
+    hora) hoje. Dia gravado estragado = None (fica de fora, como antes)."""
+    if len(r) > 3 and r[3]:
+        return _dia_de(r[3])
+    if len(r) > 4 and r[4]:
+        try:
+            return datetime.fromtimestamp(float(r[4])).date()
+        except (TypeError, ValueError, OverflowError, OSError):
+            pass
+    return hoje
+
+
+DIAS_CURTOS = ('seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom')
+DIAS_NOMES = ('segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo')
+
+
+def rotulo_dia(d):
+    """date -> 'sáb 14/11' (o cartao do lote que nao e de hoje)."""
+    return f"{DIAS_CURTOS[d.weekday()]} {d.strftime('%d/%m')}"
+
+
+def nome_do_dia(d, hoje):
+    """Como falar de um dia que passou: 'ontem', 'sábado' (ate 6 dias) ou '14/11'."""
+    n = (hoje - d).days
+    if n == 1:
+        return 'ontem'
+    if 1 < n < 7:
+        return DIAS_NOMES[d.weekday()]
+    return d.strftime('%d/%m')
+
+
+def dias_pendentes(registros, hoje):
+    """Os dias ANTES de hoje que tem lote ainda nao finalizado (em ordem)."""
+    dias = set()
+    for r in registros or ():
+        d = dia_do_lote(r, hoje)
+        if d is not None and d < hoje:
+            dias.add(d)
+    return sorted(dias)
+
+
+def aviso_pendentes(registros, hoje):
+    """O texto da faixa do Registro quando sobrou lote de outro dia: None
+    (nao tem) ou 'Tem lotes de sábado sem finalizar'."""
+    dias = dias_pendentes(registros, hoje)
+    if not dias:
+        return None
+    if len(dias) == 1:
+        return f"Tem lotes de {nome_do_dia(dias[0], hoje)} sem finalizar"
+    return f"Lotes de {len(dias)} dias sem finalizar"         # (curto: cabe na faixa com letra grande)
+
+
+def separar_lotes(registros, hoje):
+    """Como o FINALIZAR DIA divide os lotes em turnos.
+    -> (fixos {'dd/mm/aaaa': [lotes]}, livres [lotes], data_livre date|None)
+    fixos: os colados do WhatsApp (tem dia) e os digitados em dias ANTERIORES ao
+    dia mais novo dos digitados (cada dia vira um turno). livres: os digitados do
+    dia mais novo (e os antigos sem hora, que sao de hoje): vao para a data que o
+    popup pergunta, que ja vem com o dia deles (data_livre)."""
+    fixos, digitados = {}, {}
+    for r in registros or ():
+        if len(r) > 3 and r[3]:
+            fixos.setdefault(str(r[3]), []).append(r)
+        else:
+            digitados.setdefault(dia_do_lote(r, hoje), []).append(r)
+    if not digitados:
+        return fixos, [], None
+    data_livre = max(digitados)
+    livres = digitados.pop(data_livre)
+    for d in sorted(digitados):
+        fixos.setdefault(d.strftime('%d/%m/%Y'), []).extend(digitados[d])
+    return fixos, livres, data_livre
+
+
 def pecas_da_semana(memorias, registros, hoje):
     """(pecas na semana, pecas de hoje): turnos finalizados + lotes ainda nao
-    finalizados (os lotes sem dia sao de hoje)."""
+    finalizados (cada lote no dia dele: metas.dia_do_lote)."""
     seg = segunda_da_semana(hoje)
     sab = seg + timedelta(days=5)
     semana = hoje_n = 0
@@ -123,13 +199,82 @@ def pecas_da_semana(memorias, registros, hoje):
             q = int(r[1])
         except (TypeError, ValueError, IndexError):
             continue
-        d = _dia_de(r[3]) if len(r) > 3 and r[3] else hoje
+        d = dia_do_lote(r, hoje)
         if d is None or not (seg <= d <= sab):
             continue
         semana += q
         if d == hoje:
             hoje_n += q
     return semana, hoje_n
+
+
+def fim_da_semana(d):
+    """O sabado (dia do pagamento) da semana de `d` (domingo: o da semana seguinte)."""
+    return segunda_da_semana(d) + timedelta(days=5)
+
+
+def semanas(pecas_por_dia, cfg):
+    """Divide as pecas em semanas de pagamento (seg a sab) e aplica a faixa em
+    CADA semana. pecas_por_dia: {date: pecas} ou [(date, pecas)] (o mesmo dia
+    pode repetir). -> [{'seg', 'sab', 'pecas', 'ganho'}] em ordem."""
+    itens = pecas_por_dia.items() if hasattr(pecas_por_dia, 'items') else pecas_por_dia
+    por_sem = {}
+    for d, q in itens:
+        if d is None:
+            continue
+        try:
+            q = int(q)
+        except (TypeError, ValueError):
+            continue
+        seg = segunda_da_semana(d)
+        por_sem[seg] = por_sem.get(seg, 0) + q
+    return [{'seg': seg, 'sab': seg + timedelta(days=5), 'pecas': q, 'ganho': ganho(q, cfg)}
+            for seg, q in sorted(por_sem.items())]
+
+
+def ganho_por_semanas(pecas_por_dia, cfg):
+    """O pagamento de um periodo: a SOMA do ganho de cada semana (seg a sab),
+    cada uma com a sua faixa (2 semanas de 2.400 = 2 x R$ 600, e nao 4.800 na
+    faixa de cima)."""
+    return round(sum(s['ganho'] for s in semanas(pecas_por_dia, cfg)), 2)
+
+
+def fim_do_periodo(tipo, inicio, hoje):
+    """Ate que dia um periodo aberto em `inicio` conta (o fechamento e a
+    projecao usam o mesmo): o SEMANAL vai ate o sabado daquela semana (ou ate
+    hoje, se fechar antes); os outros tipos vao ate hoje."""
+    if str(tipo or '').lower() == 'semanal':
+        # aberto num SABADO (fechou e abriu no dia do pagamento): a semana dele
+        # e a seguinte (antes contava so aquele sabado e a semana zerava)
+        ref = inicio + timedelta(days=2) if inicio.weekday() == 5 else inicio
+        return min(fim_da_semana(ref), max(hoje, inicio))
+    return max(hoje, inicio)
+
+
+def inicio_do_proximo(fim, dias_com_turno=()):
+    """O periodo seguinte comeca no dia depois do fim do fechado. Se esse dia e
+    domingo (folga) e nao tem turno nele, comeca na segunda. Fechou num SABADO:
+    o seguinte comeca no proprio sabado - um turno de sabado finalizado depois
+    de fechar entra nele em vez de ficar fora de todos (os ja contados no
+    fechado estao em 'contadas' e nao contam de novo)."""
+    if fim.weekday() == 5:
+        return fim
+    d = fim + timedelta(days=1)
+    if d.weekday() == 6 and d not in set(dias_com_turno):
+        d += timedelta(days=1)
+    return d
+
+
+def config_coerente(base, meio, bonus, meta_meio, meta_bonus):
+    """None se as faixas fecham (base <= meio <= bonus e meta do meio menor que a
+    de cima), senao o texto do problema (para o aviso dos ajustes)."""
+    if not (base <= meio <= bonus):
+        if base > bonus:
+            return "A BASE NÃO PODE PASSAR DO BÔNUS"
+        return "O R$ DO MEIO TEM QUE FICAR ENTRE A BASE E O BÔNUS"
+    if not (meta_meio < meta_bonus):
+        return "A META DO MEIO TEM QUE SER MENOR QUE A META DE CIMA"
+    return None
 
 
 def meta_diaria(alvo, feitas_semana, feitas_hoje, hoje, pecas_sabado=200):

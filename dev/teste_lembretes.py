@@ -159,5 +159,27 @@ caso('faixa nova: mesma faixa nao avisa', lembretes.aviso_faixa_nova(2510, 2600,
 f = lembretes.aviso_faixa_nova(2990, 3010, CFG)
 caso('faixa nova: a maxima', f is not None and '0,30' in f['titulo'] and f['rotulo'] == 'Faixa máxima!', f)
 
+# 16) L1: lote de sabado esquecido sem FINALIZAR DIA nao vira lote de segunda
+# (14/11/2026 e sabado, 16/11 segunda)
+ESQ = [['Camisa', '150', 450, '', datetime(2026, 11, 14, 9, 10).timestamp()]]
+p = plano(datetime(2026, 11, 16, 6, 30), [], ESQ)
+caso('L1: bom dia de segunda continua', p['lancar']['quando'] == datetime(2026, 11, 16, 7, 0), p['lancar']['quando'])
+caso('L1: meta de segunda nao diz que ja saiu', 'meta' in p and 'Já saíram 0' in p['meta']['texto'], p.get('meta'))
+caso('L1: sem fechamento de "hoje: 150"', 'fechamento' not in p, p.get('fechamento'))
+caso('L1: xp de hoje sem o lote de sabado', lembretes._xp_hoje([], ESQ, datetime(2026, 11, 16).date()) == 0)
+caso('L1: no proprio sabado o xp conta', lembretes._xp_hoje([], ESQ, datetime(2026, 11, 14).date()) == 450)
+HOJE_SEG = [['Short', '80', 240, '', datetime(2026, 11, 16, 8, 0).timestamp()]]
+p = plano(datetime(2026, 11, 16, 9, 0), [], ESQ + HOJE_SEG)
+caso('L1: fechamento so com o de hoje', 'fechamento' in p and 'Hoje: 80 peças' in p['fechamento']['texto']
+     and '+240 XP' in p['fechamento']['texto'], p.get('fechamento', {}).get('texto'))
+# so o lote de sabado pendente + turno de hoje salvo: o dia de hoje esta finalizado
+p = plano(datetime(2026, 11, 16, 9, 0), [turno('16/11/2026', 300)], ESQ)
+caso('L1: pendente so conta lote de hoje', 'fechamento' in p and 'Dia finalizado' in p['fechamento']['texto'],
+     p.get('fechamento', {}).get('texto'))
+# lote antigo sem hora continua de hoje
+p = plano(datetime(2026, 11, 16, 9, 0), [], [['Velho', '70', 210]])
+caso('L1: lote sem hora e de hoje', 'fechamento' in p and 'Hoje: 70 peças' in p['fechamento']['texto'],
+     p.get('fechamento', {}).get('texto'))
+
 print(f'{casos[0]} casos, {len(falhas)} falhas')
 sys.exit(1 if falhas else 0)

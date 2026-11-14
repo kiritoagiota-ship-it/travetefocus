@@ -870,8 +870,18 @@ def dia_curto(dia):
 
 def popup_importar_zap(itens, on_confirm):
     """O que foi achado no texto copiado do WhatsApp, separado por dia.
-    Tocar numa peça tira (ou devolve) ela. on_confirm(itens que ficaram)."""
+    Tocar numa peça tira (ou devolve) ela. on_confirm(itens que ficaram).
+    Peça que parece ja lançada (mesmo dia, nome e quantidade nos lotes ou num
+    turno) vem marcada '(já lançado?)' e começa FORA."""
     import importar_zap
+    try:
+        _app = App.get_running_app()
+        repetidos = importar_zap.marcar_repetidos(itens, getattr(_app, 'registros', []),
+                                                  getattr(_app, 'memorias', []))
+    except Exception as e:
+        print(f"[zap] repetidos: {e}")
+        repetidos = [False] * len(itens)
+    n_rep = sum(1 for r in repetidos if r)
     from kivy.uix.scrollview import ScrollView
     from kivy.uix.gridlayout import GridLayout
     pop, layout = _make_popup()
@@ -885,15 +895,22 @@ def popup_importar_zap(itens, on_confirm):
     lbl_resumo = Label(markup=True, font_name="rajdhani.ttf", font_size="17sp", size_hint_y=None,
                        height=dp(26), halign="center", valign="middle")
     caixa.add_widget(lbl_resumo)
-    caixa.add_widget(Label(
-        text="[color=#6f7a92]Toque numa peça para tirar da lista.[/color]", markup=True,
-        font_name="rajdhani.ttf", font_size="13sp", size_hint_y=None, height=dp(18), halign="center"))
+    if n_rep:
+        dica = (f"[color=#ffb347]{n_rep} {'peça parece' if n_rep == 1 else 'peças parecem'} já "
+                f"{'lançada' if n_rep == 1 else 'lançadas'}: {'ficou' if n_rep == 1 else 'ficaram'} fora.[/color]\n"
+                "[color=#6f7a92]Toque numa peça para tirar ou devolver.[/color]")
+    else:
+        dica = "[color=#6f7a92]Toque numa peça para tirar da lista.[/color]"
+    caixa.add_widget(texto_que_cabe(Label(
+        text=dica, markup=True,
+        font_name="rajdhani.ttf", font_size="13sp", size_hint_y=None, height=dp(36 if n_rep else 18),
+        halign="center"), caixa))
     rolagem = ScrollView(bar_width=dp(3))
     grade = GridLayout(cols=1, size_hint_y=None, spacing=dp(5), padding=[0, dp(2), 0, dp(2)])
     grade.bind(minimum_height=grade.setter('height'))
     rolagem.add_widget(grade)
     caixa.add_widget(rolagem)
-    ativos = [True] * len(itens)
+    ativos = [not r for r in repetidos]
     cabecas = []                                   # (label, [indices])
     varios = len({it.get('quem', '') for it in itens}) > 1
 
@@ -913,8 +930,14 @@ def popup_importar_zap(itens, on_confirm):
         it = itens[i]
         quem = f"   [color=#6f7a92]{it['quem'][:12]}[/color]" if varios and it.get('quem') else ""
         nome = it['nome'] if len(it['nome']) <= 24 else it['nome'][:23] + "…"
+        if repetidos[i]:
+            nome = nome if len(nome) <= 14 else nome[:13] + "…"     # cabe o '(já lançado?)'
         if ativos[i]:
-            return f"  {nome}   [color=#00ff88]{fmt_br(it['qtd'])} un.[/color]{quem}"
+            rep = "   [color=#ffb347](já lançado?)[/color]" if repetidos[i] else ""
+            return f"  {nome}   [color=#00ff88]{fmt_br(it['qtd'])} un.[/color]{rep}{quem}"
+        if repetidos[i]:
+            return (f"  [color=#4a5068][s]{nome}   {fmt_br(it['qtd'])} un.[/s][/color]"
+                    f"   [color=#ffb347](já lançado?)[/color]")
         return f"  [color=#4a5068][s]{nome}   {fmt_br(it['qtd'])} un.[/s]   (fora)[/color]"
 
     def _alternar(btn, i):
@@ -939,6 +962,8 @@ def popup_importar_zap(itens, on_confirm):
         for i in idxs:
             b = ListaItem(text=_texto(i), font_size="15sp")
             b.height = dp(42)
+            if not ativos[i]:                      # ja lancado: comeca fora (borda apagada)
+                b.cor_borda = [0.25, 0.28, 0.4, 0.5]
             b.bind(on_release=lambda inst, i=i: _alternar(inst, i))
             grade.add_widget(b)
     _resumo()
@@ -1360,10 +1385,11 @@ def popup_trocar_senha():
     return pop
 
 
-def popup_resumo_dia(tot_pecas, tot_xp, on_confirm, dias=None, pede_data=True):
+def popup_resumo_dia(tot_pecas, tot_xp, on_confirm, dias=None, pede_data=True, data_padrao=None):
     """dias = [(dia 'dd/mm/aaaa', pecas)] das peças que ja tem dia (coladas do
-    WhatsApp): cada dia vira um turno separado. pede_data=False: nenhuma
-    peça sem dia, o campo da data some."""
+    WhatsApp ou digitadas num dia anterior): cada dia vira um turno separado.
+    pede_data=False: nenhuma peça sem dia, o campo da data some. data_padrao
+    (date): o dia que o campo ja traz (o dia dos lotes; padrao hoje)."""
     pop, layout = _make_popup()
     dias = list(dias or [])
     mostra = dias[:6]
@@ -1422,7 +1448,7 @@ def popup_resumo_dia(tot_pecas, tot_xp, on_confirm, dias=None, pede_data=True):
             halign="center", size_hint_y=None, height=dp(22)))
 
     inp_data = InputHolografico(
-        text=hoje.strftime("%d/%m/%Y"),
+        text=(data_padrao or hoje).strftime("%d/%m/%Y"),
         font_name="orbitron.ttf", font_size="22sp",
         foreground_color=(0, 0.9, 1, 1), cursor_color=(0, 0.9, 1, 1),
         halign="center", size_hint_y=None, height=dp(58))

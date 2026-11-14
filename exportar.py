@@ -9,12 +9,55 @@ from datetime import datetime
 from kivy.utils import platform as _plat
 
 
+def _data_turno(m):
+    """datetime do turno ('dd/mm/aaaa  HH:MM', so a data ou estragada = min)."""
+    raw = str(m.get('data', '')).strip()
+    for fmt in ("%d/%m/%Y  %H:%M", "%d/%m/%Y %H:%M", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.strptime(raw.split()[0], "%d/%m/%Y")
+    except Exception:
+        return datetime.min
+
+
+def ordenadas(memorias):
+    """Turnos em ordem de data (a mesma das Memorias: um dia antigo pode ser
+    lancado depois, a ordem de gravacao nao serve). Empate: ordem de gravacao."""
+    return [m for _, m in sorted(enumerate(memorias), key=lambda par: (_data_turno(par[1]), par[0]))]
+
+
+def _num(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        try:
+            return int(float(str(v).replace(',', '.')))
+        except (TypeError, ValueError):
+            return 0
+
+
+def melhor_dia(memorias):
+    """(dia 'dd/mm/aaaa', pecas) do dia com mais pecas: dois turnos no mesmo
+    dia SOMAM (como main.recalcular_totais). Sem turnos: ('?', 0)."""
+    por_dia = {}
+    for m in memorias:
+        dia = str(m.get('data', '')).strip().split(' ')[0] or '?'
+        por_dia[dia] = por_dia.get(dia, 0) + _num(m.get('total', 0))
+    if not por_dia:
+        return '?', 0
+    dia = max(por_dia, key=lambda d: por_dia[d])     # empate: o primeiro na ordem de data
+    return dia, por_dia[dia]
+
+
 def gerar_csv_bytes(memorias):
     """Gera conteúdo do CSV como bytes UTF-8-BOM (compatível com Excel e WhatsApp)."""
     buf = io.StringIO()
     w   = csv.writer(buf)
     w.writerow(['Data', 'Total_Pecas', 'XP_Ganho', 'Itens_do_Turno'])
-    for mem in reversed(memorias):
+    for mem in reversed(ordenadas(memorias)):     # o mais novo primeiro, como nas Memorias
         itens = ' | '.join(
             f"{it[0]} x{it[1]}"
             for it in mem.get('itens', [])
@@ -33,9 +76,10 @@ def gerar_relatorio_whatsapp(memorias):
     if not memorias:
         return "TraveteFocus — nenhum turno registrado ainda."
 
-    total_pecas = sum(m.get('total', 0) for m in memorias)
-    total_xp    = sum(m.get('xp',    0) for m in memorias)
-    melhor      = max(memorias, key=lambda m: m.get('total', 0))
+    memorias    = ordenadas(memorias)
+    total_pecas = sum(_num(m.get('total', 0)) for m in memorias)
+    total_xp    = sum(_num(m.get('xp',    0)) for m in memorias)
+    dia_m, pecas_m = melhor_dia(memorias)
 
     linhas = [
         '*RELATÓRIO TRAVETEFOCUS*',
@@ -44,7 +88,7 @@ def gerar_relatorio_whatsapp(memorias):
         f'Total de turnos: {len(memorias)}',
         f'Total de peças:  {total_pecas}',
         f'Total de XP:     {total_xp}',
-        f'Melhor dia:      {melhor.get("total", 0)} peças ({melhor.get("data", "?")})',
+        f'Melhor dia:      {pecas_m} peças ({dia_m})',
         '',
         '*ÚLTIMOS 10 TURNOS:*',
     ]

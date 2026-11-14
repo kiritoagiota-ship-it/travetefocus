@@ -76,7 +76,89 @@ caso('ano com 2 digitos, AM/PM e marcas invisiveis', '''‎[5/10/26, 5:32 PM] Ki
 ‎[5/10/26, 5:33:10 PM] ~ Maria: Calça jeans 95''',
      [('05/10/2026', 'Camisa polo', 180), ('05/10/2026', 'Calça jeans', 95)])
 
+caso('total/xp/turnos so como palavra inteira', '''Saia express 120
+Bermuda expert 80
+Body totalmente liso 70
+Total do dia 300
++540 XP
+Turnos: 3''',
+     [('10/10/2026', 'Saia express', 120), ('10/10/2026', 'Bermuda expert', 80),
+      ('10/10/2026', 'Body totalmente liso', 70)])
+
+caso('50+30 soma no mesmo item', '''Calça 50+30
+Short 20 + 10 + 5
+40+60 regata''',
+     [('10/10/2026', 'Calça', 80), ('10/10/2026', 'Short', 35), ('10/10/2026', 'Regata', 100)])
+
+caso('numero seguido de palavra comeca item novo', '''Camisa polo 180 calça 95
+180 bermuda 95 vestido
+Camisa 180 pçs calça 95 short 40''',
+     [('10/10/2026', 'Camisa polo', 180), ('10/10/2026', 'Calça', 95), ('10/10/2026', 'Bermuda', 180),
+      ('10/10/2026', 'Vestido', 95), ('10/10/2026', 'Camisa', 180), ('10/10/2026', 'Calça', 95),
+      ('10/10/2026', 'Short', 40)])
+
+caso('nome com numero pequeno nao e dividido; mais + separando pecas', '''camisa 2 bolsos 150
+regata 3 cores 200
+camisa 50 + 30 calça
+Camisa 100 + calça 50''',
+     [('10/10/2026', 'Camisa 2 bolsos', 150), ('10/10/2026', 'Regata 3 cores', 200),
+      ('10/10/2026', 'Camisa', 50), ('10/10/2026', 'Calça', 30), ('10/10/2026', 'Camisa', 100),
+      ('10/10/2026', 'Calça', 50)])
+
+caso('separa por " / " e hora no texto nao vira quantidade', '''camisa 100 / calça 50
+Camisa 180 peças às 14:30
+Saída às 17:30''',
+     [('10/10/2026', 'Camisa', 100), ('10/10/2026', 'Calça', 50), ('10/10/2026', 'Camisa', 180)])
+
 falhas = 0
+
+# marcar_repetidos: o que ja foi lancado (lotes do Registro ou itens de um turno do mesmo dia)
+registros = [['Camisa polo', '180', 540, '05/10/2026', 1.0],      # colado antes (com dia)
+             ['Bermuda', '120', 360, ''],                       # digitado hoje (sem dia)
+             ['Short', '40', 120]]                              # registro antigo (sem campo de dia)
+memorias = [{'data': '06/10/2026  17:50', 'total': 155, 'xp': 0,
+             'itens': [['Calça Jeans', '95', 0], ['Vestido', 60, 0]]},
+            {'data': 'quebrada', 'itens': 'x'}]
+colados = [{'dia': '05/10/2026', 'nome': 'camisa  polo', 'qtd': 180},   # repetido (espaco/minuscula)
+           {'dia': '05/10/2026', 'nome': 'Camisa polo', 'qtd': 180},    # 2o igual: so 1 ja existia
+           {'dia': '05/10/2026', 'nome': 'Camisa polo', 'qtd': 181},    # outra quantidade
+           {'dia': '06/10/2026', 'nome': 'Calca jeans', 'qtd': 95},     # turno do dia, sem acento
+           {'dia': '07/10/2026', 'nome': 'Vestido', 'qtd': 60},         # outro dia
+           {'dia': '10/10/2026', 'nome': 'Bermuda', 'qtd': 120},        # lote de hoje sem dia
+           {'dia': '10/10/2026', 'nome': 'short', 'qtd': 40}]           # registro sem o campo de dia
+esperado = [True, False, False, True, False, True, True]
+achado = Z.marcar_repetidos(colados, registros, memorias, hoje=HOJE)
+ok = achado == esperado
+falhas += 0 if ok else 1
+print(('OK   ' if ok else 'FALHA') + ' marcar_repetidos: dia + nome sem acento + qtd (lotes e turnos)')
+if not ok:
+    print('   esperado:', esperado)
+    print('   achado:  ', achado)
+ok = Z.marcar_repetidos([], [], []) == [] and Z.marcar_repetidos(colados[:1], None, None) == [False]
+falhas += 0 if ok else 1
+print(('OK   ' if ok else 'FALHA') + ' marcar_repetidos: listas vazias/None')
+# colar a mesma mensagem duas vezes: a 2a vez sai toda marcada
+txt = CASOS[0][1]
+primeira = Z.ler(txt, hoje=HOJE)['itens']
+regs = [[i['nome'], str(i['qtd']), 0, i['dia'], i['ts']] for i in primeira]
+ok = all(Z.marcar_repetidos(Z.ler(txt, hoje=HOJE)['itens'], regs, [], hoje=HOJE))
+falhas += 0 if ok else 1
+print(('OK   ' if ok else 'FALHA') + ' marcar_repetidos: a mesma mensagem colada 2 vezes sai toda marcada')
+
+# tamanho e referencia NAO viram outra peca (o 40 de 'Calca 40 preta' e numeracao)
+for texto, esperado in (('Calça 40 preta 200', ['Calça 40 preta 200']),
+                        ('Short tam 42 bege 150', ['Short tam 42 bege 150']),
+                        ('Blusa ref 123 azul 80', ['Blusa ref 123 azul 80']),
+                        ('Bermuda nº 12 azul 90', ['Bermuda nº 12 azul 90']),
+                        ('Camisa polo 180 calça 95', ['Camisa polo 180', 'calça 95'])):
+    achado = Z._dividir_por_numero(texto)
+    ok = achado == esperado
+    falhas += 0 if ok else 1
+    print(('OK   ' if ok else 'FALHA') + ' dividir: ' + texto)
+    if not ok:
+        print('   esperado:', esperado)
+        print('   achado:  ', achado)
+
 for nome, texto, esperado in CASOS:
     r = Z.ler(texto, hoje=HOJE)
     achado = [(i['dia'], i['nome'], i['qtd']) for i in r['itens']]
@@ -86,5 +168,5 @@ for nome, texto, esperado in CASOS:
     if not ok:
         print('   esperado:', esperado)
         print('   achado:  ', achado)
-print('%d casos, %d falhas' % (len(CASOS), falhas))
+print("%d casos (+3 de marcar_repetidos, +5 de tamanho), %d falhas" % (len(CASOS), falhas))
 sys.exit(1 if falhas else 0)

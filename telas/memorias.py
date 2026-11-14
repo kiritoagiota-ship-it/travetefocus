@@ -732,18 +732,23 @@ class TelaMemorias(Screen):
         tatil.confirmar()
 
     def confirmar_wipe(self):
+        """WIPE em duas etapas: o 1o aviso diz tudo o que some; o 2o mostra os
+        numeros e tem o botao de apagar do OUTRO lado (a mao nao vai por costume)."""
         pop, layout = _make_popup()
         caixa = BoxLayout(
             orientation='vertical',
             padding=[dp(26), dp(22), dp(26), dp(22)],
             spacing=dp(16),
-            size_hint=(0.84, None), height=dp(220))
+            size_hint=(0.84, None), height=dp(248))
         aplicar_fundo_holografico(caixa, (1.0, 0.08, 0.22, 0.9))
+        # o que _apagar_tudo apaga: memorias (turnos), registros (os lotes da
+        # lista do Registro) e, com eles, o XP. periodos_ganhos e config ficam
         caixa.add_widget(texto_que_cabe(Label(
             text=("[color=#ff2244]  WIPE TOTAL[/color]\n"
-                  "[color=#cccccc]Apagar TODAS as memórias e XP?\nSem volta.[/color]"),
+                  "[color=#cccccc]Apaga TODOS os turnos, os lotes do Registro e o XP.\n"
+                  "Os períodos de Ganhos ficam.\nSem volta.[/color]"),
             markup=True, font_name="orbitron.ttf", font_size="13sp",
-            halign="center", size_hint_y=None, height=dp(84)), caixa))
+            halign="center", size_hint_y=None, height=dp(112)), caixa))
         botoes = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(14))
         btn_s  = BotaoAngularAlerta(text="FORMATAR TUDO")
         btn_n  = BotaoAngular(text="CANCELAR")
@@ -753,10 +758,52 @@ class TelaMemorias(Screen):
         layout.add_widget(caixa)
         caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
 
-        def _confirmar(*_):
-            # versao epica: o Kirito corta a lista inteira antes de apagar
+        def _segunda(*_):
             btn_s.disabled = True
             pop.dismiss()
+            Clock.schedule_once(lambda dt: _abrir_segunda(), 0.25)
+
+        def _abrir_segunda():
+            app = App.get_running_app()
+            n_turnos = len(app.memorias)
+            n_lotes = len(app.registros)
+            xp = getattr(app, 'total_xp', 0)
+            partes = [f"{fmt_br(n_turnos)} {'turno' if n_turnos == 1 else 'turnos'}"]
+            if n_lotes:
+                partes.append(f"{fmt_br(n_lotes)} {'lote' if n_lotes == 1 else 'lotes'}")
+            partes.append(f"{fmt_br(xp)} XP")
+            numeros = partes[0] if len(partes) == 1 else ", ".join(partes[:-1]) + " e " + partes[-1]
+            pop2, layout2 = _make_popup()
+            caixa2 = BoxLayout(
+                orientation='vertical',
+                padding=[dp(26), dp(22), dp(26), dp(22)],
+                spacing=dp(16),
+                size_hint=(0.84, None), height=dp(220))
+            aplicar_fundo_holografico(caixa2, (1.0, 0.08, 0.22, 0.9))
+            caixa2.add_widget(texto_que_cabe(Label(
+                text=("[color=#ff2244]  ÚLTIMA CONFIRMAÇÃO[/color]\n"
+                      f"[color=#cccccc]Apagar {numeros}?[/color]"),
+                markup=True, font_name="orbitron.ttf", font_size="13sp",
+                halign="center", size_hint_y=None, height=dp(84)), caixa2))
+            botoes2 = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(14))
+            btn_n2 = BotaoAngular(text="CANCELAR")
+            btn_s2 = BotaoAngularAlerta(text="APAGAR TUDO")
+            botoes2.add_widget(btn_n2)                # apagar do lado OPOSTO ao do 1o aviso
+            botoes2.add_widget(btn_s2)
+            caixa2.add_widget(botoes2)
+            layout2.add_widget(caixa2)
+            caixa2.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+
+            def _ok(*_):
+                btn_s2.disabled = True
+                pop2.dismiss()
+                _confirmar()
+            btn_s2.bind(on_release=_ok)
+            btn_n2.bind(on_release=lambda *_: pop2.dismiss())
+            _abrir_popup(caixa2, pop2)
+
+        def _confirmar(*_):
+            # versao epica: o Kirito corta a lista inteira antes de apagar
             itens = list(self.ids.memorias_container.children)
             try:
                 from cenas import kirito_wipe
@@ -791,6 +838,6 @@ class TelaMemorias(Screen):
             vibrar(300)
             tremer_tela(25)
 
-        btn_s.bind(on_release=_confirmar)
+        btn_s.bind(on_release=_segunda)
         btn_n.bind(on_release=lambda *_: pop.dismiss())
         _abrir_popup(caixa, pop)

@@ -15,6 +15,7 @@ o proprio app manda). Conversa, totais e titulos sao ignorados.
     ler(texto) -> {'itens': [{'dia', 'nome', 'qtd', 'quem', 'ts'}], 'quem': [nomes],
                    'ignoradas': n}
     ts = a hora da mensagem (segundos, como time.time()) ou None.
+    marcar_repetidos(itens, registros, memorias) -> [True/False] (ja lancado?)
 """
 import re
 import unicodedata
@@ -27,10 +28,15 @@ _CABECALHOS = (
     re.compile(r'^\W*\[?\s*' + _HORA + r'[,\s]+' + _DATA + r'\s*\]?\s*(?:-\s*)?([^:\n]{1,60}?):\s?(.*)$'),
 )
 _SO_DATA = re.compile(r'^\D{0,12}' + _DATA + r'(?:\s*\(?[a-zA-ZçÇáéíóúãõâêô\-]{3,13}\)?)?\s*$')
-_NUM = re.compile(r'(?<![\d.,])(\d{1,3}(?:\.\d{3})+|\d+)(?![\d,])')
+_NUM = re.compile(r'(?<![\d.,])(?<!\d:)(\d{1,3}(?:\.\d{3})+|\d+)(?![\d,])(?!:\d)')   # '14:30' e hora
 _UNIDADE = r'(?:un(?:id(?:ades?)?)?|und?s?|p[cç]s?|pe[cç]as?|x)\.?'
-_IGNORAR = ('total', 'producao do dia', 'relatorio', 'exportado em', 'melhor dia', 'turnos', 'xp')
-_SEPARA_ITENS = re.compile(r'\s*[;,+]\s*|\s+e\s+(?=\d)|(?<=\d)\s+e\s+')
+# so PALAVRA inteira: 'Saia express 120' e 'Body totalmente liso' sao pecas
+_IGNORAR = re.compile(r'\b(?:total|producao do dia|relatorio|exportado em|melhor dia|turnos|xp)\b')
+# o separador fica na lista (grupo): depois de '+' um numero sozinho soma no item
+_SEPARA_ITENS = re.compile(r'(\s*[;,+]\s*|\s+/\s+|\s+e\s+(?=\d)|(?<=\d)\s+e\s+)')
+_SO_NUM = re.compile(r'\s*(\d{1,3}(?:\.\d{3})+|\d+)\s*(?:' + _UNIDADE + r')?\s*', re.IGNORECASE)
+_HORA_NO_TEXTO = re.compile(r'\s*(?:\b[aà]s\s+)?(?<!\d)\d{1,2}:\d{2}(?::\d{2})?(?:\s*h\b)?', re.IGNORECASE)
+_LETRA = re.compile(r'[a-zA-ZÀ-ÿ]')
 _DIAS_SEMANA = ('segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo')
 
 
@@ -114,13 +120,88 @@ def _item(pedaco):
     return (nome, qtd) if nome else None
 
 
+_ANTES_DE_CODIGO = re.compile(r'(?:\btam(?:anho)?|\bref|\bn[º°o]?|\bnum|\bpedido|\blote|\bc[oó]d(?:igo)?)\.?\s*$',
+                              re.IGNORECASE)
+
+
+def _parece_tamanho(p, n, q):
+    """O numero `n` (valor q) e tamanho/referencia e nao a quantidade de outra
+    peca? Depois de 'tam', 'ref', 'nº', 'pedido', 'lote', 'cod' - ou um numero
+    PAR de 30 a 60 (numeracao de roupa: 'Calça 40 preta 200')."""
+    if _ANTES_DE_CODIGO.search(p[:n.start()]):
+        return True
+    return 30 <= q <= 60 and q % 2 == 0
+
+
+def _dividir_por_numero(p):
+    """'Camisa polo 180 calça 95' -> ['Camisa polo 180', 'calça 95'] e
+    '180 camisa 95 calça' -> ['180 camisa', '95 calça']: numero seguido de
+    palavra comeca peca nova. Nao divide 'nome - qtd' / 'nome: qtd' (o nome
+    pode ter numero: 'camisa 2 bolsos - 150') nem em numero < 10 sem unidade
+    ('2 bolsos')."""
+    if re.search(r'\s-\s|(?<!\d):', p):
+        return [p]
+    nums = list(_NUM.finditer(p))
+    if len(nums) < 2:
+        return [p]
+    nome_primeiro = bool(_LETRA.search(p[:nums[0].start()]))
+    cortes, ini = [], 0
+    for k, n in enumerate(nums):
+        q = int(n.group(1).replace('.', ''))
+        un = re.match(r'\s*' + _UNIDADE + r'(?![a-zA-ZÀ-ÿ])', p[n.end():], re.IGNORECASE)
+        if q < 10 and not un:
+            continue
+        if not un and _parece_tamanho(p, n, q):
+            continue                          # 'Calça 40 preta 200': o 40 e tamanho, nao outra peca
+        if nome_primeiro:
+            # corta DEPOIS deste numero: tem nome antes e outra peca com numero depois
+            if k == len(nums) - 1:
+                continue
+            fim = n.end() + (un.end() if un else 0)
+            if (_LETRA.search(p[ini:n.start()]) and re.match(r'\s+[a-zA-ZÀ-ÿ]', p[fim:])
+                    and _NUM.search(p, fim)):
+                cortes.append(fim)
+                ini = fim
+        elif k > 0:
+            # corta ANTES deste numero: a peca de antes ja tem nome e este tem nome depois
+            if _LETRA.search(p[ini:n.start()]) and re.match(r'\s*(?:' + _UNIDADE + r'\s+)?[a-zA-ZÀ-ÿ]',
+                                                             p[n.end():], re.IGNORECASE):
+                cortes.append(n.start())
+                ini = n.start()
+    if not cortes:
+        return [p]
+    pontos = [0] + cortes + [len(p)]
+    return [p[a:b].strip() for a, b in zip(pontos, pontos[1:]) if p[a:b].strip()]
+
+
 def _itens_da_linha(linha):
     """[(nome, qtd)] de uma linha ja limpa (pode ter mais de uma peca)."""
     out = []
-    for ped in _SEPARA_ITENS.split(linha):
-        it = _item(ped)
-        if it:
-            out.append(it)
+    linha = _HORA_NO_TEXTO.sub(' ', linha).strip()   # 'as 14:30' nao e quantidade
+    partes = _SEPARA_ITENS.split(linha)               # [pedaco, separador, pedaco, ...]
+    somar = 0                                         # '50+30 calca': o 50 espera o item
+    for k in range(0, len(partes), 2):
+        ped = partes[k]
+        antes = partes[k - 1] if k else ''
+        depois = partes[k + 1] if k + 1 < len(partes) else ''
+        so = _SO_NUM.fullmatch(ped)
+        if so:
+            q = int(so.group(1).replace('.', ''))
+            if '+' in antes and out:                  # 'Calça 50+30' = 80
+                nome, qtd = out[-1]
+                if 0 < qtd + q <= 99999:
+                    out[-1] = (nome, qtd + q)
+                continue
+            if '+' in depois:
+                somar += q
+                continue
+        for sub in _dividir_por_numero(ped):
+            it = _item(sub)
+            if it:
+                if somar and 0 < it[1] + somar <= 99999:
+                    it = (it[0], it[1] + somar)
+                somar = 0
+                out.append(it)
     if not out:                                   # a virgula podia ser parte do nome
         it = _item(linha)
         if it:
@@ -167,7 +248,7 @@ def ler(texto, hoje=None):
             pendente = None
             continue
         chave = _sem_acento(limpa)
-        if any(p in chave for p in _IGNORAR):
+        if _IGNORAR.search(chave):
             pendente = None
             continue
         achados = _itens_da_linha(limpa)
@@ -207,3 +288,60 @@ def por_dia(itens):
         except ValueError:
             return datetime.max
     return [(d, grupos[d]) for d in sorted(grupos, key=chave)]
+
+
+def _chave_nome(nome):
+    return re.sub(r'\s+', ' ', _sem_acento(str(nome or ''))).strip()
+
+
+def _qtd_int(v):
+    try:
+        return int(float(str(v).replace(',', '.')))
+    except (TypeError, ValueError):
+        return None
+
+
+def marcar_repetidos(itens, registros, memorias, hoje=None):
+    """[True/False] para cada item: True = o mesmo (dia, nome sem acento e
+    minusculo, qtd) ja esta nos lotes do Registro ou nos itens de um turno
+    daquele dia (colar a mesma mensagem duas vezes). Conta as vezes: um lote
+    igual ja lancado marca so UM item igual colado. Lote do Registro sem dia
+    ('') conta como de `hoje`."""
+    dia_hoje = (hoje or datetime.now().date()).strftime('%d/%m/%Y')
+    ja = {}
+
+    def _somar(dia, nome, qtd):
+        q = _qtd_int(qtd)
+        if not dia or q is None:
+            return
+        k = (dia, _chave_nome(nome), q)
+        ja[k] = ja.get(k, 0) + 1
+
+    for r in registros or []:
+        try:
+            dia = str(r[3]) if len(r) > 3 and r[3] else dia_hoje
+            if not (len(r) > 3 and r[3]) and len(r) > 4 and r[4]:
+                try:                           # lote digitado sem dia: o dia da hora dele (como metas.dia_do_lote)
+                    dia = datetime.fromtimestamp(float(r[4])).strftime('%d/%m/%Y')
+                except (TypeError, ValueError, OSError, OverflowError):
+                    pass
+            _somar(dia, r[0], r[1])
+        except (TypeError, IndexError):
+            continue
+    for m in memorias or []:
+        try:
+            dia = str(m.get('data', '')).strip().split(' ')[0]
+            for it in m.get('itens') or []:
+                if isinstance(it, (list, tuple)) and len(it) > 1:
+                    _somar(dia, it[0], it[1])
+        except (AttributeError, TypeError):
+            continue
+    out = []
+    for it in itens:
+        k = (it.get('dia'), _chave_nome(it.get('nome')), _qtd_int(it.get('qtd')))
+        if ja.get(k, 0) > 0:
+            ja[k] -= 1
+            out.append(True)
+        else:
+            out.append(False)
+    return out

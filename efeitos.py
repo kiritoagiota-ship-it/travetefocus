@@ -1463,7 +1463,14 @@ class CartaoLote(_TextosCartao, ItemGesto):
             sub = f"dia {dia[:5]}  ·  do WhatsApp"
         elif ts:
             import time as _time
-            sub = "hoje  ·  " + _time.strftime('%H:%M', _time.localtime(float(ts)))
+            from datetime import date as _date
+            hora = _time.localtime(float(ts))
+            d = _date(hora.tm_year, hora.tm_mon, hora.tm_mday)
+            if d == _date.today():
+                sub = "hoje  ·  " + _time.strftime('%H:%M', hora)
+            else:                                 # lote esquecido de outro dia: mostra o dia
+                import metas
+                sub = metas.rotulo_dia(d) + "  ·  " + _time.strftime('%H:%M', hora)
         else:
             sub = "hoje"
         from kivy.metrics import sp

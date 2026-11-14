@@ -89,4 +89,83 @@ ok(not M.sequencia_vale(d(9, 10), d(12, 10)), 'na segunda, o ultimo turno na sex
 ok(M.sequencia_vale(d(13, 10), d(14, 10)) and not M.sequencia_vale(d(12, 10), d(14, 10)),
    'na quarta vale o de terca; o de segunda nao')
 
+# L1: o lote esquecido fica no dia dele (14/11/2026 e um sabado, 16/11 a segunda)
+sab14, seg16 = date(2026, 11, 14), date(2026, 11, 16)
+ts_sab = datetime(2026, 11, 14, 9, 10).timestamp()
+ts_seg = datetime(2026, 11, 16, 8, 0).timestamp()
+ok(M.dia_do_lote(['A', '10', 1, '', ts_sab], seg16) == sab14, 'lote sem dia com hora de sabado e de sabado')
+ok(M.dia_do_lote(['A', '10', 1, '13/11/2026', ts_sab], seg16) == date(2026, 11, 13), 'o dia gravado (WhatsApp) vale mais que a hora')
+ok(M.dia_do_lote(['A', '10', 1], seg16) == seg16, 'lote antigo sem hora continua de hoje')
+ok(M.dia_do_lote(['A', '10', 1, '', 0], seg16) == seg16 and M.dia_do_lote(['A', '10', 1, '', None], seg16) == seg16,
+   'hora 0 ou vazia: hoje')
+ok(M.dia_do_lote(['A', '10', 1, '', 'x'], seg16) == seg16, 'hora estragada: hoje (nao quebra)')
+ok(M.dia_do_lote(['A', '10', 1, 'lixo'], seg16) is None, 'dia gravado estragado: fica de fora (como antes)')
+esq = [['Camisa', '300', 900, '', ts_sab], ['Calca', '200', 600, '', ts_sab + 600]]
+mem_sem = [{'data': '09/11/2026  17:00', 'total': 600}]
+ok(M.pecas_da_semana(mem_sem, esq, sab14) == (1100, 500), 'no sabado: 600 + 500 na semana, 500 hoje')
+ok(M.pecas_da_semana(mem_sem, esq, seg16) == (0, 0), 'na segunda: os lotes de sabado NAO viram de hoje nem da semana nova')
+ok(M.pecas_da_semana([], esq + [['Short', '50', 1, '', ts_seg]], seg16) == (50, 50), 'segunda com lote novo: so ele conta')
+ok(M.dias_pendentes(esq + [['Short', '50', 1, '', ts_seg]], seg16) == [sab14], 'lotes pendentes de outro dia: sabado')
+ok(M.dias_pendentes([['Short', '50', 1, '', ts_seg], ['Velho', '5', 1]], seg16) == [], 'so lote de hoje: nada pendente')
+ok(M.aviso_pendentes(esq, seg16) == 'Tem lotes de sábado sem finalizar', 'faixa do Registro: "Tem lotes de sábado sem finalizar"')
+ok(M.aviso_pendentes(esq, date(2026, 11, 15)) == 'Tem lotes de ontem sem finalizar', 'no domingo: "de ontem"')
+ok(M.aviso_pendentes(esq, date(2026, 11, 25)) == 'Tem lotes de 14/11 sem finalizar', 'mais de uma semana: a data')
+dois = esq + [['X', '1', 1, '', datetime(2026, 11, 13, 9).timestamp()]]
+ok(M.aviso_pendentes(dois, seg16) == 'Lotes de 2 dias sem finalizar', 'dois dias pendentes')
+ok(M.aviso_pendentes([], seg16) is None, 'sem lotes: sem faixa')
+ok(M.rotulo_dia(sab14) == 'sáb 14/11', 'cartao do lote: "sáb 14/11"')
+# FINALIZAR DIA: os digitados de dias anteriores viram turnos separados
+fixos, livres, dl = M.separar_lotes(esq, seg16)
+ok(fixos == {} and len(livres) == 2 and dl == sab14, 'so lotes de sabado: a data do popup ja vem 14/11')
+zap = ['Bermuda', '40', 1, '12/11/2026', None]
+fixos, livres, dl = M.separar_lotes(esq + [['Short', '50', 1, '', ts_seg], zap, ['Velho', '5', 1]], seg16)
+ok(set(fixos) == {'14/11/2026', '12/11/2026'} and len(fixos['14/11/2026']) == 2 and dl == seg16
+   and [r[0] for r in livres] == ['Short', 'Velho'],
+   'sabado esquecido + segunda: sabado vira turno separado, os de hoje (e o sem hora) vao para a data do popup')
+ok(M.separar_lotes([zap], seg16) == ({'12/11/2026': [zap]}, [], None), 'so colados do WhatsApp: sem data para perguntar')
+
+# L2: a semana certa e a faixa por semana
+ok(M.fim_da_semana(date(2026, 11, 10)) == sab14 and M.fim_da_semana(sab14) == sab14, 'o fim da semana e o sabado')
+ok(M.fim_da_semana(date(2026, 11, 15)) == date(2026, 11, 21), 'domingo: o sabado da semana seguinte')
+ok(M.fim_do_periodo('semanal', date(2026, 11, 9), seg16) == sab14, 'semanal fechado na segunda: so ate o sabado')
+ok(M.fim_do_periodo('semanal', date(2026, 11, 9), date(2026, 11, 12)) == date(2026, 11, 12),
+   'semanal fechado na quinta: ate hoje')
+ok(M.fim_do_periodo('quinzenal', date(2026, 11, 2), seg16) == seg16, 'quinzenal: ate hoje')
+ok(M.fim_do_periodo('semanal', seg16, sab14) == seg16, 'periodo que ainda vai comecar: nao volta no tempo')
+dias = {date(2026, 11, 9) + timedelta(days=i): 400 for i in range(6)}          # 2.400 na semana
+ok(M.ganho_por_semanas(dias, C) == 600.0, 'uma semana de 2.400 = R$ 600,00')
+duas = dict(dias)
+duas.update({date(2026, 11, 16) + timedelta(days=i): 400 for i in range(6)})
+ok(M.ganho_por_semanas(duas, C) == 1200.0, 'duas semanas de 2.400 = R$ 1.200,00 (e nao 4.800 a 0,30 = 1.440)')
+s = M.semanas(duas, C)
+ok(len(s) == 2 and s[0]['seg'] == date(2026, 11, 9) and s[0]['sab'] == sab14 and s[1]['pecas'] == 2400,
+   'semanas: seg e sab de cada uma')
+ok(M.ganho_por_semanas([(date(2026, 11, 9), 2400), (seg16, 600)], C) == 750.0,
+   '2.400 + 600 da segunda seguinte = 600 + 150 (a segunda nao sobe a faixa da semana anterior)')
+ok(M.ganho_por_semanas([(date(2026, 11, 10), 1500), (date(2026, 11, 10), 1500)], C) == 900.0,
+   'o mesmo dia repetido soma (3.000 = R$ 900,00)')
+ok(M.ganho_por_semanas([(date(2026, 11, 15), 100), (seg16, 2400)], C) == 675.0,
+   'domingo conta na semana seguinte (100 + 2.400 = 2.500 a 0,27)')
+ok(M.ganho_por_semanas([(None, 5), (seg16, 'x'), (seg16, 10)], C) == 2.5, 'dia ou pecas estragados ficam de fora')
+ok(M.ganho_por_semanas({}, C) == 0, 'periodo vazio = zero')
+ok(M.ganho_por_semanas([(date(2026, 11, 10), 2950)], C) == 796.5, '2.950 na semana = R$ 796,50')
+# T4: o periodo seguinte comeca no dia depois do fim
+ok(M.inicio_do_proximo(sab14) == sab14, 'fechou no sabado: o seguinte comeca no proprio sabado (turno atrasado nao se perde)')
+ok(M.inicio_do_proximo(sab14, {date(2026, 11, 15)}) == sab14, 'fechou no sabado com turno no domingo: comeca no sabado')
+ok(M.inicio_do_proximo(date(2026, 11, 13)) == sab14, 'fechou na sexta: comeca no sabado')
+ok(M.inicio_do_proximo(date(2026, 11, 13) + timedelta(days=-0)) == sab14, 'fim na sexta -> sabado')
+# periodo semanal aberto num SABADO conta a semana seguinte inteira (antes zerava)
+ok(M.fim_do_periodo('semanal', sab14, date(2026, 11, 18)) == date(2026, 11, 18), 'aberto no sabado, hoje quarta: conta ate hoje')
+ok(M.fim_do_periodo('semanal', sab14, date(2026, 11, 23)) == date(2026, 11, 21), 'aberto no sabado: vai ate o sabado SEGUINTE')
+ok(M.fim_do_periodo('semanal', sab14, sab14) == sab14, 'aberto e fechado no mesmo sabado')
+ok(M.inicio_do_proximo(date(2026, 11, 12)) == date(2026, 11, 13), 'fechou na quinta: comeca na sexta')
+# L8: as faixas tem de fechar antes de gravar
+ok(M.config_coerente(0.25, 0.27, 0.30, 2500, 3000) is None, 'ajustes padrao fecham')
+ok(M.config_coerente(0.28, 0.27, 0.30, 2500, 3000) is not None, 'base 0,28 com meio 0,27: recusado')
+ok(M.config_coerente(0.25, 0.31, 0.30, 2500, 3000) is not None, 'meio acima do bonus: recusado')
+ok(M.config_coerente(0.32, 0.31, 0.30, 2500, 3000) is not None, 'base acima do bonus: recusado')
+ok(M.config_coerente(0.25, 0.27, 0.30, 3000, 3000) is not None, 'meta do meio igual a de cima: recusado')
+ok(M.config_coerente(0.27, 0.27, 0.27, 2500, 3000) is None, 'tudo igual (sem bonus) e permitido')
+
 print('%d casos, %d falhas' % (casos[0], len(falhas)))
+sys.exit(1 if falhas else 0)

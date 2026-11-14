@@ -3,7 +3,9 @@
   1) grava e le de volta: tudo igual (inclusive acentos e pecas do WhatsApp);
   2) dados.json estragado: le da copia de seguranca e guarda o estragado;
   3) varias gravacoes seguidas em paralelo: o arquivo final e valido;
-  4) dados antigos (sem os campos novos) abrem sem erro.
+  4) dados antigos (sem os campos novos) abrem sem erro;
+  7) copias: backup1/2/3 guardam as versoes ANTERIORES e ha uma copia por dia
+     (backups/dados-AAAAMMDD.json, as 14 mais novas), com a data simulada.
 uso: python dev/teste_dados.py"""
 import os
 import sys
@@ -55,6 +57,9 @@ try:
                    'ts': 1.5}]
     a.registros = [['Camisa polo', '95', 285], ['Vestido', '60', 180, '13/10/2026']]
     a.recalcular_totais()
+    a.salvar_dados(sincrono=True)
+    confere(not os.path.exists(os.path.join(pasta, 'dados.backup1.json')),
+            '1) 1a gravacao (pasta vazia): nao ha versao anterior para copiar')
     a.salvar_dados(sincrono=True)
     b = Falso(pasta)
     b.carregar_dados()
@@ -112,6 +117,89 @@ try:
     confere(h.memorias == a.memorias and not os.path.exists(os.path.join(pasta, 'dados.json.corrompido2')),
             '6) erro na conferencia: os turnos continuam os do arquivo (nada de copia ou vazio)')
     confere(open(os.path.join(pasta, 'dados.json'), encoding='utf-8').read() == bom, '6) o arquivo nao foi mexido')
+
+    # 7) copias: versoes anteriores e uma copia por dia, com a data simulada
+    p7 = tempfile.mkdtemp(prefix='tf_copias_')
+    hoje_real = main._hoje_copia
+    try:
+        k = Falso(p7)
+
+        def gravar(n):
+            k.registros = [['Lote %d' % n, str(n), n]]
+            k.salvar_dados(sincrono=True)
+
+        def lido(nome):
+            with open(os.path.join(p7, nome), encoding='utf-8') as f:
+                return json.load(f)['registros'][0][0]
+
+        versao = 0
+        for dia in range(1, 21):                      # 20 dias, 3 gravacoes por dia
+            main._hoje_copia = lambda dia=dia: '202611%02d' % dia
+            for _ in range(3):
+                versao += 1
+                gravar(versao)
+            if dia == 1:
+                confere(lido('backups/dados-20261101.json') == 'Lote 1',
+                        '7) dia 1 (pasta nova): a copia sai na 2a gravacao (a 1a nao tinha arquivo antes)')
+            elif dia == 2:
+                confere(lido('backups/dados-20261102.json') == 'Lote 3',
+                        '7) copia do dia 2 = como o arquivo estava no fim do dia 1')
+        confere(lido('dados.json') == 'Lote 60', '7) dados.json = ultima gravacao')
+        confere([lido('dados.backup%d.json' % i) for i in (1, 2, 3)] == ['Lote 59', 'Lote 58', 'Lote 57'],
+                '7) backup1/2/3 = as 3 versoes ANTERIORES (nenhuma repete o dados.json)')
+        copias = sorted(os.listdir(os.path.join(p7, 'backups')))
+        confere(len(copias) == 14, '7) guarda so 14 copias do dia (tem %d)' % len(copias))
+        confere(copias[0] == 'dados-20261107.json' and copias[-1] == 'dados-20261120.json',
+                '7) ficam as 14 mais novas (07 a 20/11)')
+        confere(lido('backups/dados-20261120.json') == 'Lote 57',
+                '7) copia de hoje = o arquivo antes da 1a gravacao de hoje')
+        confere(not [n for n in copias if n.endswith('.tmp')], '7) nao sobra .tmp na pasta das copias')
+        # tudo estragado menos as copias do dia: le a copia mais nova
+        for n in ('dados.json', 'dados.backup1.json', 'dados.backup2.json', 'dados.backup3.json'):
+            with open(os.path.join(p7, n), 'w', encoding='utf-8') as f:
+                f.write('{estragado')
+        m = Falso(p7)
+        m.carregar_dados()
+        confere(m.registros and m.registros[0][0] == 'Lote 57', '7) tudo estragado: le a copia do dia mais nova')
+        # a copia do dia nao pode travar a gravacao: pasta 'backups' que e um ARQUIVO
+        p8 = tempfile.mkdtemp(prefix='tf_copias2_')
+        try:
+            n8 = Falso(p8)
+            n8.salvar_dados(sincrono=True)
+            open(os.path.join(p8, 'backups'), 'w').close()
+            main._hoje_copia = lambda: '20261201'
+            n8.registros = [['Depois', '1', 1]]
+            n8.salvar_dados(sincrono=True)
+            with open(os.path.join(p8, 'dados.json'), encoding='utf-8') as f:
+                confere(json.load(f)['registros'][0][0] == 'Depois', '7) copia do dia falhando: grava assim mesmo')
+        finally:
+            shutil.rmtree(p8, ignore_errors=True)
+        # tempo: a gravacao com copia do dia continua rapida
+        import time as _t
+        main._hoje_copia = lambda: '20261202'
+        t0 = _t.perf_counter()
+        gravar(999)
+        dt = _t.perf_counter() - t0
+        print('      (gravacao com copia do dia: %.1f ms)' % (dt * 1000))
+    finally:
+        main._hoje_copia = hoje_real
+        shutil.rmtree(p7, ignore_errors=True)
 finally:
     shutil.rmtree(pasta, ignore_errors=True)
+
+# 8) exportar: ordem por data (como nas Memorias) e melhor dia somando os turnos do dia
+import exportar  # noqa: E402
+mems = [{'data': '13/11/2026  12:00', 'total': 400, 'xp': 1}, {'data': '13/11/2026  18:00', 'total': 300, 'xp': 1},
+        {'data': '02/11/2026  18:00', 'total': 500, 'xp': 1},            # dia antigo lancado depois
+        {'data': '10/11/2026', 'total': '650', 'xp': '2'}]               # versao antiga: texto e sem hora
+rel = exportar.gerar_relatorio_whatsapp(mems)
+confere('Melhor dia:      700 peças (13/11/2026)' in rel, '8) melhor dia soma os 2 turnos do 13/11 (700)')
+ult = rel.split('ÚLTIMOS 10 TURNOS:*')[1].strip().splitlines()
+confere([x.split()[0] for x in ult] == ['13/11/2026', '13/11/2026', '10/11/2026', '02/11/2026'],
+        '8) ultimos turnos do mais novo para o mais velho (nao a ordem de gravacao)')
+confere('Total de peças:  1850' in rel, '8) total aceita numero salvo como texto')
+csv_l = exportar.gerar_csv_bytes(mems).decode('utf-8-sig').splitlines()[1:]
+confere([x.split(',')[0] for x in csv_l] == ['13/11/2026  18:00', '13/11/2026  12:00', '10/11/2026',
+                                             '02/11/2026  18:00'], '8) CSV na mesma ordem das Memorias')
+confere(exportar.melhor_dia([]) == ('?', 0), '8) melhor dia sem turnos')
 print('%d falhas' % len(falhas))

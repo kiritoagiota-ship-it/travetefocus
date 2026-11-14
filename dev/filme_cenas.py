@@ -375,6 +375,26 @@ def apertar(txt):
     w.dispatch('on_release')
 
 
+
+def confirmar_se_tiver(texto, espera=0.4):
+    """Aperta `texto` daqui a `espera` s se ele aparecer (as confirmacoes novas:
+    FECHAR E CALCULAR? e a ULTIMA CONFIRMACAO do WIPE)."""
+    def _x(dt):
+        w = achar(texto)
+        if w is not None:
+            w.dispatch('on_release')
+    Clock.schedule_once(_x, espera)
+
+
+def fechar_e_confirmar():
+    tela().fechar_periodo()
+    confirmar_se_tiver('SIM', 0.3)
+
+
+def formatar_e_confirmar():
+    apertar('FORMATAR')
+    confirmar_se_tiver('APAGAR TUDO', 0.5)
+
 def popup():
     for w in Window.children:
         if isinstance(w, Popup):
@@ -462,7 +482,7 @@ def roteiro_app():
                (5.5, lambda: fase('fim nivel'))]
     # bater a meta (Ganhos)
     passos += [(0.3, ir('ganhos')), (1.8, soltar_foco),
-               (0.3, lambda: (fase('meta'), tela().fechar_periodo())),
+               (0.3, lambda: (fase('meta'), fechar_e_confirmar())),
                (4.5, lambda: (fase('fim meta'), fechar_popups()))]
 
     # apagar periodo (X)
@@ -488,7 +508,7 @@ def roteiro_app():
                (3.6, lambda: (fase('fim estocada'), fechar_popups()))]
     # WIPE
     passos += [(0.8, lambda: tela().confirmar_wipe()),
-               (0.8, lambda: (fase('wipe'), apertar('FORMATAR'))),
+               (0.8, lambda: (fase('wipe'), formatar_e_confirmar())),
                (10.5, lambda: fase('fim wipe')), (0.5, fim)]
     Roteiro(passos).rodar()
 
@@ -541,7 +561,7 @@ def roteiro_telas():
         (0.2, lambda: apertar('CANCELAR')),
         (0.6, ir('progresso')), (3.2, lambda: foto('13-progresso')),
         (0.3, ir('ganhos')), (2.2, soltar_foco), (0.4, lambda: foto('14-ganhos')),
-        (0.3, lambda: tela().fechar_periodo()), (5.5, lambda: foto('15-ganhos-resultado')),
+        (0.3, lambda: fechar_e_confirmar()), (5.5, lambda: foto('15-ganhos-resultado')),
         (0.2, fechar_popups), (0.9, lambda: foto('16-ganhos-fechado')),
         (0.3, _x_periodo), (0.9, lambda: foto('17-aviso-apagar-periodo')), (0.2, lambda: apertar('CANCELAR')),
         (0.6, ir('calculadora')), (1.6, _calc), (0.6, lambda: foto('18-calculadora')),
@@ -1390,10 +1410,10 @@ def roteiro_meta():
               (0.3, lambda: setattr(tela().ids.rolagem, 'scroll_y', 0)), (0.6, lambda: foto('m4c-rolou-ate-o-fim')),
               (0.3, lambda: tela().alternar_ajustes(False)), (0.3, lambda: setattr(tela().ids.rolagem, 'scroll_y', 1)),
               # fechar com pecas nao finalizadas: o aviso; finaliza o dia e ai fecha
-              (0.3, lambda: tela().fechar_periodo()), (1.0, lambda: foto('m5-aviso-finalizar')),
+              (0.3, lambda: fechar_e_confirmar()), (1.0, lambda: foto('m5-aviso-finalizar')),
               (0.3, fechar_popups), (0.4, ir('registro')), (2.0, lambda: tela().finalizar_dia()),
               (0.9, lambda: apertar('SALVAR TURNO')), (5.5, ir('ganhos')), (2.4, soltar_foco),
-              (0.3, lambda: tela().fechar_periodo()), (5.0, lambda: foto('m6-ganhos-resultado')),
+              (0.3, lambda: fechar_e_confirmar()), (5.0, lambda: foto('m6-ganhos-resultado')),
               (0.3, fechar_popups), (0.6, lambda: foto('m7-ganhos-fechado')), (0.4, fim)]
     Roteiro(passos).rodar()
 
@@ -1414,7 +1434,7 @@ def roteiro_varre():
                                                            else app().memorias[-1])),
                (0.8, lambda: (fase('carta'), apertar('WHATSAPP')))] + fotos('carta', 9)
     passos += [(1.2, fechar_popups), (0.6, fechar_popups), (0.6, lambda: tela().confirmar_wipe()),
-               (0.8, lambda: (fase('wipe'), apertar('FORMATAR')))] + fotos('wipe', 16) + \
+               (0.8, lambda: (fase('wipe'), formatar_e_confirmar()))] + fotos('wipe', 16) + \
               [(2.0, lambda: foto('depois-do-wipe')), (0.4, fim)]
     Roteiro(passos).rodar()
 

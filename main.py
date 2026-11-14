@@ -147,6 +147,48 @@ _configurar_janela()
 #  APP
 # ═══════════════════════════════════════════════════════════
 
+COPIAS_POR_DIA = 14          # copias diarias guardadas em backups/ (as mais velhas saem)
+
+
+def _hoje_copia():
+    """'AAAAMMDD' de hoje (os testes trocam esta funcao para simular a data)."""
+    return datetime.now().strftime("%Y%m%d")
+
+
+def girar_backups(data_dir, origem):
+    """dados.backup1/2/3.json: backup3 <- backup2 <- backup1 <- origem (a versao
+    que vai ser trocada). Chamar ANTES de trocar o dados.json."""
+    for i in range(2, 0, -1):
+        bsrc = os.path.join(data_dir, f"dados.backup{i}.json")
+        bdst = os.path.join(data_dir, f"dados.backup{i+1}.json")
+        if os.path.exists(bsrc):
+            os.replace(bsrc, bdst)
+    shutil.copy2(origem, os.path.join(data_dir, "dados.backup1.json"))
+
+
+def copia_do_dia(data_dir, origem, dia=None, guardar=COPIAS_POR_DIA):
+    """Na 1a gravacao de cada dia guarda backups/dados-AAAAMMDD.json (o
+    arquivo como estava ANTES dessa gravacao) e deixa so as `guardar` mais
+    novas. Devolve o caminho criado ou None (ja tinha a de hoje)."""
+    pasta = os.path.join(data_dir, "backups")
+    dia = dia or _hoje_copia()
+    alvo = os.path.join(pasta, f"dados-{dia}.json")
+    if os.path.exists(alvo):
+        return None
+    os.makedirs(pasta, exist_ok=True)
+    tmp = alvo + ".tmp"
+    shutil.copy2(origem, tmp)
+    os.replace(tmp, alvo)                     # copia cortada no meio nao fica com o nome certo
+    copias = sorted(n for n in os.listdir(pasta)
+                    if n.startswith("dados-") and n.endswith(".json") and len(n) == len("dados-AAAAMMDD.json"))
+    for velha in copias[:-guardar] if guardar > 0 else []:
+        try:
+            os.remove(os.path.join(pasta, velha))
+        except OSError as e:
+            print(f"[ERRO] apagar copia velha {velha}: {e}")
+    return alvo
+
+
 class TraveteApp(App):
     total_geral     = NumericProperty(0)
     meta_geral      = NumericProperty(10000)
@@ -398,15 +440,18 @@ class TraveteApp(App):
                 json.dump(dados, f, ensure_ascii=False, indent=2)
                 f.flush()
                 os.fsync(f.fileno())          # no disco de verdade antes de trocar (celular desligando)
-            os.replace(tmp, dest)
-            # Backup rotativo — mantém últimas 3 versões
-            for i in range(2, 0, -1):
-                bsrc = os.path.join(data_dir, f"dados.backup{i}.json")
-                bdst = os.path.join(data_dir, f"dados.backup{i+1}.json")
-                if os.path.exists(bsrc):
-                    shutil.copy2(bsrc, bdst)
+            # as copias guardam versoes ANTERIORES: giram antes da troca (antes o
+            # backup1 era copiado depois e ficava igual ao dados.json)
             if os.path.exists(dest):
-                shutil.copy2(dest, os.path.join(data_dir, "dados.backup1.json"))
+                try:
+                    copia_do_dia(data_dir, dest)      # 1a gravacao do dia: o dia de ontem fica guardado
+                except Exception as e:
+                    print(f"[ERRO] copia do dia: {e}")
+                try:
+                    girar_backups(data_dir, dest)
+                except Exception as e:
+                    print(f"[ERRO] backups: {e}")
+            os.replace(tmp, dest)
         except Exception as e:
             print(f"[ERRO] _salvar_bg: {e}")
 
@@ -456,6 +501,13 @@ class TraveteApp(App):
             os.path.join(d, "dados.backup2.json"),
             os.path.join(d, "dados.backup3.json"),
         ]
+        try:                                  # por ultimo, as copias de cada dia (a mais nova primeiro)
+            pasta_copias = os.path.join(d, "backups")
+            if os.path.isdir(pasta_copias):
+                candidatos += [os.path.join(pasta_copias, n) for n in sorted(os.listdir(pasta_copias), reverse=True)
+                               if n.startswith("dados-") and n.endswith(".json")]
+        except Exception as e:
+            print(f"[DADOS] copias do dia: {e}")
         for arquivo in candidatos:
             if not os.path.exists(arquivo):
                 continue

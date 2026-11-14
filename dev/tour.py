@@ -191,6 +191,18 @@ def apertar(texto):
     b.dispatch('on_release')
 
 
+
+def confirmar_se_tiver(texto, espera=0.4):
+    """Os avisos novos de confirmacao (FECHAR E CALCULAR? / ULTIMA CONFIRMACAO
+    do WIPE): aperta o botao `texto` daqui a `espera` s, se ele aparecer (se o
+    app mostrou outro aviso no lugar, nao acusa erro)."""
+    def _x(dt):
+        b = botao(texto)
+        if b is not None:
+            b.dispatch('on_press')
+            b.dispatch('on_release')
+    Clock.schedule_once(_x, espera)
+
 def tela():
     return App.get_running_app().root.ids.sm.current_screen
 
@@ -361,6 +373,7 @@ def tour():
     def ganhos_fechar():
         fase('ganhos-fechar')
         tela().fechar_periodo()
+        confirmar_se_tiver('SIM', 0.2)
         LOG['periodos'] = [dict(p) for p in app.periodos_ganhos]
 
     def calc():
@@ -379,6 +392,7 @@ def tour():
     def wipe_confirma():
         foto('popup-wipe')
         apertar('FORMATAR')
+        confirmar_se_tiver('APAGAR TUDO', 0.4)
         rajada('wipe', 9.0, 0.08)
 
     passos = [

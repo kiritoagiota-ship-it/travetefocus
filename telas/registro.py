@@ -34,6 +34,7 @@ class TelaRegistro(Screen):
             print(f"[registro] entrada: {e}")
         # Anexar teclados customizados SAO (so na primeira vez por widget)
         Clock.schedule_once(self._anexar_teclados, 0.3)
+        Clock.schedule_once(self._avisar_lote_antigo, 0.9)      # (depois da entrada da tela)
         self._foco_ev = Clock.schedule_once(self._focar_nome, 0.35)
 
     def on_leave(self, *_):
@@ -41,6 +42,21 @@ class TelaRegistro(Screen):
         if hasattr(self, '_foco_ev') and self._foco_ev:
             self._foco_ev.cancel()
             self._foco_ev = None
+
+    def _avisar_lote_antigo(self, dt=None):
+        """Sobrou lote de outro dia sem FINALIZAR DIA (ex.: sabado esquecido):
+        uma faixa curta e calma avisa, com o dia certo (metas.aviso_pendentes)."""
+        try:
+            if self.manager is not None and self.manager.current != self.name:
+                return
+            texto = metas.aviso_pendentes(App.get_running_app().registros, datetime.now().date())
+            if not texto:
+                return
+            from animacoes_ui import faixa_aviso
+            faixa_aviso(texto, "Toque em FINALIZAR DIA para guardar no dia certo",
+                        ancora=self.ids.lbl_meta_hoje, cor=(0, 0.9, 1), segura=3.2)
+        except Exception as e:
+            print(f"[registro] aviso de lote antigo: {e}")
 
     def _anexar_teclados(self, dt=None):
         """Conecta teclados SAO nos campos de texto e numero."""
@@ -489,11 +505,11 @@ class TelaRegistro(Screen):
             return
         tot_pecas = sum(int(x[1]) for x in app.registros)
         tot_xp    = sum(int(x[2]) for x in app.registros)
-        # peças coladas do WhatsApp ja tem dia: cada dia vira um turno separado
-        por_dia = {}
-        for r in app.registros:
-            por_dia.setdefault(self._dia_do_item(r), []).append(r)
-        sem_dia = por_dia.pop('', [])
+        # peças coladas do WhatsApp ja tem dia e os lotes digitados em dias
+        # anteriores (esquecidos sem finalizar) vao para o dia da hora deles:
+        # cada dia vira um turno separado. Os do dia mais novo vao para a data
+        # do popup, que ja vem com o dia deles (metas.separar_lotes)
+        por_dia, sem_dia, data_livre = metas.separar_lotes(app.registros, datetime.now().date())
 
         def _ordem(dia):
             try:
@@ -552,4 +568,4 @@ class TelaRegistro(Screen):
 
         popup_resumo_dia(tot_pecas, tot_xp, _confirmar,
                          dias=[(d, sum(int(x[1]) for x in por_dia[d])) for d in dias],
-                         pede_data=bool(sem_dia) or not dias)
+                         pede_data=bool(sem_dia) or not dias, data_padrao=data_livre)

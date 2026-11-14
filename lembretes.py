@@ -98,8 +98,7 @@ def _xp_hoje(memorias, registros, hoje):
                 pass
     for r in registros or ():
         try:
-            d = metas._dia_de(r[3]) if len(r) > 3 and r[3] else hoje
-            if d == hoje:
+            if metas.dia_do_lote(r, hoje) == hoje:         # (lote esquecido de outro dia nao e de hoje)
                 xp += int(r[2])
         except (TypeError, ValueError, IndexError):
             pass
@@ -214,8 +213,7 @@ def planejar(agora, memorias, registros, cfg):
         else:
             falta_txt = "já está na faixa máxima"
         # so fala em finalizar se ainda tem lote de hoje fora de um turno salvo
-        pendente = any((metas._dia_de(r[3]) if len(r) > 3 and r[3] else hoje) == hoje
-                       for r in registros or () if len(r) > 1)
+        pendente = any(metas.dia_do_lote(r, hoje) == hoje for r in registros or () if len(r) > 1)
         fim_txt = "Não esquece de tocar em FINALIZAR DIA." if pendente else "Dia finalizado. Bom descanso!"
         p = {'id': IDS['fechamento'], 'tipo': 'fechamento', 'quando': _as(hoje, hora_f),
              'titulo': "📊 Fechamento do dia",
