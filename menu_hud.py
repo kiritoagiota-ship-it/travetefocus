@@ -699,12 +699,13 @@ class EmblemaCabecalho(Widget):
             self._l_anel1 = Line(width=dp(1.2))
             Color(0.0, 0.85, 1.0, 0.18)
             self._l_anel2 = Line(width=dp(1))
+            self._c_onda = Color(0.3, 0.92, 1.0, 0)
+            self._l_onda = Line(width=dp(1.2))
             Color(1, 1, 1, 1)
             self._r = Rectangle()
             self._c_varre = Color(0.6, 0.95, 1.0, 0.0)
-            self._r_varre = Rectangle()
-            Color(0.4, 0.95, 1.0, 0.7)
-            self._parts = [Rectangle() for _ in range(9)]
+            self._r_varre = Rectangle(texture=_tex_degrade())
+            self._parts = [(Color(0.4, 0.95, 1.0, 0), Rectangle()) for _ in range(9)]
         self._fase = [rng.random() for _ in self._parts]
         self._xs = [rng.random() for _ in self._parts]
         self.bind(pos=self._arrumar, size=self._arrumar, tipo=self._trocar)
@@ -761,20 +762,28 @@ class EmblemaCabecalho(Widget):
             self._i = i
             self._r.texture = self._qs[i]
         bx, by = self._base
-        flut = int(round(math.sin(t * 1.6) * 2)) * max(1, self._u // 2)       # flutua
+        flut = round(math.sin(t * 1.2) * 2 * max(1, self._u // 2))
         self._r.pos = (bx, by + flut)
         ew, eh = self._r.size
         k = (t * 0.45) % 1.0                                  # a linha de varredura subindo
-        self._c_varre.a = 0.28 * math.sin(math.pi * k)
+        self._c_varre.a = 0.46 * math.sin(math.pi * k)
         self._r_varre.pos, self._r_varre.size = (bx, by + flut + eh * k), (ew, max(1, self._u))
-        self._c_cone.a = 0.14 + 0.05 * math.sin(t * 2.2)
+        self._c_cone.a = 0.14 + 0.03 * math.sin(t * 1.6)
         cx, cy, rx, ry = self._proj                           # particulas subindo do projetor
-        for j, r in enumerate(self._parts):
+        pulso = (t % 3.6) / 1.3
+        if pulso < 1.0:
+            fator = 0.62 + 0.73 * pulso
+            self._l_onda.ellipse = (cx - rx * fator, cy - ry * fator, 2 * rx * fator, 2 * ry * fator)
+            self._c_onda.a = 0.6 * math.sin(math.pi * pulso) ** 2
+        else:
+            self._c_onda.a = 0.0
+        for j, (cor, r) in enumerate(self._parts):
             f = (t * 0.35 + self._fase[j]) % 1.0
             px_ = cx + (self._xs[j] - 0.5) * 2 * rx * (1 - f * 0.3)
             py_ = cy + f * (eh * 1.05)
             s = max(1, self._u) * (1 if j % 3 else 2)
             r.pos, r.size = (int(px_), int(py_)), (s, s)
+            cor.a = 0.62 * math.sin(math.pi * f) ** 2
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1067,9 +1076,11 @@ class CartaoMenu(BotaoAngularMenu):
             self._l_dentro = Line(width=dp(1), close=True)
             self._c_borda = Color(*self.cor_borda)
             self._l_borda = Line(width=dp(1.5), close=True)
-            Color(min(1, r + 0.4), min(1, g + 0.4), min(1, b + 0.4), 1)
+            self._c_cantos = Color(min(1, r + 0.4), min(1, g + 0.4), min(1, b + 0.4), 0.75)
             self._l_canto1 = Line(width=dp(2))
             self._l_canto2 = Line(width=dp(2))
+            self._c_varredura = Color(r, g, b, 0)
+            self._varredura = Rectangle(texture=_tex_degrade())
             Color(1, 1, 1, 1)
             self._r_tit = Rectangle()
             self._r_sub = Rectangle()
@@ -1081,6 +1092,22 @@ class CartaoMenu(BotaoAngularMenu):
                   brilho=lambda *_: setattr(self._c_halo, 'a', 0.12 + 0.16 * self.brilho),
                   state=self._estado)
         self._arrumar()
+        RELOGIO.add(self)
+
+    def tique(self, t):
+        fase = {'memorias': 0.0, 'progresso': 1.4, 'ganhos': 2.8, 'calculadora': 4.2}.get(self.cena, 0.0)
+        k = ((t - fase) % 6.0) / 1.4
+        pressionado = self.state == 'down'
+        self._c_cantos.a = 1.0 if pressionado else 0.73 + 0.14 * math.sin(t * 1.2 + fase)
+        if k >= 1 or self.width < dp(56):
+            self._c_varredura.a = 0
+            return
+        margem = dp(27)
+        largura = min(dp(38), self.width * 0.24)
+        percurso = max(0.0, self.width - 2 * margem - largura)
+        self._varredura.pos = (self.x + margem + percurso * k, self.y + dp(4))
+        self._varredura.size = (largura, dp(2))
+        self._c_varredura.a = 0.85 * math.sin(math.pi * k)
 
     def _textos(self):
         r, g, b = self.cor[:3]
@@ -1478,9 +1505,13 @@ class FundoTela(Widget):
             elif tipo == 'cantos':                               # respiram; o ponto acende em sequencia
                 _, c, pontos = item
                 c.a = 0.45 + 0.2 * math.sin(t * 1.6)
-                ativo = int(t * 2.0) % 4
+                fase = t * 1.6
+                ativo = int(fase) % 4
+                u = fase % 1.0
+                u = u * u * (3.0 - 2.0 * u)
                 for i, cp in enumerate(pontos):
-                    cp.a = 0.95 if i == ativo else 0.12
+                    peso = 1.0 - u if i == ativo else (u if i == (ativo + 1) % 4 else 0.0)
+                    cp.a = 0.12 + 0.72 * peso
             elif tipo == 'trilho':                               # um pulso sobe pelos trilhos
                 _, c, rs = item
                 k = (t * 0.25) % 1.0

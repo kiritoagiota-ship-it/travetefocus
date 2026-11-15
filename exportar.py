@@ -60,7 +60,8 @@ def gerar_csv_bytes(memorias):
     for mem in reversed(ordenadas(memorias)):     # o mais novo primeiro, como nas Memorias
         itens = ' | '.join(
             f"{it[0]} x{it[1]}"
-            for it in mem.get('itens', [])
+            for it in (mem.get('itens') or [])
+            if isinstance(it, (list, tuple)) and len(it) >= 2
         )
         w.writerow([
             mem.get('data', ''),
@@ -93,7 +94,7 @@ def gerar_relatorio_whatsapp(memorias):
         '*ÚLTIMOS 10 TURNOS:*',
     ]
     for mem in reversed(memorias[-10:]):
-        data  = mem.get('data', '?').split()[0]  # só data, sem hora
+        data  = str(mem.get('data') or '').strip().partition(' ')[0] or '?'
         total = mem.get('total', 0)
         xp    = mem.get('xp', 0)
         linhas.append(f"  {data}  |  {total} pcs  |  +{xp} XP")
@@ -155,10 +156,10 @@ def mensagem_turno(memoria):
     except ValueError:
         data = dia or '?'
     linhas = ['\U0001F4CB *PRODUÇÃO DO DIA*', f'\U0001F4C5 {data}', '']
-    itens = memoria.get('itens') or []
+    itens = [it for it in (memoria.get('itens') or []) if isinstance(it, (list, tuple)) and len(it) >= 2]
     for it in itens:
-        nome = str(it[0]).strip() if len(it) > 0 else '?'
-        qtd = it[1] if len(it) > 1 else 0
+        nome = str(it[0]).strip()
+        qtd = it[1]
         linhas.append(f'\U0001F9F5 {nome} — *{_milhar(qtd)}*')
     if not itens:
         linhas.append('(sem itens detalhados)')
@@ -270,12 +271,10 @@ def exportar_e_compartilhar(memorias, data_dir, callback_erro=None):
     if _plat == 'android':
         ok = compartilhar_android(relatorio, caminho)
         if not ok and callback_erro:
-            callback_erro(
-                f"Não foi possível compartilhar automaticamente.\n\n"
-                f"Arquivo salvo em:\n{caminho or 'user_data_dir'}"
-            )
+            detalhe = f"\n\nCSV salvo em:\n{caminho}" if caminho else "\n\nO CSV também não foi salvo."
+            callback_erro("Não foi possível compartilhar o relatório." + detalhe)
     else:
         # Desktop: abrir pasta ou mostrar caminho
         print(f"[EXPORT] CSV salvo em: {caminho}")
         if callback_erro:
-            callback_erro(f"CSV salvo em:\n{caminho}")
+            callback_erro(f"CSV salvo em:\n{caminho}" if caminho else "Não foi possível salvar o CSV.")

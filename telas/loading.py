@@ -69,21 +69,21 @@ class TelaLoading(Screen):
 
     def _sessao_valida(self):
         try:
-            path = self._session_path()
-            if not os.path.exists(path):
-                return False
-            with open(path) as f:
-                last = float(f.read().strip())
+            last = getattr(self, '_autenticado_em', None)
+            if last is None:
+                with open(self._session_path(), encoding='utf-8') as f:
+                    last = float(f.read().strip())
             elapsed = time.time() - last
             print(f"[SESSAO] {elapsed/3600:.2f}h desde ultima auth (limite: {SESSION_HORAS}h)")
-            return elapsed < SESSION_SEG
+            return 0 <= elapsed < SESSION_SEG
         except Exception:
             return False
 
     def _salvar_sessao(self):
+        self._autenticado_em = time.time()
         try:
-            with open(self._session_path(), 'w') as f:
-                f.write(str(time.time()))
+            with open(self._session_path(), 'w', encoding='utf-8') as f:
+                f.write(str(self._autenticado_em))
             print("[SESSAO] Sessao salva.")
         except Exception as e:
             print(f"[SESSAO] Nao salva: {e}")
@@ -121,6 +121,9 @@ class TelaLoading(Screen):
 
     def preparar(self, dt):
         self._typing_ativo = True
+        sessao_valida = self._sessao_valida()
+        retorno = getattr(self, '_retorno_bloqueado', False)
+        self._retorno_bloqueado = False
         try:
             self.ids.terminal_box.opacity    = 0
             self.ids.titulo_label.opacity    = 0
@@ -134,13 +137,18 @@ class TelaLoading(Screen):
             self.ids.barra_loading.progresso = 0
             self.ids.console_text.text       = ""
 
-            if self._sessao_valida():
+            if sessao_valida:
                 Clock.schedule_once(self._quick_load, 0.15)
+            elif retorno:
+                Clock.schedule_once(self._popup_pin, 0.05)
             else:
                 Clock.schedule_once(self.start_anim, 0.1)
         except Exception as e:
             print(f"[LOADING] ids nao prontos: {e}")
-            Clock.schedule_once(lambda _: _safe_mudar_tela("menu"), 0.5)
+            if sessao_valida:
+                Clock.schedule_once(lambda _: _safe_mudar_tela("menu"), 0.5)
+            else:
+                Clock.schedule_once(self._popup_pin, 0.05)
 
     # ── Quick Load ─────────────────────────────────────────────────────────
 
@@ -470,7 +478,17 @@ class TelaLoading(Screen):
             except Exception as e:
                 print(f"[loading] final do titulo: {e}")
             self._parar_particulas_dados()
-            Clock.schedule_once(lambda _: _safe_mudar_tela("menu"), 1.4)
+            def _entrar_menu(_dt):
+                if self._typing_ativo:
+                    if self._sessao_valida():
+                        _safe_mudar_tela("menu")
+                    else:
+                        from cenas import limpar_cena
+                        if self._cena is not None:
+                            limpar_cena(self._cena)
+                            self._cena = None
+                        self._popup_pin(_dt)
+            Clock.schedule_once(_entrar_menu, 1.4)
 
         try:
             if rapida:

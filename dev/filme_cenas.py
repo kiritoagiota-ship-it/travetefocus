@@ -28,7 +28,7 @@ LARG, ALT, SAIDA = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3]
 DENS = sys.argv[4] if len(sys.argv) > 4 else None
 CENA = os.environ.get('CENA', 'app')
 CADA = int(os.environ.get('CADA', '3'))
-REPO = os.path.join('C:' + os.sep, 'Users', 'kirit', 'travetefocus', 'app')
+REPO = os.path.abspath(os.environ.get('TOUR_REPO') or os.path.join(os.path.dirname(__file__), '..'))
 os.makedirs(SAIDA, exist_ok=True)
 if DENS:
     os.environ['KIVY_METRICS_DENSITY'] = DENS
@@ -131,7 +131,7 @@ if CENA == 'video':
                                      'data_fim': None, 'total_pecas': 0, 'total_ganho': 0.0})
 with open(os.path.join(pasta_app, 'dados.json'), 'w', encoding='utf-8') as f:
     json.dump(dados, f, ensure_ascii=False)
-if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas', 'mem', 'link', 'ajustes', 'toques', 'trans', 'perfil', 'polir', 'avisos', 'fluidez', 'video'):
+if CENA in ('app', 'telas', 'zap', 'varre', 'meta', 'anim', 'vivo', 'novas', 'mem', 'link', 'ajustes', 'toques', 'trans', 'perfil', 'polir', 'avisos', 'fluidez', 'video', 'protecao'):
     with open(os.path.join(pasta_app, '.tf_session'), 'w') as f:
         f.write(str(time.time()))
 
@@ -392,8 +392,12 @@ def fechar_e_confirmar():
 
 
 def formatar_e_confirmar():
-    apertar('FORMATAR')
-    confirmar_se_tiver('APAGAR TUDO', 0.5)
+    if achar('CONTINUAR'):
+        apertar('CONTINUAR')
+        confirmar_se_tiver('APAGAR', 0.5)
+    else:
+        apertar('FORMATAR')
+        confirmar_se_tiver('APAGAR TUDO', 0.5)
 
 def popup():
     for w in Window.children:
@@ -445,6 +449,7 @@ class Roteiro:
 
 # ── roteiros ─────────────────────────────────────────────────────────
 def roteiro_app():
+    import metas
     passos = []
 
     def ir(nome):
@@ -502,7 +507,11 @@ def roteiro_app():
                (0.8, lambda: (fase('pergaminho'), apertar('WHATSAPP'))),
                (4.4, lambda: (fase('fim pergaminho'), fechar_popups()))]
     # apagar o dia (estocada)
-    passos += [(0.8, lambda: tela().abrir_detalhes_memoria(app().memorias[-1])),
+    def turno_editavel():
+        return next(m for m in reversed(app().memorias)
+                    if not any(metas.periodos_do_turno(m, app().periodos_ganhos)))
+
+    passos += [(0.8, lambda: tela().abrir_detalhes_memoria(turno_editavel())),
                (0.8, lambda: apertar('APAGAR')),
                (0.7, lambda: (fase('estocada'), apertar('APAGAR'))),
                (3.6, lambda: (fase('fim estocada'), fechar_popups()))]
@@ -799,7 +808,8 @@ def roteiro_novas():
         dedo_sobe(est['t'])
 
     def arrasta_ini():
-        est['w'] = item_registro(0)
+        # Após adicionar dois lotes, a lista está no fim. O primeiro fica recortado.
+        est['w'] = item_registro(-1)
         x, y = no_meio(est['w'])
         est['xy'] = (x, y)
         est['t'] = dedo_desce(x, y)
@@ -1439,6 +1449,52 @@ def roteiro_varre():
     Roteiro(passos).rodar()
 
 
+def roteiro_protecao():
+    import metas
+    from datetime import date, timedelta
+    a = app()
+    protegido = a.memorias[-1]
+    a.memorias[-2]['data'] = protegido['data']
+    a.periodos_ganhos[0]['contadas'] = [metas.chave_turno(protegido)]
+
+    def verificar():
+        pop = popup()
+        textos = [getattr(w, 'text', '') for w in pop.walk()] if pop else []
+        assert any('data protegida' in t for t in textos), 'turno fechado sem indicação'
+        assert not any(t in ('APAGAR', '>>  SALVAR DATA') for t in textos), 'turno fechado editável'
+        barras = tela().ids.grafico_barras.dados
+        dia = protegido['data'].split()[0]
+        alvo = next((b for b in barras if b['data_curta'] == dia), None)
+        total = sum(m['total'] for m in a.memorias if m['data'].split()[0] == dia)
+        assert alvo and alvo['valor'] == total, 'gráfico não soma os turnos do dia'
+
+    def apos_limpar():
+        assert list(a.memorias) == [protegido], 'limpeza apagou turno pago ou deixou turno em aberto'
+        assert not a.registros, 'limpeza não apagou os lotes'
+        assert a.total_xp == protegido['xp'], 'XP do turno em período fechado foi perdido'
+        assert a.periodos_ganhos[0]['contadas'] == [metas.chave_turno(protegido)], 'fechamento mudou'
+
+    def retomar():
+        a._dia_exibido = date.today() - timedelta(days=1)
+        a.on_resume()
+        assert a._dia_exibido == date.today() and tela().name == 'memorias', 'data não atualizou na retomada'
+        loading = a.root.ids.sm.get_screen('loading')
+        with open(loading._session_path(), 'w', encoding='utf-8') as f:
+            f.write(str(time.time() - 5 * 3600))
+        a.on_resume()
+        assert tela().name == 'loading', 'sessão vencida deixou a tela dos dados aberta'
+
+    def confirmar_pin():
+        assert achar('VERIFICAR'), 'retorno com sessão vencida não abriu o PIN'
+
+    Roteiro([(0.3, lambda: a.mudar_tela('memorias')),
+             (1.8, lambda: tela().abrir_detalhes_memoria(protegido)),
+             (0.6, verificar), (0.1, lambda: foto('turno-protegido')),
+             (0.2, fechar_popups), (0.6, lambda: tela().confirmar_wipe()),
+             (0.6, formatar_e_confirmar), (1.2, apos_limpar),
+             (0.1, retomar), (1.0, confirmar_pin), (0.6, fim)]).rodar()
+
+
 def esperar_menu(dt):
     if app().root.ids.sm.current != 'menu':
         Clock.schedule_once(esperar_menu, 0.05)
@@ -1450,7 +1506,7 @@ def esperar_menu(dt):
               'ajustes': roteiro_ajustes, 'toques': roteiro_toques, 'trans': roteiro_trans,
               'perfil': roteiro_perfil, 'polir': roteiro_polir,
               'avisos': roteiro_avisos, 'fluidez': roteiro_fluidez,
-              'video': roteiro_video}.get(CENA, roteiro_app)(), 1.0)
+              'video': roteiro_video, 'protecao': roteiro_protecao}.get(CENA, roteiro_app)(), 1.0)
 
 
 def roteiro_video():

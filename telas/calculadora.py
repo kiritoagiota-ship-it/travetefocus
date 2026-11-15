@@ -17,6 +17,7 @@ from kivy.animation import Animation
 from kivy.clock import Clock
 from kivy.metrics import dp, sp
 from kivy.core.text import Label as CoreLabel
+from kivy.graphics import Color, InstructionGroup, Line
 
 import som
 import tatil
@@ -210,9 +211,8 @@ class TelaCalculadora(Screen):
                 self._recusar()
             self._atualizar()
             if ok and (tecla.isdigit() or tecla == '.'):
-                # o numero novo entra subindo um tiquinho (tecla "pega")
                 from animacoes_ui import deslizar
-                deslizar([self.ids.calc_display], -dp(5), 0.12)
+                deslizar([self.ids.calc_display], -dp(2), 0.10)
         except Exception as e:
             print(f"[calculadora] {tecla}: {e}")
 
@@ -328,6 +328,12 @@ class TelaCalculadora(Screen):
 
     def on_leave(self, *_):
         self.del_soltar()
+        from animacoes_ui import parar_decifrar
+        lbl = self.ids.calc_display
+        parar_decifrar(lbl)
+        if self.mostrando_resultado:
+            self._atualizar()
+        self._parar_luz_resultado()
 
     def limpar(self):
         lbl = self.ids.calc_display
@@ -337,6 +343,48 @@ class TelaCalculadora(Screen):
         (Animation(color=(1, 0.1, 0.2, 1), duration=0.06, transition='out_quad') +
          Animation(color=(1, 1, 1, 1), duration=0.25, transition='out_quad')).start(lbl)
         self._atualizar()
+        self._parar_luz_resultado()
+
+    def _parar_luz_resultado(self):
+        recado = getattr(self, '_luz_resultado', None)
+        if recado:
+            visor, trilha, evento = recado
+            evento.cancel()
+            visor.canvas.after.remove(trilha)
+            self._luz_resultado = None
+
+    def _realcar_resultado(self, cor=(0.2, 1, 0.8)):
+        """Um traço curto corre na base do visor e se dissolve no lugar."""
+        self._parar_luz_resultado()
+        visor = self.ids.calc_display.parent
+        trilha = InstructionGroup()
+        halo = Color(*cor, 0)
+        linha_halo = Line(points=[], width=dp(2.6), cap='round')
+        nucleo = Color(*cor, 0)
+        linha = Line(points=[], width=dp(0.85), cap='round')
+        for instrucao in (halo, linha_halo, nucleo, linha):
+            trilha.add(instrucao)
+        visor.canvas.after.add(trilha)
+        tempo = 0
+
+        def quadro(dt):
+            nonlocal tempo
+            tempo += dt
+            u = min(1, tempo / 0.56)
+            if u >= 1 or visor.get_root_window() is None:
+                self._parar_luz_resultado()
+                return False
+            inicio, fim = visor.x + dp(16), visor.right - dp(16)
+            largura = max(0, fim - inicio)
+            efeito = 1 - (1 - u) ** 3
+            ponta = inicio + largura * efeito
+            cauda = max(inicio, ponta - largura * min(0.35, u) * (1 - u))
+            pontos = [cauda, visor.y + dp(6), ponta, visor.y + dp(6)]
+            linha.points = linha_halo.points = pontos
+            halo.a = 0.24 * (1 - u)
+            nucleo.a = 0.85 * (1 - u)
+
+        self._luz_resultado = (visor, trilha, Clock.schedule_interval(quadro, 1 / 60))
 
     # ── conta ─────────────────────────────────────────────────────────
     @staticmethod
@@ -381,7 +429,7 @@ class TelaCalculadora(Screen):
         self._mostrar_historico(nova=True)
         try:
             from animacoes_ui import decifrar
-            decifrar(lbl, lbl.text)            # os digitos rolam e param no resultado
+            decifrar(lbl, lbl.text, duracao=0.22)
         except Exception as e:
             print(f"[calc] decifrar: {e}")
         try:
@@ -389,7 +437,7 @@ class TelaCalculadora(Screen):
         except Exception:
             pass
         tatil.confirmar()
-        tremer_tela(5)
+        self._realcar_resultado()
         Animation.cancel_all(lbl, 'color')
         (Animation(color=(0, 1, 0.8, 1), duration=0.06, transition='out_expo') +
          Animation(color=(0, 0.9, 1, 1), duration=0.08, transition='out_expo') +
@@ -405,6 +453,7 @@ class TelaCalculadora(Screen):
         self.mostrando_resultado = True
         self._resultado_txt = txt
         self._atualizar(conta_feita=conta + ' =')
+        self._realcar_resultado((0.32, 0.82, 1))
 
     # ── visor ─────────────────────────────────────────────────────────
     def _atualizar(self, conta_feita=None):
@@ -503,7 +552,7 @@ class TelaCalculadora(Screen):
                 sub = self.ids.calc_conta
                 # sai da linha da conta no visor (logo abaixo) e sobe para o lugar
                 desce = nova_b.height / 2.0 + dp(8) + max(0.0, visor.top - sub.center_y)
-                voar(nova_b, -desce, escala0=1.0, duracao=0.36)
+                voar(nova_b, -min(desce, dp(28)), escala0=0.98, duracao=0.32)
                 Clock.schedule_once(lambda dt: setattr(nova_b, 'opacity', alvo_op), 0.40)
                 deslizar(botoes[:-1], -dp(34), 0.30)        # as antigas sobem uma linha
             except Exception as e:
@@ -529,7 +578,8 @@ class TelaCalculadora(Screen):
         except Exception:
             pass
         tatil.erro()
-        tremer_tela(18)
+        tremer_tela(4)
+        self._realcar_resultado((1, 0.33, 0.42))
         Animation.cancel_all(lbl, 'color')
         (Animation(color=(1, 0.15, 0.2, 1), duration=0.07) +
          Animation(color=(1, 1, 1, 1), duration=0.45)).start(lbl)

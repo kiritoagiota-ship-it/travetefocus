@@ -4,11 +4,13 @@ from kivy.app import App
 from kivy.animation import Animation
 from kivy.clock import Clock
 from kivy.metrics import dp
-from efeitos import ListaItem, ItemGesto, CartaoLote, explodir_estilhacos, tremer_tela
+from kivy.utils import escape_markup
+from efeitos import ListaItem, CartaoLote, explodir_estilhacos, tremer_tela
 from helpers import (popup_pedir_xp, popup_delete_engracado, popup_resumo_dia, animar_ganho_xp,
                      anexar_teclado, sugestoes_pecas, popup_importar_zap, popup_aviso,
                      ler_area_de_transferencia)
 from datetime import datetime
+from uuid import uuid4
 import som
 import tatil
 from animacoes_ui import entrada_cascata, fmt_br, contar
@@ -35,10 +37,15 @@ class TelaRegistro(Screen):
         # Anexar teclados customizados SAO (so na primeira vez por widget)
         Clock.schedule_once(self._anexar_teclados, 0.3)
         Clock.schedule_once(self._avisar_lote_antigo, 0.9)      # (depois da entrada da tela)
-        self._foco_ev = Clock.schedule_once(self._focar_nome, 0.35)
+        if not App.get_running_app().registros:
+            self._foco_ev = Clock.schedule_once(self._focar_nome, 0.35)
 
     def on_leave(self, *_):
         self._terminar_lista()
+        self.ids.nome_input.focus = self.ids.qtd_input.focus = False
+        if getattr(self, '_faixa_registro', None) is not None:
+            self._faixa_registro._faixa_fim()
+            self._faixa_registro = None
         if hasattr(self, '_foco_ev') and self._foco_ev:
             self._foco_ev.cancel()
             self._foco_ev = None
@@ -53,8 +60,9 @@ class TelaRegistro(Screen):
             if not texto:
                 return
             from animacoes_ui import faixa_aviso
-            faixa_aviso(texto, "Toque em FINALIZAR DIA para guardar no dia certo",
-                        ancora=self.ids.lbl_meta_hoje, cor=(0, 0.9, 1), segura=3.2)
+            self._faixa_registro = faixa_aviso(
+                texto, "Toque em FINALIZAR DIA para guardar no dia certo",
+                ancora=self.ids.lbl_meta_hoje, acima=True, cor=(0, 0.9, 1), segura=3.2)
         except Exception as e:
             print(f"[registro] aviso de lote antigo: {e}")
 
@@ -66,22 +74,22 @@ class TelaRegistro(Screen):
         except Exception as e:
             print(f"[registro] teclado nao anexado: {e}")
 
-    def _focar_nome(self, dt=None):
+    def _focar_nome(self, dt):
         self._foco_ev = None
-        try:
+        if self.manager and self.manager.current == self.name and not App.get_running_app().registros:
             self.ids.nome_input.focus = True
-        except Exception:
-            pass
 
     def _make_item(self, text, dado=None):
         """Cria o item da lista (altura e alinhamento certos). Com `dado`:
-        arrastar para o lado apaga (com a pergunta de sempre) e segurar o
-        dedo corrige a quantidade."""
+        arrastar para o lado apaga com confirmação e tocar ou segurar
+        corrige a quantidade."""
         if dado is not None:
             # o cartao do lote: icone da peca, nome, hora, quantidade e XP
-            return CartaoLote(dado=dado, text=text,
-                              ao_arrastar=lambda w, d=dado: self.confirmar_delete(d, w),
-                              ao_segurar=lambda w, d=dado: self.editar_lote(d, w))
+            btn = CartaoLote(dado=dado, text=text,
+                            ao_arrastar=lambda w: self.confirmar_delete(dado, w),
+                            ao_segurar=lambda w: self.editar_lote(dado, w))
+            btn.bind(on_release=lambda w: self.editar_lote(dado, w))
+            return btn
         btn = ListaItem(text=text)
         btn.height  = dp(52)   # mais compacto que dp(68)
         btn.valign = 'middle' # texto centralizado verticalmente
@@ -126,7 +134,6 @@ class TelaRegistro(Screen):
 
         def _um(r, visivel=False):
             btn = self._make_item(self._texto_item(r), r)
-            btn.bind(on_release=lambda x, dado=r, w=btn: self.confirmar_delete(dado, w))
             btn.opacity = 1 if visivel else 0
             cont.add_widget(btn)
             return btn
@@ -225,6 +232,7 @@ class TelaRegistro(Screen):
         som.tocar_add()
         tatil.confirmar()
         self.atualizar()
+        self.ids.lista_container.parent.scroll_y = 0
         self.atualizar_meta()
         if ganho:
             Clock.schedule_once(lambda dt: animar_ganho_xp(ganho), 0.3)
@@ -272,6 +280,7 @@ class TelaRegistro(Screen):
         app.total_xp += xp_total
         self._subiu = conferir_level(xp_antes, app.total_xp, atraso=2.4)
         app.salvar_dados()
+        self.ids.nome_input.focus = self.ids.qtd_input.focus = False
         self.ids.nome_input.text = ""
         self.ids.qtd_input.text  = ""
         som.tocar_add()
@@ -281,23 +290,35 @@ class TelaRegistro(Screen):
         self._terminar_lista()                       # (a lista ainda montando: termina antes)
         dado = app.registros[-1]
         btn = self._make_item(self._texto_item(dado), dado)
-        btn.bind(on_release=lambda x, d=dado, w=btn: self.confirmar_delete(d, w))
-        self.ids.lista_container.add_widget(btn)
-        entrada_cascata([btn], dy=dp(30))
+        lista = self.ids.lista_container
+        lista.add_widget(btn)
+        lista.parent.scroll_y = 0
+        entrada_cascata([btn], dy=dp(14), duracao=0.28)
         fn = getattr(btn, '_brilho_disparar', None)
         if fn:
-            Clock.schedule_once(lambda dt: fn(), 0.34)      # chegou: uma luz passa pelo cartao
+            def _luz_lote(dt):
+                if self.manager and self.manager.current == self.name and btn.parent == lista:
+                    fn()
+            Clock.schedule_once(_luz_lote, 0.22)
         # o Yoru aparece e 'carimba' o +XP com um corte curto (o numero nasce
         # no corte); espera o item novo terminar de entrar na lista
         def _carimbo(dt):
+            if not self.manager or self.manager.current != self.name or btn.parent != lista:
+                return
+            if self.ids.nome_input.focus or self.ids.qtd_input.focus:
+                return
             try:
                 from cenas import kirito_carimbo
-                kirito_carimbo(btn, lambda: animar_ganho_xp(xp_total, origem=btn))
+                kirito_carimbo(btn, mostrar_xp)
             except Exception as e:
                 print(f"[registro] carimbo: {e}")
-                animar_ganho_xp(xp_total, origem=btn)
-        Clock.schedule_once(_carimbo, 0.42)
-        Clock.schedule_once(lambda _: self._focar_nome(), 0.15)
+                mostrar_xp()
+
+        def mostrar_xp(centro_x=None):
+            if (self.manager and self.manager.current == self.name and btn.parent == lista
+                    and not (self.ids.nome_input.focus or self.ids.qtd_input.focus)):
+                animar_ganho_xp(xp_total, origem=btn, centro_x=centro_x)
+        Clock.schedule_once(_carimbo, 0.33)
         self.atualizar_meta(bater=True)
         self._comemorar(antes, self._situacao(), atraso=7.0 if self._subiu else 2.6)
 
@@ -346,7 +367,7 @@ class TelaRegistro(Screen):
                     cor_r = '#00ff88' if r >= metas.REF_REALISTA else ('#ffcc00' if r >= 45 else '#ff6a6a')
                     partes.append(f"[color={cor_r}][b]{int(round(r))}[/b]/h[/color]")
                     if md['hoje_falta'] > 0:
-                        partes.append(f"[color=#9aa6bd]~{metas.tempo_txt(md['hoje_falta'] / r)}[/color]")
+                        partes.append(f"[color=#9aa6bd]cerca de {metas.tempo_txt(md['hoje_falta'] / r)}[/color]")
                 if md['hoje_meta'] > 0 and v >= md['hoje_meta']:
                     partes.append("[color=#ffcc00]META BATIDA[/color]")
                 return "  ·  ".join(partes) + "   [color=#00e5ff88]>>[/color]"
@@ -392,18 +413,22 @@ class TelaRegistro(Screen):
             print(f"[registro] aviso faixa: {e}")
 
     def _festa(self, texto, sub, grande):
+        if not self.manager or self.manager.current != self.name:
+            return
         try:
             som.tocar_level_up() if grande else som.tocar_finalizar()
             tatil.vitoria()
             tremer_tela(14 if grande else 8)
-            from cenas import kirito_meta
-            kirito_meta(self.ids.lbl_meta_hoje)
             lbl = self.ids.lbl_meta_hoje
             (Animation(color=[1, 0.88, 0.1, 1], duration=0.12) + Animation(duration=0.5) +
              Animation(color=[1, 1, 1, 1], duration=0.4)).start(lbl)
             # (antes o texto subia solto por cima dos botoes e nao dava para ler)
             from animacoes_ui import faixa_aviso
-            faixa_aviso(texto, sub, ancora=lbl, cor=(1, 0.88, 0.1) if grande else (0, 1, 0.55))
+            self._faixa_registro = faixa_aviso(
+                texto, sub, ancora=lbl, acima=True, cor=(1, 0.88, 0.1) if grande else (0, 1, 0.55))
+            if not (self.ids.nome_input.focus or self.ids.qtd_input.focus):
+                from cenas import kirito_meta
+                kirito_meta(self.ids.lista_container.parent, dentro=True)
         except Exception as e:
             print(f"[registro] festa: {e}")
 
@@ -431,7 +456,7 @@ class TelaRegistro(Screen):
                 if q <= 0 or q == q0:
                     return
                 app = App.get_running_app()
-                if dado not in app.registros:
+                if not any(r is dado for r in app.registros):
                     return
                 antes = self._situacao()
                 xp_antes = app.total_xp
@@ -466,7 +491,7 @@ class TelaRegistro(Screen):
             kirito_fatiar(btn, lambda: self.deletar(dado, btn), tipo='iai')
         # diz QUAL lote vai sumir (antes era so "este registro")
         try:
-            qual = f"[color=#00e5ff]{dado[0]}[/color]  -  {fmt_br(int(dado[1]))} un."
+            qual = f"[color=#00e5ff]{escape_markup(str(dado[0]))}[/color]  -  {fmt_br(int(dado[1]))} un."
         except (TypeError, ValueError, IndexError):
             qual = ""
         popup_delete_engracado(_fazer, pergunta=f"Desintegrar este lote?\n{qual}" if qual
@@ -475,12 +500,11 @@ class TelaRegistro(Screen):
     def deletar(self, dado, btn=None):
         self._terminar_lista()
         app = App.get_running_app()
-        try:
-            app.registros.remove(dado)
+        indice = next((i for i, r in enumerate(app.registros) if r is dado), None)
+        if indice is not None:
+            app.registros.pop(indice)
             app.total_xp = max(0, app.total_xp - dado[2])
             app.salvar_dados()
-        except ValueError:
-            pass
         cont = self.ids.lista_container
         if btn is not None and btn in cont.children and app.registros:      # (ids e um atalho: 'is' nunca bate)
             # tira so o lote apagado: os de baixo sobem escorregando para o
@@ -503,13 +527,15 @@ class TelaRegistro(Screen):
             som.tocar_erro()
             tatil.erro()
             return
-        tot_pecas = sum(int(x[1]) for x in app.registros)
-        tot_xp    = sum(int(x[2]) for x in app.registros)
+        lotes = list(app.registros)
+        resumo = [list(r) for r in lotes]
+        tot_pecas = sum(int(x[1]) for x in lotes)
+        tot_xp    = sum(int(x[2]) for x in lotes)
         # peças coladas do WhatsApp ja tem dia e os lotes digitados em dias
         # anteriores (esquecidos sem finalizar) vao para o dia da hora deles:
         # cada dia vira um turno separado. Os do dia mais novo vao para a data
         # do popup, que ja vem com o dia deles (metas.separar_lotes)
-        por_dia, sem_dia, data_livre = metas.separar_lotes(app.registros, datetime.now().date())
+        por_dia, sem_dia, data_livre = metas.separar_lotes(lotes, datetime.now().date())
 
         def _ordem(dia):
             try:
@@ -519,7 +545,9 @@ class TelaRegistro(Screen):
         dias = sorted(por_dia, key=_ordem)
 
         def _confirmar(data_str):
-            import time
+            if (app.registros != resumo or any(a is not b for a, b in zip(app.registros, lotes))):
+                popup_aviso("Os lotes mudaram. Abra FINALIZAR DIA para conferir os novos totais.")
+                return
             # Guardar XP anterior para animacao de progresso
             app.xp_anterior = getattr(app, "total_xp", 0)
             partes = data_str.strip().split()
@@ -527,22 +555,21 @@ class TelaRegistro(Screen):
             grupos = {d: list(por_dia[d]) for d in dias}
             if sem_dia:                             # as digitadas vao para a data escolhida
                 grupos.setdefault(partes[0], []).extend(sem_dia)
-            agora = time.time()
-            for k, dia in enumerate(sorted(grupos, key=_ordem)):
+            for dia in sorted(grupos, key=_ordem):
                 itens = [[r[0], r[1], r[2]] for r in grupos[dia]]
                 app.memorias.append({
                     "data":  f"{dia}  {hora}",
                     "total": sum(int(x[1]) for x in itens),
                     "xp":    sum(int(x[2]) for x in itens),
                     "itens": itens,
-                    "ts":    round(agora + k * 0.001, 3),     # identidade do turno (ganhos)
+                    "id":    uuid4().hex,
                 })
             app.registros.clear()
             app.recalcular_totais()                 # total, melhor dia e sequencia saem das datas
             app.salvar_dados()
             som.tocar_finalizar()
             tatil.vitoria()
-            tremer_tela(12)
+            tremer_tela(6)
             self.atualizar_meta()
             # onde cada peca estava na lista: e dali que elas voam para o cartao do turno
             linhas, area = [], None
@@ -562,7 +589,10 @@ class TelaRegistro(Screen):
             # o Yoru guarda o turno: as pecas viram um cartao, ele embainha e carimba
             try:
                 from cenas import kirito_vitoria
-                Clock.schedule_once(lambda dt: kirito_vitoria(self, linhas, area), 0.35)
+                def _vitoria(dt):
+                    if self.manager and self.manager.current == self.name:
+                        kirito_vitoria(self, linhas, area)
+                Clock.schedule_once(_vitoria, 0.35)
             except Exception as e:
                 print(f"[registro] vitoria: {e}")
 

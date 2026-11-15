@@ -15,7 +15,7 @@ from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.graphics import Color, Rectangle, Line, RoundedRectangle, PushMatrix, PopMatrix, Translate
 from kivy.metrics import dp
-from datetime import datetime, timedelta
+from datetime import datetime
 import math
 import random
 
@@ -312,9 +312,12 @@ def transicao_link_start(app, destino, centro):
     if _transicao['ativa'] or sm.current == destino:
         return
     _transicao['ativa'] = True
+    _transicao['destino'] = destino
 
     def _meio():
         try:
+            if _transicao['destino'] != destino:
+                return
             _soltar_foco(sm.current_screen)
             sm.current = destino
         except Exception as e:
@@ -331,13 +334,14 @@ def transicao_link_start(app, destino, centro):
         transicao_tela(app, destino)
 
 
-def animar_ganho_xp(quantidade, origem=None):
+def animar_ganho_xp(quantidade, origem=None, centro_x=None):
     """'+N XP' saltando. Com `origem` (o item recem-adicionado na lista) nasce
     no item e salta para logo ACIMA dele (nao fica por cima do texto do item):
     cresce passando um pouco do tamanho, assenta, segura e sobe sumindo.
     Tamanhos em sp/dp (em pixel fixo ficava pequeno no celular)."""
     from kivy.metrics import sp
     ww, wh = Window.size
+    centro_x = ww / 2 if centro_x is None else centro_x
     alt = dp(46)
     y_ini = wh * 0.62
     y_alvo = y_ini + dp(18)
@@ -355,7 +359,7 @@ def animar_ganho_xp(quantidade, origem=None):
         font_name="orbitron.ttf", font_size=sp(26),
         outline_width=max(1, int(dp(1.5))), outline_color=(0.0, 0.10, 0.05, 1),
         size_hint=(None, None), size=(ww * 0.8, alt),
-        pos=(ww * 0.10, y_ini))
+        pos=(centro_x - ww * 0.40, y_ini))
     Window.add_widget(lbl)
     try:
         from animacoes_ui import _matriz
@@ -996,8 +1000,8 @@ def popup_importar_zap(itens, on_confirm):
     _abrir_popup(caixa, pop)
 
 
-def popup_aviso(texto, cor='#00e5ff', titulo=None):
-    """Aviso curto com um OK."""
+def popup_aviso(texto, cor='#00e5ff', titulo=None, acao=">>  OK", on_acao=None):
+    """Aviso curto com um botão."""
     pop, layout = _make_popup()
     linhas = texto.count('\n') + 1
     caixa = BoxLayout(orientation='vertical', padding=[dp(22), dp(18), dp(22), dp(18)], spacing=dp(12),
@@ -1011,8 +1015,15 @@ def popup_aviso(texto, cor='#00e5ff', titulo=None):
                 halign="center", valign="middle")
     texto_que_cabe(lbl, caixa)
     caixa.add_widget(lbl)
-    btn = BotaoAngular(text=">>  OK", size_hint_y=None, height=dp(50))
-    btn.bind(on_release=lambda *_: pop.dismiss())
+    btn = BotaoAngular(text=acao, size_hint_y=None, height=dp(50))
+
+    @uma_vez
+    def _fechar(*_):
+        pop.dismiss()
+        if on_acao is not None:
+            on_acao()
+
+    btn.bind(on_release=_fechar)
     caixa.add_widget(btn)
     layout.add_widget(caixa)
     caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
@@ -1284,7 +1295,7 @@ def ler_data(texto):
         return None, "Data inválida. Use dia/mês/ano (ex.: 29/09/2026)."
     if d.year < 2000:
         return None, "Data muito antiga. Confira o ano."
-    if d.date() > (datetime.now() + timedelta(days=1)).date():
+    if d.date() > datetime.now().date():
         return None, "Essa data ainda não chegou."
     return d, None
 
@@ -1458,12 +1469,17 @@ def popup_resumo_dia(tot_pecas, tot_xp, on_confirm, dias=None, pede_data=True, d
         text="", markup=True, font_name="rajdhani.ttf", font_size="14sp",
         size_hint_y=None, height=dp(22), halign="center", valign="middle")
     texto_que_cabe(lbl_aviso, caixa)
-    btn = BotaoAngular(text=">>  SALVAR TURNO  <<", size_hint_y=None, height=dp(52))
+    botoes = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(8))
+    voltar = BotaoAngular(text="VOLTAR", size_hint_x=0.35, font_size="13sp")
+    voltar.bind(on_release=lambda *_: pop.dismiss())
+    btn = BotaoAngular(text="SALVAR TURNO", size_hint_x=0.65, font_size="13sp")
+    botoes.add_widget(voltar)
+    botoes.add_widget(btn)
     # o campo vem antes do botao: o teclado sobe a caixa inteira
     if pede_data:
         caixa.add_widget(inp_data)
     caixa.add_widget(lbl_aviso)
-    caixa.add_widget(btn)
+    caixa.add_widget(botoes)
 
     layout.add_widget(caixa)
     caixa.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
@@ -1564,7 +1580,7 @@ def popup_meta_producao():
         lin = f"[color=#c8d2e6]Você está a [b]{int(round(r))} peças/h[/b][/color]"
         if md['hoje_falta'] > 0:
             f = md['hoje_falta']
-            lin += (f"\n[color=#9aa6bd]Faltam {fmt_br(f)}: [b]~{metas.tempo_txt(f / r)}[/b] nesse ritmo  ·  "
+            lin += (f"\n[color=#9aa6bd]Faltam {fmt_br(f)}: [b]cerca de {metas.tempo_txt(f / r)}[/b] nesse ritmo  ·  "
                     f"{metas.tempo_txt(f / 60.0)} a 60/h  ·  {metas.tempo_txt(f / 90.0)} a 90/h[/color]")
         texto(lin, alt=dp(68), tam="14sp")
     else:
@@ -1581,11 +1597,11 @@ def popup_meta_producao():
                     marcas=[(ini, f"R$ {fmt_br(v, 2)}", (1, 0.88, 0.1, 1) if k == len(fx) - 1 else (0, 1, 0.55, 1))
                             for k, (ini, v, _n) in enumerate(fx) if ini > 0],
                     cor=(1, 0.88, 0.1, 1) if prox is None else (0, 0.9, 1, 1))
-    lin = (f"[color=#c8d2e6][b]{fmt_br(sem)}[/b] peças  ·  hoje valem [b]R$ {fmt_br(valor_agora, 2)}[/b]  ·  "
+    lin = (f"[color=#c8d2e6][b]{fmt_br(sem)}[/b] peças  ·  hoje valem [b]R$\u00a0{fmt_br(valor_agora, 2)}[/b]  ·  "
            f"[color=#00ff88]{'R$ ' + fmt_br(metas.ganho(sem, cfg), 2)}[/color][/color]")
     if prox:
-        lin += (f"\n[color=#ffcc00]Faltam [b]{fmt_br(prox['falta'])}[/b] para os R$ {fmt_br(prox['valor'], 2)} "
-                f"(+R$ {fmt_br(prox['a_mais'], 2)})[/color]")
+        lin += (f"\n[color=#ffcc00]Faltam [b]{fmt_br(prox['falta'])}[/b] para os R$\u00a0{fmt_br(prox['valor'], 2)} "
+                f"(+R$\u00a0{fmt_br(prox['a_mais'], 2)})[/color]")
         if md['e_sabado']:
             lin += "\n[color=#9aa6bd]É sábado: tudo isso hoje[/color]"
         elif md['por_dia'] > 0:

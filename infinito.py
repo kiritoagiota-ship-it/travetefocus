@@ -159,6 +159,10 @@ class InfinitoLoader(Widget):
             self._trilho_b   = Line(width=dp(5), close=True)
             self._c_trilho   = Color(0.6, 0.7, 0.9, 0.0)
             self._trilho     = Line(width=dp(1.6), close=True)
+            self._c_marcas = Color(0, 0.9, 1, 0)
+            self._marcas = Mesh(mode='lines', vertices=[], indices=[])
+            self._c_cruzamento = Color(0.3, 0.9, 1, 0)
+            self._cruzamento = Rectangle()
 
             idx = list(range(2 * _N_CAUDA))
             # camada larga e fraca (bloom), cauda colorida e nucleo branco curto
@@ -194,6 +198,7 @@ class InfinitoLoader(Widget):
                     tex = textura_radial()
                     self._halo.texture = tex
                     self._glow.texture = tex
+                    self._cruzamento.texture = tex
                     self._m_bloom.texture = textura_cauda(1.3)
                     self._m_cauda.texture = textura_cauda(1.5)
                     self._m_miolo.texture = textura_cauda(4.0)
@@ -230,9 +235,26 @@ class InfinitoLoader(Widget):
             r = a * 1.45
             self._halo.pos  = (cx - r, cy - r)
             self._halo.size = (2 * r, 2 * r)
+            self._calibrar(cx, cy, a)
             self._txt_ult = None
         except Exception as e:
             print(f"[infinito] recalcular: {e}")
+
+    def _calibrar(self, cx, cy, a):
+        """Marcas fixas em volta dos dois lóbulos, fora da faixa do cometa."""
+        vertices = []
+        for sentido in (-1, 1):
+            extremo = cx + sentido * (a + dp(7))
+            vertices += [extremo, cy - dp(7), 0, 0, extremo, cy + dp(7), 0, 0]
+            for altura in (-a * 0.43, a * 0.43):
+                x = cx + sentido * a * 0.64
+                y = cy + altura
+                vertices += [x - dp(3), y, 0, 0, x + dp(3), y, 0, 0]
+        self._marcas.vertices = vertices
+        self._marcas.indices = list(range(len(vertices) // 4))
+        raio = a * 0.36
+        self._cruzamento.pos = (cx - raio, cy - raio)
+        self._cruzamento.size = (2 * raio, 2 * raio)
 
     # ── cor ─────────────────────────────────────────────────────────────
     def _cor_alvo(self):
@@ -323,6 +345,9 @@ class InfinitoLoader(Widget):
         self._c_miolo.rgba = (_lerp(r, 1, 0.8), _lerp(g, 1, 0.8), _lerp(b, 1, 0.8), min(1.0, 0.5 + 0.5 * e) * some)
 
         hx, hy = amostras[0]
+        perto = max(0.0, 1.0 - math.hypot(hx - self._cx, hy - self._cy) / (a * 0.35))
+        self._c_marcas.rgba = (r, g, b, (0.20 + 0.28 * e) * some ** 2)
+        self._c_cruzamento.rgba = (r, g, b, (0.14 + 0.32 * e) * perto ** 2 * some ** 2)
         tam_glow = a * (0.30 + 0.35 * e) * (0.9 + 0.1 * respiro)
         self._glow.pos  = (hx - tam_glow / 2, hy - tam_glow / 2)
         self._glow.size = (tam_glow, tam_glow)
@@ -518,6 +543,7 @@ class BarraCometa(Widget):
         self._t = 0.0
         self._cor = [0.0, 0.9, 1.0]
         self._pct_ult = None
+        self._geometria_marcas = None
         self._ev = None
         with self.canvas:
             self._c_trilho = Color(0.6, 0.8, 1, 0.12)
@@ -526,6 +552,10 @@ class BarraCometa(Widget):
             self._glow = Line(points=[0, 0, 0, 0], width=dp(4), cap='round')
             self._c_fio = Color(0, 0.9, 1, 0.95)
             self._fio = Line(points=[0, 0, 0, 0], width=dp(1.3), cap='round')
+            self._c_marcas = Color(0, 0.9, 1, 0)
+            self._marcas = Mesh(mode='lines', vertices=[], indices=[])
+            self._c_alcancadas = Color(0, 0.9, 1, 0)
+            self._alcancadas = Mesh(mode='lines', vertices=[], indices=[])
             self._c_cabeca = Color(0, 0.9, 1, 0.9)
             self._cabeca = Rectangle(size=(0, 0))
             self._c_nucleo = Color(1, 1, 1, 0.95)
@@ -568,10 +598,13 @@ class BarraCometa(Widget):
             self._fio.points = [x0, y, max(x0 + 0.5, xp), y]
             self._glow.points = self._fio.points
             self._c_fio.rgba = (r, g, b, 0.95)
-            self._c_glow.rgba = (r, g, b, 0.22 + 0.06 * math.sin(self._t * 6))
+            self._c_glow.rgba = (r, g, b, 0.20 + 0.04 * math.sin(self._t * 4))
             self._c_trilho.rgba = (0.6 + 0.4 * r, 0.6 + 0.4 * g, 0.6 + 0.4 * b, 0.12)
+            self._c_marcas.rgba = (r, g, b, 0.26)
+            self._c_alcancadas.rgba = (r, g, b, 0.82)
+            self._atualizar_marcas(x0, x1, y, int(pct // 25))
             vivo = pct > 0.5
-            tam = dp(22) * (1.0 + 0.12 * math.sin(self._t * 9))
+            tam = dp(20) * (1.0 + 0.06 * math.sin(self._t * 5))
             self._cabeca.pos = (xp - tam / 2.0, y - tam / 2.0)
             self._cabeca.size = (tam, tam) if vivo else (0, 0)
             self._c_cabeca.rgba = (r, g, b, 0.85)
@@ -590,6 +623,20 @@ class BarraCometa(Widget):
             self._c_pct.rgba = (0.6 + 0.4 * r, 0.6 + 0.4 * g, 0.6 + 0.4 * b, 0.8)
         except Exception as e:
             print(f"[barra] frame ignorado: {e}")
+
+    def _atualizar_marcas(self, x0, x1, y, n):
+        geometria = (x0, x1, y, n)
+        if geometria == self._geometria_marcas:
+            return
+        self._geometria_marcas = geometria
+        verts = []
+        for i in range(1, 5):
+            x = x0 + (x1 - x0) * i / 4
+            verts += [x, y + dp(2), 0, 0, x, y + dp(6), 0, 0]
+        self._alcancadas.vertices = verts[:n * 8]
+        self._alcancadas.indices = list(range(n * 2))
+        self._marcas.vertices = verts[n * 8:]
+        self._marcas.indices = list(range((4 - n) * 2))
 
 
 # ═══════════════════════════════════════════════════════════════════

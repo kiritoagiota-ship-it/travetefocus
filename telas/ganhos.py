@@ -27,6 +27,7 @@ from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.metrics import dp
 from datetime import datetime
+from math import isfinite
 
 from efeitos import BotaoAngular, BotaoAngularAlerta, ListaItem, tremer_tela
 import som
@@ -53,16 +54,11 @@ def _num(texto, inteiro=False, minimo=0.01):
         v = float(t)
     except ValueError:
         return None
+    if not isfinite(v) or (inteiro and not v.is_integer()):
+        return None
     if inteiro:
         v = int(v)
     return v if v >= minimo else None
-
-
-def _chave_turno(m):
-    """Identidade de um turno (memoria): o mesmo turno nunca conta em dois
-    periodos. Turnos novos tem 'ts'; os antigos usam data + total."""
-    ts = m.get('ts')
-    return f"ts:{ts}" if ts is not None else f"{m.get('data', '')}|{m.get('total', 0)}"
 
 
 NB = '\u00a0'      # espaco que nao quebra a linha ("R$" nunca fica sozinho no fim)
@@ -70,6 +66,13 @@ NB = '\u00a0'      # espaco que nao quebra a linha ("R$" nunca fica sozinho no f
 
 def _reais(v):
     return f"R${NB}{fmt_br(v, 2)}"
+
+
+def _faixas_salvas(registro, cfg):
+    faixas = {k: registro.get(k, cfg[k]) for k in (
+        'valor_base', 'valor_meio', 'valor_bonus', 'meta_meio')}
+    faixas['meta_bonus'] = registro.get('meta_bonus', registro.get('meta', cfg['meta_bonus']))
+    return faixas
 
 
 class TelaGanhos(Screen):
@@ -108,42 +111,6 @@ class TelaGanhos(Screen):
         return metas.completar_cfg(App.get_running_app().config_ganhos)
 
     # ── contagem de pecas ───────────────────────────────────────────────
-    def _ja_contadas(self, periodo=None):
-        """Turnos ja contados no fechamento de OUTROS periodos."""
-        chaves = set()
-        for p in App.get_running_app().periodos_ganhos:
-            if p is periodo or not p.get('data_fim'):
-                continue
-            chaves.update(p.get('contadas', []))
-        return chaves
-
-    def _turnos_no_periodo(self, inicio_str, fim_str=None, excluir=()):
-        app    = App.get_running_app()
-        # (sem cache: a chave por len(memorias) ficava velha ao editar a data
-        # de um turno e gravava total/ganho errado ao fechar o periodo)
-        inicio = _data_str_para_obj(inicio_str)
-        fim    = _data_str_para_obj(fim_str) if fim_str else None
-        if inicio is None:
-            return []
-        turnos = []
-        for m in app.memorias:
-            d = _data_str_para_obj(m.get('data', ''))
-            if d is None or d < inicio or (fim is not None and d > fim):
-                continue
-            if _chave_turno(m) in excluir:
-                continue
-            turnos.append(m)
-        return turnos
-
-    def _pecas_no_periodo(self, inicio_str, fim_str=None, excluir=()):
-        total = 0
-        for m in self._turnos_no_periodo(inicio_str, fim_str, excluir):
-            try:
-                total += int(m.get('total', 0))
-            except (TypeError, ValueError):
-                pass
-        return total
-
     def _janela(self, periodo):
         """(inicio, fim) - as datas que o periodo conta (metas.fim_do_periodo):
         o semanal vai ate o sabado da semana dele. (None, None) se a data estragou."""
@@ -153,28 +120,88 @@ class TelaGanhos(Screen):
         ini = ini.date()
         return ini, metas.fim_do_periodo(periodo.get('tipo'), ini, datetime.now().date())
 
+    def _producao_periodo(self, periodo, ini, fim):
+        app = App.get_running_app()
+        cfg = self._cfg()
+        # Só recupera datas antigas de fechamentos que identificaram os turnos.
+        # Sem essa lista, não há como saber se um turno antigo já foi pago.
+        fechados = [p for p in app.periodos_ganhos if p is not periodo and p.get('data_fim')]
+        legados = [p for p in fechados if 'contadas' not in p]
+        memorias = {metas.chave_turno(m): m for m in app.memorias}
+        contadas, janelas, pagas = set(), [], {}
+        for p in fechados:
+            inicio = _data_str_para_obj(p.get('data_inicio'))
+            final = _data_str_para_obj(p.get('data_fim'))
+            contadas.update(p.get('contadas', []))
+            if inicio is None or final is None:
+                continue
+            inicio, final = inicio.date(), final.date()
+            if 'contadas' in p:
+                janelas.append((inicio, final))
+            semanas = p.get('semanas')
+            if semanas is None:
+                if 'contadas' not in p:
+                    continue
+                seg = metas.segunda_da_semana(inicio)
+                if seg == metas.segunda_da_semana(final):
+                    semanas = [{'seg': seg, 'pecas': p.get('total_pecas', 0),
+                                'ganho': p.get('total_ganho', 0)}]
+                else:
+                    # Versões anteriores só guardavam o total do período.
+                    # Reconstitui as semanas quando a soma confere com o histórico.
+                    turnos_pagos = (memorias[k] for k in set(p['contadas']) if k in memorias)
+                    datas = ((_data_str_para_obj(m.get('data')), m.get('total', 0)) for m in turnos_pagos)
+                    semanas = metas.semanas(((d.date(), q) for d, q in datas if d is not None),
+                                           _faixas_salvas(p, cfg))
+                    if (sum(s['pecas'] for s in semanas) != p.get('total_pecas', 0)
+                            or round(sum(s['ganho'] for s in semanas), 2) != p.get('total_ganho', 0)):
+                        continue
+                semanas = [dict(s, seg=s['seg'].isoformat()) for s in semanas]
+            for s in semanas:
+                pecas, ganho, _cfg = pagas.get(s['seg'], (0, 0.0, None))
+                pagas[s['seg']] = (pecas + s['pecas'], round(ganho + s['ganho'], 2),
+                                   s.get('faixas') or p)
+
+        def inclui(dia):
+            return dia is not None and dia <= fim and (
+                dia >= ini or any(a <= dia <= b for a, b in janelas))
+
+        turnos, lotes = [], []
+        for m in app.memorias:
+            data = _data_str_para_obj(m.get('data'))
+            if (data is not None and inclui(data.date()) and metas.chave_turno(m) not in contadas
+                    and not any(metas.periodos_do_turno(m, legados))):
+                turnos.append((data.date(), m))
+        hoje = datetime.now().date()
+        for r in app.registros:
+            dia = metas.dia_do_lote(r, hoje)
+            if inclui(dia):
+                try:
+                    lotes.append((dia, int(r[1])))
+                except (IndexError, TypeError, ValueError):
+                    continue
+        return turnos, lotes, pagas
+
     def _conta_periodo(self, periodo, com_lotes=True):
-        """A conta do periodo (a mesma na projecao e no fechamento):
-        -> (turnos, pecas, semanas [metas.semanas], fim)."""
+        """Usa os turnos inéditos, inclusive lançamentos tardios de períodos fechados."""
         ini, fim = self._janela(periodo)
         if ini is None:
-            return [], 0, [], None
-        fim_str = fim.strftime("%d/%m/%Y")
-        turnos = self._turnos_no_periodo(periodo['data_inicio'], fim_str, excluir=self._ja_contadas(periodo))
-        por_dia = []
-        for m in turnos:
-            d = _data_str_para_obj(m.get('data', ''))
-            if d is not None:
-                por_dia.append((d.date(), m.get('total', 0)))
+            return [], 0, [], None, 0
+        turnos, lotes, pagas = self._producao_periodo(periodo, ini, fim)
+        por_dia = [(dia, m.get('total', 0)) for dia, m in turnos]
         if com_lotes:
-            por_dia += self._lotes_por_dia(periodo['data_inicio'], fim_str)
-        sems = metas.semanas(por_dia, self._cfg())
-        return turnos, sum(x['pecas'] for x in sems), sems, fim
-
-    # ── dinheiro ────────────────────────────────────────────────────────
-    def _calcular_ganho(self, total_pecas):
-        """O valor da faixa atingida vale para TODAS as pecas (metas.py)."""
-        return metas.ganho(total_pecas, self._cfg())
+            por_dia.extend(lotes)
+        cfg = self._cfg()
+        sems = metas.semanas(por_dia, cfg)
+        # A faixa usa toda a produção da semana. O novo período só recebe a
+        # diferença, e o valor registrado nos fechamentos anteriores fica intacto.
+        for s in sems:
+            anteriores, pago, regras = pagas.get(s['seg'].isoformat(), (0, 0.0, {}))
+            faixas = _faixas_salvas(regras, cfg)
+            s['faixas'] = faixas
+            s['pecas_anteriores'] = anteriores
+            s['ganho'] = round(metas.ganho(anteriores + s['pecas'], faixas) - pago, 2)
+        return [m for _, m in turnos], sum(s['pecas'] for s in sems), sems, fim, sum(q for _, q in lotes)
 
     # ── tela ────────────────────────────────────────────────────────────
     @staticmethod
@@ -210,17 +237,20 @@ class TelaGanhos(Screen):
 
         cfg      = self._cfg()
         # a mesma conta do fechamento: so ate o fim do periodo e faixa por semana
-        _t, pecas, sems, _fim = self._conta_periodo(aberto)
+        _t, pecas, sems, _fim, _lotes = self._conta_periodo(aberto)
         self._pecas_periodo = pecas
         ganho    = round(sum(x['ganho'] for x in sems), 2)
         # a faixa (o 'faltam') e a da semana mais nova do periodo
-        pecas_fx = sems[-1]['pecas'] if sems else 0
+        ini = _data_str_para_obj(aberto['data_inicio'])
+        atual = sems[-1] if sems and ini and sems[-1]['seg'] >= metas.segunda_da_semana(ini.date()) else None
+        pecas_fx = atual['pecas'] + atual['pecas_anteriores'] if atual else 0
+        if atual:
+            cfg = atual['faixas']
         self._pecas_fx_periodo = pecas_fx
         tipo     = aberto.get('tipo', 'período').capitalize()
         prox     = metas.proxima_faixa(pecas_fx, cfg)
         valor_agora = metas.faixa_de(pecas_fx, cfg)[2]
 
-        ini = _data_str_para_obj(aberto['data_inicio'])
         futuro = ini is not None and ini.date() > datetime.now().date()
         if futuro:
             self.ids.lbl_periodo_status.text = (           # aberto sozinho ao fechar o anterior
@@ -261,10 +291,12 @@ class TelaGanhos(Screen):
             if f is None or f.parent is None:
                 f = self._faiscas = K.Faiscas(n_max=60)
                 Window.add_widget(f)
-            f.estourar(x, y, (1.0, 0.85, 0.2), n=26, forca=dp(300), tam=dp(3), gravidade=dp(300))
-            f.estourar(x, y, (1.0, 1.0, 0.75), n=10, forca=dp(160), tam=dp(2), gravidade=dp(200))
+            marcas = self.ids.barra_semana.marcas
+            cor = marcas[k][2][:3] if 0 <= k < len(marcas) else (1.0, 0.85, 0.2)
+            f.estourar(x, y, cor, n=14, forca=dp(155), tam=dp(2.4), gravidade=dp(230))
+            f.estourar(x, y, (0.85, 1, 0.92), n=5, forca=dp(95), tam=dp(1.6), gravidade=dp(145))
             from animacoes_ui import pulso
-            pulso(self.ids.lbl_periodo_ganho, 1.1, 0.3)
+            pulso(self.ids.lbl_periodo_ganho, 1.045, 0.4)
             import tatil
             tatil.tecla()
             som.tocar_add()
@@ -274,33 +306,8 @@ class TelaGanhos(Screen):
     def on_leave(self, *_):
         f = getattr(self, '_faiscas', None)
         if f is not None and f.parent is not None:
-            Clock.schedule_once(lambda dt: f.parent and f.parent.remove_widget(f), 1.0)
-
-    @staticmethod
-    def _lotes_por_dia(inicio_str, fim_str=None):
-        """[(dia, pecas)] dos lotes lancados no Registro e ainda nao finalizados,
-        de `inicio_str` ate `fim_str` (cada lote no dia dele: metas.dia_do_lote;
-        os antigos sem hora sao de hoje): entram na projecao e no 'faltam'."""
-        ini = _data_str_para_obj(inicio_str)
-        if ini is None:
-            return []
-        fim = _data_str_para_obj(fim_str) if fim_str else None
-        hoje = datetime.now().date()
-        out = []
-        for r in App.get_running_app().registros:
-            d = metas.dia_do_lote(r, hoje)
-            if d is None or d < ini.date() or (fim is not None and d > fim.date()):
-                continue
-            try:
-                out.append((d, int(r[1])))
-            except (TypeError, ValueError, IndexError):
-                pass
-        return out
-
-    @staticmethod
-    def _lotes_nao_finalizados(inicio_str, fim_str=None):
-        """Quantas pecas do Registro ainda nao finalizadas caem no periodo."""
-        return sum(q for _d, q in TelaGanhos._lotes_por_dia(inicio_str, fim_str))
+            f.parent.remove_widget(f)
+        self._faiscas = None
 
     def _atualizar_semana(self):
         """META DA SEMANA (seg a sab): a barra das faixas e quanto por dia falta
@@ -603,32 +610,33 @@ class TelaGanhos(Screen):
         ini0 = _data_str_para_obj(original.get('data_inicio', ''))
         if ini0 is not None and ini0.date() > datetime.now().date():
             return                                 # ainda nao comecou: nada para fechar
-        turnos, pecas, sems, fim = self._conta_periodo(original, com_lotes=False)
+        turnos, pecas, sems, fim, soltas = self._conta_periodo(original, com_lotes=False)
         if fim is None:
             return
-        soltas = self._lotes_nao_finalizados(original['data_inicio'], fim.strftime("%d/%m/%Y"))
         if soltas > 0:
             # so os turnos finalizados entram no pagamento: avisa antes, para
             # nenhuma peca lancada ficar de fora sem querer
             from helpers import popup_aviso
             som.tocar_erro()
             tatil.erro()
-            popup_aviso(f"Você tem {fmt_br(soltas)} peças no Registro\nainda não finalizadas.\n"
-                        "Toque em FINALIZAR DIA no Registro\ne depois feche o período.",
-                        titulo="FALTA FINALIZAR O DIA")
+            popup_aviso(f"Você tem {fmt_br(soltas)} peças no Registro\nainda não finalizadas.",
+                        titulo="FALTA FINALIZAR O DIA", acao="IR AO REGISTRO",
+                        on_acao=lambda: app.mudar_tela('registro'))
             return
         ganho = round(sum(x['ganho'] for x in sems), 2)
         ini = _data_str_para_obj(original['data_inicio']).date()
         qual = "a semana" if str(original.get('tipo', '')).lower() == 'semanal' else "o período"
         from helpers import popup_confirmar
         tatil.botao()
+        ajuste = '\nInclui acerto de fechamento anterior.' if any(
+            s['seg'] < metas.segunda_da_semana(ini) or s['pecas_anteriores'] for s in sems) else ''
         popup_confirmar(
             f"Fechar {qual} de {ini.strftime('%d/%m')} a {fim.strftime('%d/%m')}?\n"
-            f"[b]{fmt_br(pecas)}[/b] peças = [color=#00ff88][b]{_reais(ganho)}[/b][/color]",
-            lambda: self._fechar_de_vez(original, turnos, pecas, ganho, sems, fim),
+            f"[b]{fmt_br(pecas)}[/b] peças = [color=#00ff88][b]{_reais(ganho)}[/b][/color]{ajuste}",
+            lambda: self._fechar_de_vez(original, tuple(map(metas.chave_turno, turnos)), pecas, ganho, sems, fim),
             sim=">>  SIM", nao="CANCELAR", titulo="FECHAR E CALCULAR?")
 
-    def _fechar_de_vez(self, original, turnos, pecas, ganho, sems, fim):
+    def _fechar_de_vez(self, original, chaves, pecas, ganho, sems, fim):
         """Fecha o periodo (data_fim = o ultimo dia que ele conta) e ja abre o
         seguinte, do mesmo tipo, no dia depois (sabado -> segunda): sem buraco
         entre um periodo e outro."""
@@ -637,6 +645,12 @@ class TelaGanhos(Screen):
         idx_real = next((i for i, p in enumerate(periodos) if p is original), None)
         if idx_real is None or original.get('data_fim'):
             return                                     # (mudou enquanto o aviso estava aberto)
+        turnos_atuais, pecas_atuais, semanas_atuais, fim_atual, soltas = self._conta_periodo(
+            original, com_lotes=False)
+        if (soltas or fim_atual != fim or pecas_atuais != pecas or semanas_atuais != sems
+                or tuple(map(metas.chave_turno, turnos_atuais)) != chaves):
+            self.fechar_periodo()
+            return
         cfg      = self._cfg()
         aberto   = dict(original)
         aberto['data_fim']    = fim.strftime("%d/%m/%Y")
@@ -648,7 +662,9 @@ class TelaGanhos(Screen):
         aberto['valor_bonus'] = float(cfg['valor_bonus'])
         aberto['meta_meio']   = int(cfg['meta_meio'])
         aberto['valor_meio']  = float(cfg['valor_meio'])
-        aberto['contadas']    = [_chave_turno(m) for m in turnos]
+        aberto['contadas']    = list(chaves)
+        aberto['semanas']     = [{'seg': s['seg'].isoformat(), 'pecas': s['pecas'],
+                                 'ganho': s['ganho'], 'faixas': s['faixas']} for s in sems]
         periodos[idx_real]   = aberto
         dias_turno = set()
         for m in app.memorias:
@@ -682,7 +698,9 @@ class TelaGanhos(Screen):
         total = metas.ganho(pecas, cfg)
         n_bonus = pecas if i_fx > 0 else 0          # (o Yoru comemora se passou da base)
         sems = list(sems or [])
-        varias = len(sems) > 1                      # quinzenal/mensal: a faixa e de cada semana
+        ini = _data_str_para_obj(periodo['data_inicio']).date()
+        detalhar = len(sems) > 1 or any(s['pecas_anteriores'] or s['seg'] < metas.segunda_da_semana(ini)
+                                       for s in sems)
 
         caixa.add_widget(Label(
             text="[b][color=#00e5ff]>>  PERÍODO ENCERRADO  <<[/color][/b]",
@@ -690,12 +708,13 @@ class TelaGanhos(Screen):
             size_hint_y=None, height=dp(34), halign="center"))
 
         prox = metas.proxima_faixa(pecas, cfg)
-        if varias:
+        if detalhar:
             total = round(ganho, 2)
-            n_bonus = sum(x['pecas'] for x in sems if metas.faixa_de(x['pecas'], cfg)[0] > 0)
+            n_bonus = sum(x['pecas'] for x in sems
+                          if metas.faixa_de(x['pecas'] + x['pecas_anteriores'], x['faixas'])[0] > 0)
             mostra = sems[-4:]
             linhas = [f"[color=#aab4c8]{x['seg'].strftime('%d/%m')} a {x['sab'].strftime('%d/%m')}: "
-                      f"{fmt_br(x['pecas'])}{NB}un.{NB}={NB}[/color][color=#00e5ff]{_reais(x['ganho'])}[/color]"
+                      f"{fmt_br(x['pecas'])}{NB}un.{NB}·{NB}[/color][color=#00e5ff]{_reais(x['ganho'])}[/color]"
                       for x in mostra]
             if len(sems) > len(mostra):
                 linhas.insert(0, f"[color=#6f7a92]e mais {len(sems) - len(mostra)} semana(s) antes[/color]")

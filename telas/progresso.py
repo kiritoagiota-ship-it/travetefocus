@@ -25,9 +25,12 @@ class TelaProgresso(Screen):
             try: som.tocar_xp_subindo()
             except Exception: pass
             if houve_level_up:
-                Clock.schedule_once(_level_up_fanfare, 1.3)
+                self._xp_ev = Clock.schedule_once(_level_up_fanfare, 1.3)
+            else:
+                self._xp_ev = None
 
         def _level_up_fanfare(dt):
+            self._xp_ev = None
             try: som.tocar_level_up()
             except Exception: pass
             # o Yoru comemora do lado do nivel
@@ -43,13 +46,17 @@ class TelaProgresso(Screen):
              Animation(color=[0, 0.9, 1,   1], duration=0.35)).start(lbl)
             try:
                 from efeitos import tremer_tela as _tremer
-                _tremer(20)
+                _tremer(6)
             except Exception:
                 pass
 
-        Clock.schedule_once(_start_anim, 0.1)
+        self._xp_ev = Clock.schedule_once(_start_anim, 0.1)
 
     def on_leave(self, *_):
+        self._fechar_detalhe_anel()
+        if getattr(self, '_xp_ev', None) is not None:
+            self._xp_ev.cancel()
+            self._xp_ev = None
         try:
             self.ids.barra_circular.parar_animacoes()
         except Exception:
@@ -62,14 +69,34 @@ class TelaProgresso(Screen):
     def on_kv_post(self, *_):
         self.ids.barra_circular.bind(on_touch_down=self._toque_anel)
 
+    def _fechar_detalhe_anel(self, _dt=None, animar=False):
+        detalhe = getattr(self, '_detalhe_anel', None)
+        if detalhe is None:
+            return
+        barra, lbl, percentual, evento = detalhe
+        evento.cancel()
+        if percentual is not None:
+            Animation.cancel_all(percentual, 'opacity')
+        Animation.cancel_all(lbl, 'opacity')
+        if animar:
+            saida = Animation(opacity=0, duration=0.18, transition='out_quad')
+            saida.bind(on_complete=lambda *_: self._fechar_detalhe_anel())
+            saida.start(lbl)
+            if percentual is not None:
+                Animation(opacity=1, duration=0.22).start(percentual)
+        else:
+            self._detalhe_anel = None
+            barra.remove_widget(lbl)
+            if percentual is not None:
+                percentual.opacity = 1
+
     def _toque_anel(self, barra, touch):
-        """Tocou no anel: ele da uma volta rapida e mostra quanto falta para o
-        proximo nivel (em XP e, pela media, em pecas)."""
-        if not barra.collide_point(*touch.pos) or getattr(self, '_anel_ocupado', False):
+        """Realça o anel e mostra a distância até o próximo nível."""
+        if not barra.collide_point(*touch.pos) or getattr(self, '_detalhe_anel', None):
             return False
         try:
             from kivy.uix.label import Label
-            from kivy.metrics import sp
+            from animacoes_ui import pulso
             app = App.get_running_app()
             level, xp_at, xp_nec = calcular_level(app.total_xp)
             falta = max(0, xp_nec - xp_at)
@@ -92,31 +119,17 @@ class TelaProgresso(Screen):
                         size_hint=(None, None), size=barra.size, pos=barra.pos, opacity=0)
             lbl.text_size = lbl.size
             barra.add_widget(lbl)
-            self._anel_ocupado = True
             som.tocar_click()
             import tatil
             tatil.tecla()
-            alvo = barra.angulo_preenchimento
-            Animation.cancel_all(barra, 'angulo_preenchimento')
-            barra.angulo_preenchimento = 0
-            Animation(angulo_preenchimento=alvo, duration=0.55, transition='out_cubic').start(barra)
+            pulso(barra, 1.025, 0.36)
             if pct is not None:
                 Animation(opacity=0, duration=0.15).start(pct)
-            Animation(opacity=1, duration=0.25).start(lbl)
-
-            def _volta(dt):
-                try:
-                    a = Animation(opacity=0, duration=0.25)
-                    a.bind(on_complete=lambda *_: barra.remove_widget(lbl))
-                    a.start(lbl)
-                    if pct is not None:
-                        Animation(opacity=1, duration=0.3).start(pct)
-                finally:
-                    self._anel_ocupado = False
-            Clock.schedule_once(_volta, 2.8)
+            Animation(opacity=1, duration=0.22, transition='out_quad').start(lbl)
+            evento = Clock.schedule_once(lambda dt: self._fechar_detalhe_anel(dt, animar=True), 2.8)
+            self._detalhe_anel = (barra, lbl, pct, evento)
         except Exception as e:
             print(f"[progresso] anel: {e}")
-            self._anel_ocupado = False
         return True
 
     def _cascata_cards(self):
@@ -172,13 +185,20 @@ class TelaProgresso(Screen):
                lambda v: f"MELHOR DIA\n[color=#ffcc00]{fmt_br(v)} un.[/color]", atraso=0.29)
         self._cascata_cards()
 
-        streak = self._sequencia_valida(app)
         barra  = self.ids.barra_circular
         # valores do anel antes de qualquer animacao (uma unica, sem estouro)
         barra.maximo = max(1, xp_necessario)
         barra.valor  = min(xp_atual, barra.maximo)
         barra.animar_progresso()
+        self._atualizar_sequencia()
 
+    def _atualizar_sequencia(self):
+        streak = self._sequencia_valida(App.get_running_app())
+        barra = self.ids.barra_circular
+        pulso = getattr(barra, '_anim_pulso', None)
+        if pulso is not None:
+            pulso.cancel(barra)
+            barra._anim_pulso = None
         if streak >= 5:
             try:
                 from animacoes_ui import chamas_em_volta
@@ -198,6 +218,9 @@ class TelaProgresso(Screen):
             barra._anim_pulso = fire
             fire.start(barra)
         else:
+            if getattr(self, '_parar_chamas', None) is not None:
+                self._parar_chamas()
+                self._parar_chamas = None
             barra.cor_anel = [0, 0.9, 1, 1]
             self.ids.lbl_streak.text  = f"SEQUÊNCIA  {streak}  {'DIA' if streak == 1 else 'DIAS'}"
             self.ids.lbl_streak.color = (0, 0.9, 1, 0.7)

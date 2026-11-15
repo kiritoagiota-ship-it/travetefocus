@@ -77,7 +77,9 @@ outro jeito. Sugestões e correções são bem-vindas pelas *Issues*.
 
 1. Baixe o `.apk` mais recente em **[Releases](../../releases/latest)**
    (cada atualização gera um APK novo automaticamente).
-2. Antes de atualizar, **exporte um backup** (Memórias → EXPORTAR).
+2. Em Memórias → EXPORTAR você pode guardar um CSV com o histórico de turnos.
+   O CSV serve para consulta. Os lotes em aberto, os períodos de Ganhos e as
+   configurações ficam nos dados e nas cópias automáticas do aplicativo.
 3. Instale **por cima** do app antigo. **Nunca desinstale**: os dados ficam só
    no celular e iriam junto.
 

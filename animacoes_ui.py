@@ -75,7 +75,7 @@ def entrada_cascata(widgets, atraso=0.045, dy=None, duracao=0.38,
     if not ws:
         return
     if dy is None:
-        dy = dp(22)
+        dy = dp(14)
     passo = atraso if len(ws) * atraso <= atraso_max else atraso_max / float(len(ws))
     for i, w in enumerate(ws):
         try:
@@ -93,12 +93,11 @@ def _entrar(w, espera, dy, duracao, escala):
     Animation.cancel_all(w, 'opacity')
     w.opacity = 0
     tr.y = -dy
-    s0 = 0.94 if escala else 1.0
+    s0 = 0.97 if escala else 1.0
     sc.x = sc.y = s0
 
     def _comecar(dt):
         try:
-            w._anim_ui_ev = None
             t0 = [0.0]
 
             def _passo(dt2):
@@ -115,17 +114,20 @@ def _entrar(w, espera, dy, duracao, escala):
                         tr.y = 0
                         sc.x = sc.y = 1
                         w.opacity = 1
+                        w._anim_ui_ev = None
                         return False
                 except Exception as ex:
                     print(f"[anim_ui] cascata frame: {ex}")
                     tr.y = 0
                     sc.x = sc.y = 1
                     w.opacity = 1
+                    w._anim_ui_ev = None
                     return False
-            Clock.schedule_interval(_passo, 1 / 60.)
+            w._anim_ui_ev = Clock.schedule_interval(_passo, 1 / 60.)
         except Exception as ex:
             print(f"[anim_ui] cascata: {ex}")
             w.opacity = 1
+            w._anim_ui_ev = None
 
     w._anim_ui_ev = Clock.schedule_once(_comecar, espera)
 
@@ -172,7 +174,9 @@ def contar(label, ate, montar, de=0, duracao=0.9, inteiro=True, atraso=0.0):
                 label.text = montar(ate)
                 label._anim_ui_contar = None
                 return False
-            label.text = montar(int(round(v)) if inteiro else v)
+            texto = montar(int(round(v)) if inteiro else v)
+            if label.text != texto:
+                label.text = texto
         except Exception as ex:
             print(f"[anim_ui] contar: {ex}")
             try:
@@ -242,6 +246,14 @@ def aplicar_brilho_toque(botao, cor=None):
 
     estado = {'ev': None, 't': 0.0}
 
+    def _limpar():
+        c_faixa.a = c_pulso.a = c_pulso2.a = 0
+        m_faixa.indices = []
+        m_faixa.vertices = []
+        l_pulso.points = []
+        l_pulso2.points = []
+        estado['ev'] = None
+
     def _cor():
         if cor is not None:
             return cor
@@ -253,11 +265,14 @@ def aplicar_brilho_toque(botao, cor=None):
             estado['t'] += dt
             t = estado['t']
             x, y, w, h = botao.x, botao.y, botao.width, botao.height
-            if w <= 0 or h <= 0:
-                return True
+            if w <= 0 or h <= 0 or botao.get_root_window() is None:
+                _limpar()
+                return False
             r, g, b = _cor()[:3]
-            # faixa diagonal: dura 0.36s, atravessa de fora a fora
-            k = min(1.0, t / 0.36)
+            tecla = getattr(botao, 'tatil', '') == 'tecla'
+            # O reflexo de uma tecla termina antes do próximo toque.
+            dur_faixa = 0.22 if tecla else 0.32
+            k = min(1.0, t / dur_faixa)
             larg = max(dp(18), w * 0.22)
             incl = h * 0.45
             x0 = x - larg - incl + (w + 2 * larg + incl) * (1 - (1 - k) ** 2)
@@ -272,39 +287,29 @@ def aplicar_brilho_toque(botao, cor=None):
             if not m_faixa.indices:
                 m_faixa.indices = [0, 1, 2, 3]
             c_faixa.rgba = (0.6 + 0.4 * r, 0.6 + 0.4 * g, 0.6 + 0.4 * b,
-                            0.42 * math.sin(math.pi * k))
+                            (0.26 if tecla else 0.36) * math.sin(math.pi * k))
             # anel de luz no formato do botao (chanfrado): expande e some.
             # Nas teclas (calculadora, teclado) sao dois aneis, maiores.
-            tecla = getattr(botao, 'tatil', '') == 'tecla'
             ch = min(dp(18), w / 3.0, h / 3.0)
-            kp = min(1.0, t / 0.40)
-            ex = (dp(12) if tecla else dp(7)) * (1 - (1 - kp) ** 3)
+            kp = min(1.0, t / (0.23 if tecla else 0.34))
+            ex = (dp(5) if tecla else dp(7)) * (1 - (1 - kp) ** 3)
             l_pulso.points = _chanfro(x - ex, y - ex, w + 2 * ex, h + 2 * ex, ch + ex * 0.4)
-            c_pulso.rgba = (min(1, r + 0.3), min(1, g + 0.3), min(1, b + 0.3), (0.8 if tecla else 0.55) * (1 - kp))
-            kp2 = max(0.0, min(1.0, (t - 0.07) / 0.42)) if tecla else 1.0
+            c_pulso.rgba = (min(1, r + 0.24), min(1, g + 0.24), min(1, b + 0.24),
+                            0.62 * (1 - kp) ** 2)
+            kp2 = max(0.0, min(1.0, (t - 0.055) / 0.24)) if tecla else 1.0
             if tecla and 0 < kp2 < 1:
-                ex2 = dp(20) * (1 - (1 - kp2) ** 3)
+                ex2 = dp(9) * (1 - (1 - kp2) ** 3)
                 l_pulso2.points = _chanfro(x - ex2, y - ex2, w + 2 * ex2, h + 2 * ex2, ch + ex2 * 0.4)
-                c_pulso2.rgba = (r, g, b, 0.45 * (1 - kp2))
+                c_pulso2.rgba = (r, g, b, 0.34 * (1 - kp2) ** 2)
             else:
                 c_pulso2.a = 0
-            if k >= 1 and kp >= 1 and kp2 >= 1:
-                c_faixa.a = 0
-                c_pulso.a = 0
-                c_pulso2.a = 0
-                # acabou: tira a geometria (parado, o efeito nao desenha nada)
-                m_faixa.indices = []
-                m_faixa.vertices = []
-                l_pulso.points = []
                 l_pulso2.points = []
-                estado['ev'] = None
+            if k >= 1 and kp >= 1 and kp2 >= 1:
+                _limpar()
                 return False
         except Exception as e:
             print(f"[anim_ui] brilho frame: {e}")
-            c_faixa.a = 0
-            c_pulso.a = 0
-            c_pulso2.a = 0
-            estado['ev'] = None
+            _limpar()
             return False
 
     def _disparar(*_):
@@ -323,10 +328,7 @@ def aplicar_brilho_toque(botao, cor=None):
     def _parar(inst, parent):
         if parent is None and estado['ev'] is not None:
             estado['ev'].cancel()
-            estado['ev'] = None
-            c_faixa.a = 0
-            c_pulso.a = 0
-            c_pulso2.a = 0
+            _limpar()
     botao.fbind('parent', _parar)
 
 
@@ -837,9 +839,12 @@ def entrada_costura(centro, on_meio=None, on_fim=None, dur=1.25):
     metade de cima sobe um pouco, a de baixo desce, as duas somem)."""
     from kivy.core.window import Window
     ov, W, H, meio, fim = _sobreposicao(on_meio, on_fim, 'costura')
-    cy = H * 0.5
+    fx, fy = centro if centro is not None else (W * 0.5, H * 0.5)
+    fx, fy = min(W, max(0, fx)), min(H, max(0, fy))
+    cy = min(H * 0.58, max(H * 0.42, fy))
     passo_p = dp(14)
-    n = int(W / passo_p) + 2
+    n = int(W / passo_p) + 1
+    pontos_visiveis = 0
     with ov.canvas:
         metades = []
         for i in range(2):
@@ -853,6 +858,8 @@ def entrada_costura(centro, on_meio=None, on_fim=None, dur=1.25):
         l_fio = Line(points=[], width=dp(0.6))
         c_pts = Color(0.3, 0.95, 1, 0)
         pontos = [Line(points=[], width=dp(1.3)) for _ in range(n)]
+        c_origem = Color(0.52, 0.95, 1, 0)
+        r_origem = Line(circle=(fx, fy, dp(3)), width=dp(1.2))
         c_ag = Color(0.85, 1, 1, 0)
         r_ag = Rectangle(texture=_textura_brilho_redondo())
     Window.add_widget(ov)
@@ -869,29 +876,35 @@ def entrada_costura(centro, on_meio=None, on_fim=None, dur=1.25):
         pass
 
     def passo(t):
+        nonlocal pontos_visiveis
         entra = _suave(t / 0.28)
         abre = _suave((t - 0.70) / (dur - 0.70))
         if t >= T_MEIO:
             meio()
-        d = dp(26) * abre
+        d = dp(16) * abre
         for i, (tr, c) in enumerate(metades):
             tr.y = d if i == 0 else -d
             c.a = 0.96 * entra * (1 - abre)
         # os pontos da costura: cada um aparece quando a agulha passa
         kp = _suave((t - T_PONTO0) / (T_PONTO1 - T_PONTO0))
         xa = -dp(10) + (W + dp(20)) * kp
-        for j, ln in enumerate(pontos):
-            x0 = j * passo_p
-            if x0 + passo_p * 0.55 <= xa:
-                ln.points = [x0, cy, x0 + passo_p * 0.55, cy]
-            else:
-                ln.points = []
+        while pontos_visiveis < n:
+            x0 = pontos_visiveis * passo_p
+            x1 = min(x0 + passo_p * 0.56, W)
+            if x1 > xa:
+                break
+            dy = dp(2) * (1 if pontos_visiveis % 2 else -1)
+            pontos[pontos_visiveis].points = [x0, cy - dy, x1, cy + dy]
+            pontos_visiveis += 1
         c_pts.a = 0.85 * (1 - abre) if t > T_PONTO0 else 0
         l_fio.points = [0, cy, max(0.0, xa), cy] if xa > 0 else []
         c_fio.a = 0.28 * (1 - abre) if t > T_PONTO0 else 0
-        tam = dp(26)
+        pulso = _suave(t / 0.30)
+        c_origem.a = 0.42 * (1 - pulso)
+        r_origem.circle = (fx, fy, dp(4) + dp(26) * pulso)
+        tam = dp(22)
         r_ag.pos, r_ag.size = (xa - tam / 2.0, cy - tam / 2.0), (tam, tam)
-        c_ag.a = 0.9 if T_PONTO0 < t < T_PONTO1 else max(0.0, 0.9 - (t - T_PONTO1) * 6)
+        c_ag.a = 0.82 * _suave((t - T_PONTO0) / 0.09) * (1 - _suave((t - T_PONTO1) / 0.15))
     _rodar(dur, passo, fim, 'costura')
 
 
@@ -1097,9 +1110,9 @@ def corte_parte_tela(cor=(0.0, 0.9, 1.0), sentido=1, on_meio=None, on_fim=None, 
             # as metades se separam: cada uma para o seu lado, acelerando, e somem
             ka = max(0.0, (k - T_ABRE0) / (dur - T_ABRE0))
             if ka > 0:
-                d = (ka ** 1.7) * H * 0.55
-                desliza = (ka ** 2) * W * 0.10
-                alfa = 1.0 - max(0.0, (ka - 0.45) / 0.55)
+                d = (ka ** 1.5) * H * 0.22
+                desliza = (ka ** 2) * W * 0.06
+                alfa = 1.0 - _suave(min(1.0, ka))
                 for i, (trm, m, c_beira, l_beira) in enumerate(metades):
                     sgn = 1 if i == 0 else -1
                     trm.x = nx * d * sgn + tx * desliza * sgn
@@ -1250,8 +1263,8 @@ def _chanfro(x, y, w, h, c):
 _FAIXA_ATUAL = [None]
 
 
-def faixa_aviso(titulo, sub='', ancora=None, cor=(1, 0.88, 0.1), segura=2.4):
-    """Uma faixa HUD que abre de dentro para fora logo abaixo de `ancora`,
+def faixa_aviso(titulo, sub='', ancora=None, cor=(1, 0.88, 0.1), segura=2.4, acima=False):
+    """Uma faixa HUD que abre de dentro para fora ao lado de `ancora`,
     uma luz passa por ela, fica `segura` s e fecha. Tem fundo proprio (le
     por cima de qualquer coisa) e nao pega o toque. Uma de cada vez."""
     from kivy.core.window import Window
@@ -1268,7 +1281,8 @@ def faixa_aviso(titulo, sub='', ancora=None, cor=(1, 0.88, 0.1), segura=2.4):
         alt = dp(66) if sub else dp(46)
         topo = Window.height * 0.80
         if ancora is not None and ancora.get_root_window() is not None:
-            topo = ancora.to_window(ancora.x, ancora.y)[1] - dp(8)
+            base = ancora.to_window(ancora.x, ancora.y)[1]
+            topo = min(Window.height - dp(4), base + alt) if acima else base - dp(8)
         hexc = '%02x%02x%02x' % (int(r * 255), int(g * 255), int(b * 255))
         txt = f"[b][color=#{hexc}]{titulo}[/color][/b]"
         if sub:
@@ -1295,12 +1309,15 @@ def faixa_aviso(titulo, sub='', ancora=None, cor=(1, 0.88, 0.1), segura=2.4):
                  width=1, close=True)
             Color(r, g, b, 1)
             Line(points=pts, width=dp(1.1), close=True)
+            c_tempo = Color(r, g, b, 0)
+            trilho = Rectangle(pos=(cx, y0 + dp(5)), size=(0, dp(1)))
         try:
             m_luz.texture = _textura_faixa_luz()
         except Exception:
             pass
         tr, sc = _matriz(lbl)
-        sc.x = 0.06
+        sc.x = sc.y = 0.96
+        tr.y = -dp(5)
         Window.add_widget(lbl)
         _FAIXA_ATUAL[0] = lbl
     except Exception as e:
@@ -1330,19 +1347,26 @@ def faixa_aviso(titulo, sub='', ancora=None, cor=(1, 0.88, 0.1), segura=2.4):
             k = t[0]
             if k < T_ABRE:
                 e = 1 - (1 - k / T_ABRE) ** 3
-                sc.x = 0.06 + 0.94 * e
-                lbl.opacity = min(1.0, e * 1.8)
+                sc.x = sc.y = 0.96 + 0.04 * e
+                tr.y = -dp(5) * (1 - e)
+                lbl.opacity = min(1.0, e * 1.4)
             elif k < t_sai0:
                 sc.x = sc.y = 1
+                tr.y = 0
                 lbl.opacity = 1
             elif k < t_sai0 + T_SAI:
-                e = ((k - t_sai0) / T_SAI) ** 2
-                sc.y = 1 - 0.9 * e
-                tr.y = dp(8) * e
+                e = _suave((k - t_sai0) / T_SAI)
+                sc.x = sc.y = 1 - 0.025 * e
+                tr.y = dp(5) * e
                 lbl.opacity = 1 - e
             else:
                 _fim()
                 return False
+            restante = 1 - max(0, min(1, (k - T_ABRE) / max(0.01, segura)))
+            largura = max(0, larg - 2 * dp(18)) * restante
+            trilho.pos = cx - largura / 2, y0 + dp(5)
+            trilho.size = largura, dp(1)
+            c_tempo.a = 0.45 * lbl.opacity if restante else 0
             kl = (k - T_LUZ0) / T_LUZ
             if 0 <= kl <= 1:
                 lw = max(dp(30), larg * 0.18)
@@ -1361,6 +1385,7 @@ def faixa_aviso(titulo, sub='', ancora=None, cor=(1, 0.88, 0.1), segura=2.4):
             _fim()
             return False
     ev[0] = Clock.schedule_interval(_q, 1 / 60.)
+    return lbl
 
 
 # ═══════════════════════════════════════════════════════════════════

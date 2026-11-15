@@ -167,5 +167,20 @@ ok(M.config_coerente(0.32, 0.31, 0.30, 2500, 3000) is not None, 'base acima do b
 ok(M.config_coerente(0.25, 0.27, 0.30, 3000, 3000) is not None, 'meta do meio igual a de cima: recusado')
 ok(M.config_coerente(0.27, 0.27, 0.27, 2500, 3000) is None, 'tudo igual (sem bonus) e permitido')
 
+turno_antigo = {'data': '13/11/2026  10:00', 'total': 120}
+turno_novo = {'data': '13/11/2026  17:00', 'total': 100, 'id': 'teste'}
+ok(M.producao_por_dia([turno_antigo, turno_novo, {'data': '', 'total': 800}]) ==
+   {date(2026, 11, 13): 220}, 'gráfico de dia soma turnos e ignora data inválida')
+semana = {'data_inicio': '09/11/2026', 'data_fim': '14/11/2026'}
+ok(list(M.periodos_do_turno(turno_novo, [semana])) == [semana],
+   'fechamento legado protege pela data')
+semana['contadas'] = [M.chave_turno(turno_antigo)]
+ok(list(M.periodos_do_turno(turno_antigo, [semana])) == [semana]
+   and list(M.periodos_do_turno(turno_novo, [semana])) == [],
+   'fechamento com identidade protege só turnos incluídos')
+semana['contadas'].append(M.chave_turno(turno_novo))
+ok(list(M.periodos_do_turno(dict(turno_novo, data='16/11/2026'), [semana])) == [semana],
+   'identidade registrada é estável mesmo se a data divergir')
+
 print('%d casos, %d falhas' % (casos[0], len(falhas)))
 sys.exit(1 if falhas else 0)

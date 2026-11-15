@@ -81,12 +81,11 @@ jobs:
           # de debug dele e, no fim, o APK e assinado de novo com esta.
           mkdir -p ~/.android
           if [ -z "$KS_B64" ]; then
-            echo "::warning::Falta o secret KEYSTORE_BASE64: o APK sai com chave temporaria (para instalar vai precisar apagar o app)."
-            exit 0
+            echo "::error::Falta o secret KEYSTORE_BASE64 da chave de atualização."
+            exit 1
           fi
           echo "$KS_B64" | base64 -d > ~/.android/travete.keystore
           echo "[KEYSTORE] $(wc -c < ~/.android/travete.keystore) bytes restaurados"
-          exit 0
 
       # ── 7. VARIÁVEIS ANDROID ───────────────────────────────────────────────
       - name: Exportar variáveis de ambiente Android SDK/NDK
@@ -179,21 +178,18 @@ jobs:
       # aceitar a atualizacao por cima.
       - name: Assinar o APK sempre com a mesma chave
         run: |
+          set -euo pipefail
           APK=$(ls bin/*.apk | head -n 1)
           BT=$(ls -d $ANDROID_HOME/build-tools/*/ | sort -V | tail -n 1)
           ESPERADA="94ef9ec68ebd71c6ce1cc15936c440985a0fbd5900f04694009bb3bbd50709eb"
-          if [ -s ~/.android/travete.keystore ] && \
-             "${BT}apksigner" sign --ks ~/.android/travete.keystore --ks-pass pass:android --key-pass pass:android "$APK"; then
-            DIG=$("${BT}apksigner" verify --print-certs "$APK" | grep -i "SHA-256 digest" | head -n 1 | awk '{print $NF}')
-            echo "Impressao digital do APK: $DIG"
-            if [ "$DIG" = "$ESPERADA" ]; then
-              echo "::notice::APK assinado com a chave fixa do TraveteFocus: atualiza por cima."
-            else
-              echo "::warning::APK assinado com uma chave diferente da esperada ($DIG)."
-            fi
-          else
-            echo "::warning::A chave do secret KEYSTORE_BASE64 nao abriu (senha android): o APK saiu com chave temporaria. Troque o secret pelo conteudo de keystore_novo_base64.txt."
+          "${BT}apksigner" sign --ks ~/.android/travete.keystore --ks-pass pass:android --key-pass pass:android "$APK"
+          CERTS=$("${BT}apksigner" verify --print-certs "$APK")
+          DIG=$(awk '/^Signer #[0-9]+ certificate SHA-256 digest:/ {print $NF}' <<< "$CERTS")
+          if [ "$DIG" != "$ESPERADA" ]; then
+            echo "::error::A assinatura do APK difere da chave de atualização. Publicação interrompida."
+            exit 1
           fi
+          echo "::notice::APK assinado com a chave fixa do TraveteFocus."
 
       # ── 11. DIAGNÓSTICO ────────────────────────────────────────────────────
       - name: Exibir últimas 300 linhas do log

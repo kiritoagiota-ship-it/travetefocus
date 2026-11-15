@@ -101,6 +101,43 @@ def _dia_de(texto):
         return None
 
 
+def chave_turno(turno):
+    if turno.get('id'):
+        return f"id:{turno['id']}"
+    ts = turno.get('ts')
+    return f"ts:{ts}" if ts is not None else f"{turno.get('data', '')}|{turno.get('total', 0)}"
+
+
+def producao_por_dia(turnos):
+    producao = {}
+    for turno in turnos:
+        dia = _dia_de(turno.get('data'))
+        if dia is None:
+            continue
+        try:
+            pecas = int(turno.get('total', 0))
+        except (TypeError, ValueError, OverflowError):
+            continue
+        producao[dia] = producao.get(dia, 0) + pecas
+    return producao
+
+
+def periodos_do_turno(turno, periodos):
+    """Fechamentos que protegem o turno. Em históricos antigos, usa a janela salva."""
+    chave = chave_turno(turno)
+    dia = _dia_de(turno.get('data'))
+    for p in periodos:
+        if not p.get('data_fim'):
+            continue
+        if 'contadas' in p:
+            if chave in p['contadas']:
+                yield p
+        else:
+            inicio, fim = _dia_de(p.get('data_inicio')), _dia_de(p['data_fim'])
+            if inicio and fim and dia and inicio <= dia <= fim:
+                yield p
+
+
 def dia_do_lote(r, hoje):
     """O dia de um lote do Registro: o dia gravado (r[3], colado do WhatsApp);
     senao o dia da hora em que foi lancado (r[4]); senao (lote antigo, sem

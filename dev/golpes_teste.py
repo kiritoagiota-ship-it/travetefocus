@@ -67,7 +67,7 @@ class T(App):
         if nome in ('iai', 'estocada', 'x'):
             cenas.kirito_fatiar(alvo, lambda: None, tipo=nome)
         elif nome == 'carimbo':
-            cenas.kirito_carimbo(alvo, lambda: None)
+            cenas.kirito_carimbo(alvo, lambda _x: None)
         elif nome == 'vitoria':
             cenas.kirito_vitoria(self.root)
         elif nome == 'pergaminho':

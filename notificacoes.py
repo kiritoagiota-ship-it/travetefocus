@@ -78,6 +78,7 @@ class _LevelUp(FloatLayout):
         self.dur = 4.8 if self.grande else 3.6
         self.t = 0.0
         self._fechando = None
+        self._quadro_raios = -1
         W, H = Window.size
         self.pw = min(W * 0.88, dp(470))
         self.ph = dp(300) if self.grande else dp(236)
@@ -91,7 +92,8 @@ class _LevelUp(FloatLayout):
             self._c_fundo = Color(0, 0, 0, 0)
             Rectangle(pos=(0, 0), size=(W, H))
             self._c_raios = Color(OURO[0], OURO[1], OURO[2], 0)
-            self._m_raios = Mesh(mode='triangles', vertices=[], indices=[])
+            n = 12 if self.grande else 8
+            self._m_raios = Mesh(mode='triangles', vertices=[0.0] * (n * 12), indices=list(range(n * 3)))
 
         # o painel (chanfrado, dourado; titulo novo com faixa roxa)
         self.painel = FloatLayout(size_hint=(None, None), size=(self.pw, self.ph), pos=(self.px, self.py))
@@ -113,11 +115,22 @@ class _LevelUp(FloatLayout):
             Color(OURO[0], OURO[1], OURO[2], 1)
             Line(points=pts, width=dp(1.3), close=True)
             # cantos acesos (detalhe de HUD)
-            Color(OURO_CLARO[0], OURO_CLARO[1], OURO_CLARO[2], 1)
+            self._c_cantos = Color(*OURO_CLARO, 0.75)
             for (ax, ay, sx, sy) in ((self.px, self.py + self.ph, 1, -1), (self.px + self.pw, self.py + self.ph, -1, -1),
                                      (self.px, self.py, 1, 1), (self.px + self.pw, self.py, -1, 1)):
                 Line(points=[ax + sx * dp(4), ay + sy * (c + dp(10)), ax + sx * dp(4), ay + sy * (c + dp(2))],
                      width=dp(1.6))
+            self._c_traços = Color(*OURO_CLARO, 0)
+            self._linha_topo = Line(width=dp(1.5))
+            self._linha_base = Line(width=dp(1.5))
+            self._c_selo = Color(*ROXO, 0)
+            if self.grande:
+                y_selo = self.py + dp(66)
+                sx0, sx1 = self.px + self.pw * 0.25, self.px + self.pw - dp(19)
+                Line(points=[sx0, y_selo - dp(18), sx0, y_selo + dp(18), sx0 + dp(5), y_selo + dp(23)],
+                     width=dp(1.4))
+                Line(points=[sx1, y_selo + dp(18), sx1, y_selo - dp(18), sx1 - dp(5), y_selo - dp(23)],
+                     width=dp(1.4))
         self.add_widget(self.painel)
 
         topo = self.py + self.ph
@@ -154,7 +167,7 @@ class _LevelUp(FloatLayout):
                               fonte='rajdhani.ttf', alt=dp(18))
 
         self._tr, self._sc = _matriz(self.painel)
-        self._sc.x = 0.04
+        self._sc.x = 0.94
         self.painel.opacity = 0
         Window.add_widget(self)
         try:
@@ -166,7 +179,7 @@ class _LevelUp(FloatLayout):
             self.faiscas = None
 
         self._marcos = [(0.18, self._abriu), (0.75, self._sobe_numero), (1.0, self._enche),
-                        (2.0 if self.grande else 9.0, self._rank)]
+                        (1.19, self._numero_chegou), (2.0, self._rank), (2.2, self._recomeca_xp)]
         self._ev = Clock.schedule_interval(self._tick, 1 / 60.)
 
     # ── momentos ────────────────────────────────────────────────────
@@ -184,19 +197,20 @@ class _LevelUp(FloatLayout):
         from animacoes_ui import entrada_cascata
         itens = [self.l_sis, self.l_titulo, self.l_nivel, self.barra, self.l_falta, self.l_toque]
         entrada_cascata(itens, atraso=0.05, dy=dp(10), duracao=0.3, escala=False)
-        brilho_texto(self.l_titulo, periodo=1.6, atraso=0.35, duracao=0.6, forca=0.9)
-        self._estoura(self.c[0], self.c[1] + self.ph * 0.2, 46, dp(380))
+        brilho_texto(self.l_titulo, periodo=2.8, atraso=0.35, duracao=0.65, forca=0.70)
+        desloc = self.pw * 0.34
+        for lado in (-1, 1):
+            self._estoura(self.c[0] + lado * desloc, self.c[1] + self.ph * 0.27, 14, dp(220))
 
     def _sobe_numero(self):
         decifrar(self.l_nivel, f"LVL  {self.n1}", duracao=0.42)
-        Clock.schedule_once(lambda dt: self._numero_chegou(), 0.44)
 
     def _numero_chegou(self):
         try:
             self.l_nivel.color = (OURO_CLARO[0], OURO_CLARO[1], OURO_CLARO[2], 1)
-            pulso(self.l_nivel, 1.22, 0.32)
+            pulso(self.l_nivel, 1.12, 0.36)
             x, y = self.l_nivel.center
-            self._estoura(x, y, 26, dp(260))
+            self._estoura(x, y, 18, dp(210))
             from cenas import kirito_nivel                 # o Yoru comemora apontando para o numero
             kirito_nivel(self.l_nivel)
         except Exception as e:
@@ -206,13 +220,10 @@ class _LevelUp(FloatLayout):
         # a barra do nivel de antes enche ate o fim... e recomeca no novo
         self.barra.definir(100, maximo=100, animar=True)
 
-        def _recomeca(dt):
-            try:
-                at, nec = self._xp
-                self.barra.definir(100.0 * at / nec, maximo=100, animar=True)
-            except Exception:
-                pass
-        Clock.schedule_once(_recomeca, 1.2)
+    def _recomeca_xp(self):
+        at, nec = self._xp
+        self.barra.definir(0, maximo=100, animar=False)
+        self.barra.definir(100.0 * at / nec, maximo=100, animar=True)
 
     def _rank(self):
         if not self.grande:
@@ -220,7 +231,7 @@ class _LevelUp(FloatLayout):
         from animacoes_ui import entrada_cascata
         entrada_cascata([self.l_rank, self.l_rank2], atraso=0.12, dy=dp(12), duracao=0.35)
         brilho_texto(self.l_rank2, periodo=9, atraso=0.3, duracao=0.7, forca=0.8)
-        self._estoura(self.c[0], self.l_rank2.center_y, 36, dp(320), cor=ROXO)
+        self._estoura(self.c[0], self.l_rank2.center_y, 24, dp(215), cor=ROXO)
         try:
             import som
             som.tocar('vidro')
@@ -239,7 +250,7 @@ class _LevelUp(FloatLayout):
         try:
             self.t += dt
             t = self.t
-            while self._marcos and t >= self._marcos[0][0]:
+            while self._fechando is None and self._marcos and t >= self._marcos[0][0]:
                 _, fn = self._marcos.pop(0)
                 try:
                     fn()
@@ -249,8 +260,9 @@ class _LevelUp(FloatLayout):
                 self._fechar()
             if self._fechando is not None:
                 k = min(1.0, (t - self._fechando) / 0.26)
-                e = k * k
-                self._sc.y = 1 - 0.92 * e
+                e = k * k * (3 - 2 * k)
+                self._sc.y = 1 - 0.08 * e
+                self._tr.y = -dp(5) * e
                 self.painel.opacity = 1 - e
                 self._c_fundo.a = 0.62 * (1 - e)
                 self._c_raios.a = 0.0
@@ -262,9 +274,11 @@ class _LevelUp(FloatLayout):
             ka = min(1.0, t / self.T_ABRE)
             ea = 1 - (1 - ka) ** 3
             self._c_fundo.a = 0.62 * ea
-            self._sc.x = 0.04 + 0.96 * ea
+            self._sc.x = 0.94 + 0.06 * ea
+            self._tr.y = -dp(7) * (1 - ea)
             self.painel.opacity = min(1.0, ea * 1.6)
             self._raios(t, ea)
+            self._detalhes(t, ea)
             return True
         except Exception as e:
             print(f"[level up] quadro: {e}")
@@ -272,24 +286,39 @@ class _LevelUp(FloatLayout):
             return False
 
     def _raios(self, t, forca):
-        """Raios de luz girando devagar atras do painel (em degraus de 30/s)."""
-        n = 16 if self.grande else 12
-        ang0 = int(t * 30) / 30.0 * 0.35
-        cx, cy = self.c
-        r = max(Window.width, Window.height) * 0.75
-        vs, idx = [], []
-        for i in range(n):
-            a = ang0 + 2 * math.pi * i / n
-            w = 0.028
-            b = len(vs) // 4
-            vs += [cx, cy, 0, 0,
-                   cx + math.cos(a - w) * r, cy + math.sin(a - w) * r, 0, 0,
-                   cx + math.cos(a + w) * r, cy + math.sin(a + w) * r, 0, 0]
-            idx += [b, b + 1, b + 2]
-        self._m_raios.vertices = vs
-        self._m_raios.indices = idx
-        pulsa = 0.75 + 0.25 * math.sin(t * 5)
-        self._c_raios.a = (0.085 if self.grande else 0.055) * forca * pulsa
+        """Geometria atualizada a 24 Hz, com a intensidade suavizada a cada quadro."""
+        quadro = int(t * 24)
+        if quadro != self._quadro_raios:
+            self._quadro_raios = quadro
+            n = 12 if self.grande else 8
+            ox, oy = self.c
+            r = max(self.width, self.height) * 0.75
+            ri = self.ph * 0.48
+            pontos = []
+            for i in range(n):
+                a = quadro * (0.22 / 24) + 2 * math.pi * i / n
+                pontos += [ox + math.cos(a) * ri, oy + math.sin(a) * ri, 0, 0,
+                           ox + math.cos(a - 0.022) * r, oy + math.sin(a - 0.022) * r, 0, 0,
+                           ox + math.cos(a + 0.022) * r, oy + math.sin(a + 0.022) * r, 0, 0]
+            self._m_raios.vertices = pontos
+        self._c_raios.a = (0.068 if self.grande else 0.040) * forca * (0.9 + 0.1 * math.sin(t * 2.2))
+
+    def _detalhes(self, t, forca):
+        """Dois reflexos na moldura no início e quando o nível novo assenta."""
+        fase = t if t < 1.18 else t - 1.18
+        k = min(1.0, fase / 0.72)
+        self._c_traços.a = 0.90 * math.sin(math.pi * k) * forca
+        if k < 1:
+            cx, _ = self.c
+            d = self.pw * 0.36 * k
+            ponta = min(dp(19), self.pw * 0.12) * k
+            topo, base = self.py + self.ph - dp(5), self.py + dp(5)
+            self._linha_topo.points = [cx + d - ponta, topo, cx + d, topo]
+            self._linha_base.points = [cx - d + ponta, base, cx - d, base]
+        self._c_cantos.a = forca * (0.67 + 0.28 * math.sin(math.pi * k))
+        if self.grande:
+            revela = min(1.0, max(0.0, (t - 2.0) / 0.36))
+            self._c_selo.a = 0.65 * revela * (0.92 + 0.08 * math.sin(3 * t))
 
     def _fechar(self):
         if self._fechando is None:

@@ -18,7 +18,7 @@ from kivy.graphics import Color, Rectangle
 
 import kirito as K
 from cenas import (TituloLuz, _Agenda, _Uma, _som, _precarregar_sons, _ps_titulo, _com, _PX,
-                   _no_quadro, balao, _materializar)
+                   _no_quadro, balao, _materializar, _acentuar_titulo, _estrela, CIANO)
 
 
 def _saudacao():
@@ -57,6 +57,8 @@ def _acender(titulo, i, dur=0.35):
     t = [0.0]
 
     def _p(dt):
+        if titulo.get_root_window() is None:
+            return False
         t[0] += dt
         u = min(1.0, t[0] / dur)
         e = u * u * (3 - 2 * u)
@@ -76,8 +78,10 @@ def _brilho_suave(titulo, dur=1.0):
     t = [0.0]
 
     def _p(dt):
+        if titulo.get_root_window() is None:
+            return False
         t[0] += dt
-        k = 0.45 * math.sin(math.pi * min(1.0, t[0] / dur))
+        k = 0.30 * math.sin(math.pi * min(1.0, t[0] / dur))
         for c in cores:
             c.rgba = (cor[0] + (1 - cor[0]) * k, cor[1] + (1 - cor[1]) * k, cor[2] + (1 - cor[2]) * k, c.a)
         return t[0] < dur
@@ -139,8 +143,12 @@ def abertura_chegada(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             kk.opacity = 1
             _materializar(kk, camada, faiscas, dur=0.5)
         ag.depois(0.15, _surge)
-        acabou = _acender_letras(ag, titulo, texto, 0.75)
-        ag.depois(acabou, lambda: (_som('titulo'), _brilho_suave(titulo)))
+        acabou = _acender_letras(ag, titulo, texto, 0.58, passo=0.075, dur=0.42)
+        def _titulo_pronto():
+            _som('titulo')
+            _brilho_suave(titulo)
+            _acentuar_titulo(camada, titulo)
+        ag.depois(acabou, _titulo_pronto)
 
         def _guarda_e_fala():
             seq = K.sequencia([(4, P['embainha1_a'], 'in'), (2, P['embainha1_b'], 'suave'),
@@ -149,6 +157,8 @@ def abertura_chegada(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             def _q(q):
                 if q == 6:
                     _som('embainhar')
+                    x, y = kk.ponto_mao(1)
+                    _estrela(camada, x, y, ps * 0.6, CIANO, raios=3, dur=0.20)
                     balao(camada, _saudacao(), kk, dur=1.4)
             kk.tocar(seq, on_quadro=_q, on_fim=lambda: kk.idle(base=fim_p))
         ag.depois(acabou + 0.15, _guarda_e_fala)

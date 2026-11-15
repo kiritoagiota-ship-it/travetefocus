@@ -20,8 +20,11 @@ import som
 from animacoes_ui import fmt_br
 from helpers import (texto_que_cabe, aplicar_fundo_holografico, _make_popup, _abrir_popup, vibrar, _bind_teclado,
                      anexar_teclado, formatar_data_digitada, ler_data, tremer_widget,
-                     popup_delete_engracado)
+                     popup_delete_engracado, popup_aviso)
 import tatil
+import metas
+from exportar import ordenadas as _ordenadas
+from kivy.utils import escape_markup
 
 PAGINA = 30          # turnos desenhados de cada vez (anos de dados abrem rapido)
 ORCAMENTO = 0.006    # ... montados aos poucos: s por quadro (pelo menos 1; a tela nunca para)
@@ -33,24 +36,6 @@ def _mes_de(data_str):
     if len(partes) >= 3:
         return f"{partes[1].strip()}/{partes[2].strip()[:4]}"
     return ""
-
-
-def _ordenadas(memorias):
-    """Turnos em ordem de data (a data de um turno pode ser editada e um
-    dia antigo pode ser lancado depois: a ordem de gravacao nao serve)."""
-    def chave(par):
-        i, m = par
-        raw = str(m.get('data', '')).strip()
-        for fmt in ("%d/%m/%Y  %H:%M", "%d/%m/%Y %H:%M", "%d/%m/%Y"):
-            try:
-                return (datetime.strptime(raw, fmt), i)
-            except ValueError:
-                continue
-        try:
-            return (datetime.strptime(raw.split()[0], "%d/%m/%Y"), i)
-        except Exception:
-            return (datetime.min, i)
-    return [m for _, m in sorted(enumerate(memorias), key=chave)]
 
 
 class TelaMemorias(Screen):
@@ -65,10 +50,11 @@ class TelaMemorias(Screen):
         except Exception:
             pass
         self._cancelar_lote()
+        self._fechar_balao()
 
     def on_kv_post(self, *_):
         self._pendentes = []
-        self._max_t = 0
+        self._dias_recorde = set()
         self._btn_mais = None
         self._lote_ev = None
         self._ancora = None
@@ -164,13 +150,9 @@ class TelaMemorias(Screen):
         for child in list(cont.children):
             Animation.cancel_all(child)
         cont.clear_widgets()
-        max_t = max((m['total'] for m in app.memorias), default=0)
-
-        def _mes_de(data_str):
-            partes = data_str.strip().split('/')
-            if len(partes) >= 3:
-                return f"{partes[1].strip()}/{partes[2].strip()[:4]}"
-            return ""
+        por_dia = metas.producao_por_dia(app.memorias)
+        recorde = max(por_dia.values(), default=0)
+        self._dias_recorde = {dia for dia, total in por_dia.items() if recorde and total == recorde}
 
         todas = _ordenadas(app.memorias)
         mems = (todas if self.filtro_mes == "TODOS"
@@ -197,13 +179,12 @@ class TelaMemorias(Screen):
             return
 
         # so os PAGINA mais recentes agora; o resto entra ao rolar ate o fim
-        self._max_t = max_t
         self._pendentes = list(reversed(mems))
         self._btn_mais = None
         self._desenhar_lote(ancora=0.0)       # comeca no topo
 
     def _item(self, m):
-        is_rec = m['total'] == self._max_t and self._max_t > 0
+        is_rec = metas._dia_de(m.get('data')) in self._dias_recorde
         crown  = "[REC] " if is_rec else ""
         btn    = CartaoMemoria(
             m, recorde=is_rec,
@@ -216,7 +197,7 @@ class TelaMemorias(Screen):
         else:
             btn.cor_borda    = [0.62, 0.36, 1.0, 0.85]
             btn.cor_borda_kv = [0.62, 0.36, 1.0, 0.85]
-        btn._data_mem = m.get('data', '')
+        btn._data_mem = metas._dia_de(m.get('data'))
         btn.bind(on_release=lambda x, mem=m: self._abrir_do_item(x, mem))
         return btn
 
@@ -235,16 +216,25 @@ class TelaMemorias(Screen):
 
     def _abrir_do_item(self, btn, mem):
         """O cartao do dia cresce ate virar o detalhe."""
+        if getattr(self, '_abrindo_detalhe', False):
+            return
+        self._abrindo_detalhe = True
+
+        def abrir():
+            self._abrindo_detalhe = False
+            if self.manager and self.manager.current == self.name and btn.parent:
+                self.abrir_detalhes_memoria(mem)
+
         try:
             from animacoes_ui import expandir_de
             larg = Window.width * 0.93
             if Window.width > dp(640):
                 larg = min(larg, dp(520))
             alt = min(int(dp(500)), int(Window.height * 0.82))
-            expandir_de(btn, larg, alt, lambda: self.abrir_detalhes_memoria(mem))
+            expandir_de(btn, larg, alt, abrir)
         except Exception as e:
             print(f"[memorias] abrir: {e}")
-            self.abrir_detalhes_memoria(mem)
+            abrir()
 
     def _tocou_barra(self, grafico, i):
         """Tocou numa barra do grafico: balao com o dia e as pecas, e a lista
@@ -266,7 +256,7 @@ class TelaMemorias(Screen):
                         *grafico.to_window(bx, grafico.top - dp(40)))
         except Exception as e:
             print(f"[memorias] balao: {e}")
-        data = item.get('data', '')
+        data = metas._dia_de(item.get('data_curta'))
         cont = self.ids.memorias_container
         alvo = next((w for w in cont.children if getattr(w, '_data_mem', None) == data), None)
         if alvo is None:
@@ -277,25 +267,35 @@ class TelaMemorias(Screen):
             print(f"[memorias] rolar: {e}")
 
         def _pisca(dt):
+            if not self.manager or self.manager.current != self.name or alvo.parent is None:
+                return
             try:
                 from animacoes_ui import pulso
                 pulso(alvo, 1.05, 0.3)
+                if getattr(alvo, 'recorde', False):
+                    return
                 orig = list(alvo.cor_borda_kv)
                 Animation.cancel_all(alvo, 'cor_borda')
-                (Animation(cor_borda=[1, 1, 1, 1], duration=0.1) + Animation(cor_borda=orig, duration=0.25) +
-                 Animation(cor_borda=[1, 1, 1, 1], duration=0.1) + Animation(cor_borda=orig, duration=0.35)).start(alvo)
+                (Animation(cor_borda=[0.7, 0.9, 1, 1], duration=0.14) +
+                 Animation(cor_borda=orig, duration=0.35)).start(alvo)
             except Exception:
                 pass
         Clock.schedule_once(_pisca, 0.38)
+
+    def _fechar_balao(self):
+        evento, self._balao_ev = getattr(self, '_balao_ev', None), None
+        if evento:
+            evento.cancel()
+        lbl, self._balao_w = getattr(self, '_balao_w', None), None
+        if lbl is not None and lbl.parent is not None:
+            lbl.parent.remove_widget(lbl)
 
     def _balao(self, texto, x, y):
         """Balaozinho chanfrado em cima da barra tocada (some sozinho)."""
         from kivy.uix.label import Label
         from kivy.graphics import Color, Mesh, Line
         from animacoes_ui import _chanfro, _matriz
-        ant = getattr(self, '_balao_w', None)
-        if ant is not None and ant.parent is not None:
-            ant.parent.remove_widget(ant)
+        self._fechar_balao()
         lbl = Label(text=texto, markup=True, font_name='rajdhani.ttf', font_size='14sp',
                     color=(1, 1, 1, 1), size_hint=(None, None))
         lbl.texture_update()
@@ -313,10 +313,14 @@ class TelaMemorias(Screen):
             Mesh(mode='triangle_fan', vertices=vs, indices=list(range(len(vs) // 4)))
             Color(0.62, 0.3, 1.0, 1)
             Line(points=pts, width=dp(1.1), close=True)
+            meio = max(x0 + dp(12), min(x0 + w - dp(12), x))
+            Color(0.62, 0.3, 1, 0.8)
+            Line(points=[meio - dp(5), y0, meio, y0 - dp(4), meio + dp(5), y0],
+                 width=dp(0.9))
         Window.add_widget(lbl)
         self._balao_w = lbl
-        tr, sc = _matriz(lbl)
-        tr.y = -dp(8)
+        tr, _ = _matriz(lbl)
+        tr.y = -dp(4)
         lbl.opacity = 0
         Animation(opacity=1, duration=0.15).start(lbl)
         t = [0.0]
@@ -324,16 +328,16 @@ class TelaMemorias(Screen):
         def _p(dt):
             try:
                 t[0] += dt
-                tr.y = -dp(8) * max(0.0, 1 - t[0] / 0.18) ** 3
+                tr.y = -dp(4) * max(0.0, 1 - t[0] / 0.20) ** 3
                 if t[0] > 1.9:
                     lbl.opacity = max(0.0, 1 - (t[0] - 1.9) / 0.3)
                 if t[0] > 2.2 or lbl.parent is None:
-                    if lbl.parent is not None:
-                        lbl.parent.remove_widget(lbl)
+                    self._fechar_balao()
                     return False
             except Exception:
+                self._fechar_balao()
                 return False
-        Clock.schedule_interval(_p, 1 / 60.)
+        self._balao_ev = Clock.schedule_interval(_p, 1 / 60.)
 
     def _cancelar_lote(self):
         ev, self._lote_ev = getattr(self, '_lote_ev', None), None
@@ -423,32 +427,22 @@ class TelaMemorias(Screen):
         app      = App.get_running_app()
         grafico  = self.ids.grafico_barras
         filtro   = getattr(self, 'filtro_mes', 'TODOS')
-        todas    = _ordenadas(app.memorias) if app.memorias else []
+        totais = metas.producao_por_dia(app.memorias)
+        recorde = max(totais.values(), default=0)
         if filtro != "TODOS":
-            todas = [m for m in todas if _mes_de(m.get('data', '')) == filtro]
-        recentes = todas[-8:]
+            totais = {dia: total for dia, total in totais.items() if dia.strftime('%m/%Y') == filtro}
+        recentes = sorted(totais.items())[-8:]
         grafico.titulo = ('PRODUÇÃO · ÚLTIMOS DIAS' if filtro == "TODOS"
                           else f'PRODUÇÃO · {filtro}')
-        # Cache: nao redesenhar se dados nao mudaram
-        novo_hash = str([(m.get("data"), m.get("total")) for m in recentes])
-        if getattr(grafico, "_ultimo_hash", None) == novo_hash:
+        hoje = datetime.now().date()
+        estado = (recentes, recorde, hoje)
+        if getattr(grafico, "_ultimo_estado", None) == estado:
             return
-        grafico._ultimo_hash = novo_hash
-        max_t    = max((m['total'] for m in app.memorias), default=0)
-
-        def _label_dia(data_str):
-            partes = data_str.strip().split('/')
-            if len(partes) >= 2:
-                return f"{partes[0].strip()[:2]}/{partes[1].strip()[:2]}"
-            return data_str[:5]
-
-        hoje = datetime.now().strftime("%d/%m/%Y")
+        grafico._ultimo_estado = estado
         grafico.dados = [
-            {'label':  _label_dia(m['data']), 'valor': m['total'], 'data': m.get('data', ''),
-             'data_curta': m['data'].strip().split(' ')[0],
-             'record': m['total'] == max_t and max_t > 0,
-             'hoje':   m['data'].strip().split(' ')[0] == hoje}
-            for m in recentes
+            {'label': dia.strftime('%d/%m'), 'valor': total, 'data_curta': dia.strftime('%d/%m/%Y'),
+             'record': total == recorde and recorde > 0, 'hoje': dia == hoje}
+            for dia, total in recentes
         ]
 
     def abrir_detalhes_memoria(self, memoria):
@@ -476,14 +470,16 @@ class TelaMemorias(Screen):
             size_hint_x=0.50)
         lbl_info.bind(size=lambda i, v: setattr(i, 'text_size', (v[0], None)))
 
-        data_atual = memoria['data'].strip().split()[0]
+        app = App.get_running_app()
+        periodos = list(metas.periodos_do_turno(memoria, app.periodos_ganhos))
+        data_atual = memoria.get('data', '').strip().partition(' ')[0]
         inp_data = InputHolografico(
             text=data_atual,
             font_name="orbitron.ttf", font_size="13sp",
             foreground_color=(0, 0.9, 1, 1),
             cursor_color=(0, 0.9, 1, 1),
             halign="center",
-            size_hint_x=0.50)          # mais largo para caber a data completa
+            size_hint_x=0.50, readonly=bool(periodos))
         formatar_data_digitada(inp_data)
         anexar_teclado(inp_data, 'numeros')
 
@@ -495,7 +491,13 @@ class TelaMemorias(Screen):
             text=">>  SALVAR DATA",
             size_hint_y=None, height=dp(38),
             font_size="12sp")
-        caixa.add_widget(btn_salvar_data)
+        if periodos:
+            lbl_fechado = Label(text="Turno em período fechado · data protegida",
+                                font_name="rajdhani.ttf", font_size="14sp", halign="center",
+                                valign="middle", size_hint_y=None, height=dp(38))
+            caixa.add_widget(texto_que_cabe(lbl_fechado, caixa))
+        else:
+            caixa.add_widget(btn_salvar_data)
 
         # Separador visual
         from kivy.uix.widget import Widget
@@ -531,7 +533,9 @@ class TelaMemorias(Screen):
 
         if itens:
             for item in itens:
-                nome_item = str(item[0]) if len(item) > 0 else "?"
+                if not isinstance(item, (list, tuple)) or len(item) < 2:
+                    continue
+                nome_item = escape_markup(str(item[0]))
                 qtd_item  = item[1] if len(item) > 1 else 0
                 xp_item   = item[2] if len(item) > 2 else 0
                 row = Label(
@@ -566,9 +570,10 @@ class TelaMemorias(Screen):
         # ── Botões ───────────────────────────────────────────────────────
         botoes = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(10))
         btn_f  = BotaoAngular(text=">>  FECHAR",  size_hint_x=0.55)
-        btn_a  = BotaoAngularAlerta(text="APAGAR", size_hint_x=0.45)
         botoes.add_widget(btn_f)
-        botoes.add_widget(btn_a)
+        btn_a = BotaoAngularAlerta(text="APAGAR", size_hint_x=0.45, disabled=bool(periodos))
+        if not periodos:
+            botoes.add_widget(btn_a)
         caixa.add_widget(botoes)
 
         layout.add_widget(caixa)
@@ -576,6 +581,8 @@ class TelaMemorias(Screen):
 
         # ── Handlers ─────────────────────────────────────────────────────
         def _salvar_data(*_):
+            if any(metas.periodos_do_turno(memoria, app.periodos_ganhos)):
+                return
             d, motivo = ler_data(inp_data.text)
             if d is None:
                 tatil.erro()
@@ -592,7 +599,6 @@ class TelaMemorias(Screen):
             memoria['data'] = f"{d.strftime('%d/%m/%Y')}  {hora}"
             som.tocar_salvar()
             tatil.confirmar()
-            app = App.get_running_app()
             app.recalcular_totais()          # melhor dia e sequencia mudam com a data
             app.salvar_dados()
             self._atualizar_filtros()
@@ -600,9 +606,9 @@ class TelaMemorias(Screen):
             self._atualizar_grafico()
 
         def _executar_delete():
-            app = App.get_running_app()
-            if memoria in app.memorias:
-                app.memorias.remove(memoria)
+            idx = next((i for i, turno in enumerate(app.memorias) if turno is memoria), None)
+            if idx is not None and not any(metas.periodos_do_turno(memoria, app.periodos_ganhos)):
+                app.memorias.pop(idx)
                 app.recalcular_totais()
                 app.salvar_dados()
             self._atualizar_filtros()
@@ -611,6 +617,10 @@ class TelaMemorias(Screen):
             pop.dismiss()
 
         def _deletar(*_):
+            if any(metas.periodos_do_turno(memoria, app.periodos_ganhos)):
+                pop.dismiss()
+                popup_aviso("Este turno entrou num período fechado.")
+                return
             som.tocar_delete()
             tremer_tela(10)
             # o Yoru crava a estocada no cartao do turno
@@ -652,7 +662,7 @@ class TelaMemorias(Screen):
         def _perguntar_apagar(*_):
             # apagar o dia inteiro pede confirmacao (antes apagava direto:
             # um toque sem querer sumia com o turno)
-            dia = memoria['data'].strip().split()[0]
+            dia = data_atual or 'data desconhecida'
             popup_delete_engracado(
                 _deletar,
                 pergunta=f"Apagar o turno de {dia}?\n{fmt_br(memoria['total'])} peças  -  +{fmt_br(memoria.get('xp', 0))} XP",
@@ -734,6 +744,12 @@ class TelaMemorias(Screen):
     def confirmar_wipe(self):
         """WIPE em duas etapas: o 1o aviso diz tudo o que some; o 2o mostra os
         numeros e tem o botao de apagar do OUTRO lado (a mao nao vai por costume)."""
+        app = App.get_running_app()
+        protegidos = [m for m in app.memorias if any(metas.periodos_do_turno(m, app.periodos_ganhos))]
+        if len(protegidos) == len(app.memorias) and not app.registros:
+            popup_aviso("Turnos de períodos fechados ficam protegidos." if protegidos
+                        else "Nenhum turno ou lote para apagar.")
+            return
         pop, layout = _make_popup()
         caixa = BoxLayout(
             orientation='vertical',
@@ -744,13 +760,13 @@ class TelaMemorias(Screen):
         # o que _apagar_tudo apaga: memorias (turnos), registros (os lotes da
         # lista do Registro) e, com eles, o XP. periodos_ganhos e config ficam
         caixa.add_widget(texto_que_cabe(Label(
-            text=("[color=#ff2244]  WIPE TOTAL[/color]\n"
-                  "[color=#cccccc]Apaga TODOS os turnos, os lotes do Registro e o XP.\n"
-                  "Os períodos de Ganhos ficam.\nSem volta.[/color]"),
+            text=("[color=#ff2244]  LIMPAR REGISTROS[/color]\n"
+                  "[color=#cccccc]Apaga turnos em aberto, lotes do Registro e o XP deles.\n"
+                  "Turnos de períodos fechados ficam protegidos.[/color]"),
             markup=True, font_name="orbitron.ttf", font_size="13sp",
             halign="center", size_hint_y=None, height=dp(112)), caixa))
         botoes = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(14))
-        btn_s  = BotaoAngularAlerta(text="FORMATAR TUDO")
+        btn_s  = BotaoAngularAlerta(text="FORMATAR TUDO" if not protegidos else "CONTINUAR")
         btn_n  = BotaoAngular(text="CANCELAR")
         botoes.add_widget(btn_s)
         botoes.add_widget(btn_n)
@@ -764,10 +780,9 @@ class TelaMemorias(Screen):
             Clock.schedule_once(lambda dt: _abrir_segunda(), 0.25)
 
         def _abrir_segunda():
-            app = App.get_running_app()
-            n_turnos = len(app.memorias)
+            n_turnos = len(app.memorias) - len(protegidos)
             n_lotes = len(app.registros)
-            xp = getattr(app, 'total_xp', 0)
+            xp = app.total_xp - sum(m.get('xp', 0) for m in protegidos)
             partes = [f"{fmt_br(n_turnos)} {'turno' if n_turnos == 1 else 'turnos'}"]
             if n_lotes:
                 partes.append(f"{fmt_br(n_lotes)} {'lote' if n_lotes == 1 else 'lotes'}")
@@ -787,7 +802,7 @@ class TelaMemorias(Screen):
                 halign="center", size_hint_y=None, height=dp(84)), caixa2))
             botoes2 = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(14))
             btn_n2 = BotaoAngular(text="CANCELAR")
-            btn_s2 = BotaoAngularAlerta(text="APAGAR TUDO")
+            btn_s2 = BotaoAngularAlerta(text="APAGAR TUDO" if not protegidos else "APAGAR")
             botoes2.add_widget(btn_n2)                # apagar do lado OPOSTO ao do 1o aviso
             botoes2.add_widget(btn_s2)
             caixa2.add_widget(botoes2)
@@ -803,6 +818,16 @@ class TelaMemorias(Screen):
             _abrir_popup(caixa2, pop2)
 
         def _confirmar(*_):
+            apagar_turnos = {id(m): m for m in app.memorias
+                             if not any(metas.periodos_do_turno(m, app.periodos_ganhos))}
+            apagar_lotes = {id(r): r for r in app.registros}
+
+            def aplicar():
+                _apagar_tudo(apagar_turnos, apagar_lotes)
+
+            if protegidos:
+                aplicar()
+                return
             # versao epica: o Kirito corta a lista inteira antes de apagar
             itens = list(self.ids.memorias_container.children)
             try:
@@ -811,20 +836,18 @@ class TelaMemorias(Screen):
                 sv = self.ids.memorias_container.parent
                 x0, y0 = sv.to_window(sv.x, sv.y)
                 area = (x0, y0, x0 + sv.width, y0 + sv.height)
-                kirito_wipe(itens, _apagar_tudo, grafico=self.ids.grafico_barras, area_lista=area,
+                kirito_wipe(itens, aplicar, grafico=self.ids.grafico_barras, area_lista=area,
                             extras=[b for b in self.ids.filtros_container.children
                                     if getattr(b, 'text', '') != "TODOS"])   # os meses somem junto
             except Exception as e:
                 print(f"[memorias] wipe animado: {e}")
-                _apagar_tudo()
+                aplicar()
 
-        def _apagar_tudo():
-            app = App.get_running_app()
-            app.memorias.clear()
-            app.registros.clear()
+        def _apagar_tudo(apagar_turnos, apagar_lotes):
+            app.memorias = [m for m in app.memorias
+                            if id(m) not in apagar_turnos or any(metas.periodos_do_turno(m, app.periodos_ganhos))]
+            app.registros = [r for r in app.registros if id(r) not in apagar_lotes]
             app.recalcular_totais()
-            app.streak = 0
-            app.ultima_data = ""
             app.salvar_dados()
             self.filtro_mes = "TODOS"
             self._atualizar_filtros()
@@ -836,7 +859,8 @@ class TelaMemorias(Screen):
             Animation(opacity=1, duration=0.6).start(g)
             som.tocar_wipe()
             vibrar(300)
-            tremer_tela(25)
+            if not protegidos:
+                tremer_tela(7)
 
         btn_s.bind(on_release=_segunda)
         btn_n.bind(on_release=lambda *_: pop.dismiss())

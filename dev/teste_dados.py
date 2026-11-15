@@ -13,6 +13,7 @@ import json
 import shutil
 import tempfile
 import threading
+from itertools import count
 
 os.environ['KIVY_NO_ARGS'] = '1'
 os.environ.setdefault('KIVY_LOG_MODE', 'PYTHON')
@@ -25,9 +26,11 @@ falhas = []
 
 class Falso:
     """So o que salvar/carregar usam (sem abrir o app)."""
-    _lock_salvar = threading.Lock()
-
     def __init__(self, pasta):
+        self._lock_salvar = threading.Lock()
+        self._revisoes = count(1)
+        self._ultima_gravada = 0
+        self._principal_corrompido = False
         self.user_data_dir = pasta
         self.memorias, self.registros = [], []
         self.total_geral = self.total_xp = self.streak = self.melhor_dia = 0
@@ -73,6 +76,9 @@ try:
     c.carregar_dados()
     confere(c.memorias == a.memorias, '2) arquivo estragado: le da copia de seguranca')
     confere(os.path.exists(os.path.join(pasta, 'dados.json.corrompido')), '2) o estragado fica guardado')
+    c.salvar_dados(sincrono=True)
+    with open(os.path.join(pasta, 'dados.backup1.json'), encoding='utf-8') as f:
+        confere(json.load(f)['memorias'] == a.memorias, '2) salvar após recuperar preserva a cópia boa')
 
     # 3) muitas gravacoes ao mesmo tempo (threads), mexendo nos dados no meio
     d = Falso(pasta)
@@ -88,6 +94,12 @@ try:
         final = json.load(f)
     confere(len(final['registros']) == 42, '3) 40 gravacoes seguidas: o arquivo final esta completo')
     confere(not os.path.exists(os.path.join(pasta, 'dados.json.tmp')), '3) nao sobra arquivo temporario')
+    revisao_antiga = next(d._revisoes)
+    d.registros = [['Mais recente', '1', 1]]
+    d.salvar_dados(sincrono=True)
+    d._salvar_bg(final, pasta, revisao_antiga)
+    with open(os.path.join(pasta, 'dados.json'), encoding='utf-8') as f:
+        confere(json.load(f)['registros'] == d.registros, '3) gravação antiga atrasada não sobrescreve a nova')
 
     # 4) dados de uma versao antiga do app
     with open(os.path.join(pasta, 'dados.json'), 'w', encoding='utf-8') as f:

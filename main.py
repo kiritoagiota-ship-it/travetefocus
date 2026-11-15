@@ -9,6 +9,7 @@ import threading
 import shutil
 import sys
 from datetime import datetime, timedelta
+from itertools import count
 from kivy.app import App
 from kivy.lang import Builder
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
@@ -205,6 +206,11 @@ class TraveteApp(App):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self._lock_salvar = threading.Lock()
+        self._revisoes = count(1)
+        self._ultima_gravada = 0
+        self._principal_corrompido = False
+        self._dia_exibido = datetime.now().date()
         try:                                   # escrito pelo build do GitHub
             import json
             with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'versao.json'),
@@ -235,6 +241,7 @@ class TraveteApp(App):
         # botao VOLTAR do Android (ESC no PC): antes jogava o app para o fundo
         # na hora, ate com um popup aberto ou no meio de uma tela
         Window.bind(on_keyboard=self._tecla_voltar)
+        self._relogio_dia = Clock.schedule_interval(self._atualizar_dia, 60)
         # o fundo HUD das telas (holograma + cenario + moldura, na cor de cada tela)
         try:
             from menu_hud import instalar_fundos
@@ -300,9 +307,51 @@ class TraveteApp(App):
         self.salvar_dados(sincrono=True)
         return True
 
+    def on_resume(self):
+        sm = self.root.ids.sm
+        loading = sm.get_screen('loading')
+        if sm.current != 'loading' and not loading._sessao_valida():
+            from kivy.uix.popup import Popup
+            from helpers import _soltar_foco, _transicao
+            from notificacoes import _LevelUp
+            _soltar_foco(sm.current_screen)
+            for w in list(Window.children):
+                if isinstance(w, Popup):
+                    w.dismiss(force=True, animation=False)
+                elif isinstance(w, _LevelUp):
+                    w._remover()
+            _transicao['destino'] = 'loading'
+            loading._retorno_bloqueado = True
+            sm.current = 'loading'
+        self._atualizar_dia()
+
+    def _atualizar_dia(self, _dt=None):
+        hoje = datetime.now().date()
+        if hoje == self._dia_exibido:
+            return
+        self._dia_exibido = hoje
+        tela = self.root.ids.sm.current_screen
+        if tela.name == 'menu':
+            tela._painel()
+        elif tela.name == 'registro':
+            tela.atualizar()
+            tela.atualizar_meta()
+            tela._avisar_lote_antigo()
+        elif tela.name == 'ganhos':
+            tela._atualizar_periodo_atual()
+        elif tela.name == 'memorias':
+            tela._atualizar_grafico()
+        elif tela.name == 'progresso':
+            tela._atualizar_sequencia()
+        import lembretes
+        lembretes.replanejar(self)
+
     def on_stop(self):
         # sincrono: numa thread daemon o processo encerra antes de gravar
         self.salvar_dados(sincrono=True)
+        if getattr(self, '_relogio_dia', None) is not None:
+            self._relogio_dia.cancel()
+        Window.unbind(on_keyboard=self._tecla_voltar)
         som.limpar()
 
     def mudar_tela(self, destino):
@@ -409,6 +458,7 @@ class TraveteApp(App):
             "config_app":      {"vibracao": bool(self.vibracao),
                                 "lembretes": bool(getattr(self, 'lembretes', True))},
         }, ensure_ascii=False))
+        revisao = next(self._revisoes)
         # os avisos na barra do celular acompanham os dados (lote novo cancela o
         # lembrete de hoje, meta batida cancela o aviso da meta...)
         try:
@@ -418,19 +468,16 @@ class TraveteApp(App):
             print(f"[lembretes] {e}")
         data_dir = self.user_data_dir
         if sincrono:
-            self._salvar_bg(snapshot, data_dir)
+            self._salvar_bg(snapshot, data_dir, revisao)
             return
         threading.Thread(
-            target=self._salvar_bg, args=(snapshot, data_dir), daemon=True
+            target=self._salvar_bg, args=(snapshot, data_dir, revisao), daemon=True
         ).start()
 
-    _lock_salvar = threading.Lock()
-
-    def _salvar_bg(self, dados, data_dir):
-        # Serializa gravacoes: duas threads escrevendo o mesmo .tmp ao mesmo
-        # tempo podiam gerar um dados.json corrompido
+    def _salvar_bg(self, dados, data_dir, revisao):
         with self._lock_salvar:
-            self._salvar_bg_impl(dados, data_dir)
+            if revisao > self._ultima_gravada and self._salvar_bg_impl(dados, data_dir):
+                self._ultima_gravada = revisao
 
     def _salvar_bg_impl(self, dados, data_dir):
         try:
@@ -442,7 +489,7 @@ class TraveteApp(App):
                 os.fsync(f.fileno())          # no disco de verdade antes de trocar (celular desligando)
             # as copias guardam versoes ANTERIORES: giram antes da troca (antes o
             # backup1 era copiado depois e ficava igual ao dados.json)
-            if os.path.exists(dest):
+            if os.path.exists(dest) and not self._principal_corrompido:
                 try:
                     copia_do_dia(data_dir, dest)      # 1a gravacao do dia: o dia de ontem fica guardado
                 except Exception as e:
@@ -452,8 +499,11 @@ class TraveteApp(App):
                 except Exception as e:
                     print(f"[ERRO] backups: {e}")
             os.replace(tmp, dest)
+            self._principal_corrompido = False
+            return True
         except Exception as e:
             print(f"[ERRO] _salvar_bg: {e}")
+            return False
 
     @staticmethod
     def _int(v):
@@ -495,6 +545,7 @@ class TraveteApp(App):
     def carregar_dados(self):
         """Carrega dados com fallback para backups se arquivo principal estiver corrompido."""
         d = self.user_data_dir
+        self._principal_corrompido = False
         candidatos = [
             os.path.join(d, "dados.json"),
             os.path.join(d, "dados.backup1.json"),
@@ -514,6 +565,8 @@ class TraveteApp(App):
             try:
                 with open(arquivo, "r", encoding="utf-8") as f:
                     d = json.load(f)
+                if not isinstance(d, dict) or not any(k in d for k in ('memorias', 'registros')):
+                    raise ValueError("arquivo sem o formato de dados do TraveteFocus")
                 if os.path.basename(arquivo) != "dados.json":
                     print(f"[DADOS] Recuperado de {arquivo}")
                 # a conferencia dos tipos NUNCA pode fazer um arquivo bom parecer
@@ -538,6 +591,8 @@ class TraveteApp(App):
                 self.recalcular_totais()
                 return
             except Exception as e:
+                if arquivo == candidatos[0]:
+                    self._principal_corrompido = True
                 print(f"[DADOS] {arquivo} corrompido: {e} — tentando backup...")
                 # guarda o arquivo estragado antes que a proxima gravacao passe
                 # por cima dele (da para tentar recuperar a mao depois)

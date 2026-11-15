@@ -207,7 +207,7 @@ class InputHolografico(TextInput):
     def __init__(self, **kwargs):
         kwargs.setdefault('multiline', False)
         super().__init__(**kwargs)
-        self.bind(focus=self._ao_focar)
+        self.bind(focus=self._ao_focar, text=self._ao_digitar)
         # o fundo do campo vai na PRIMEIRA posicao do canvas.before: o Kivy
         # desenha o texto no canvas.before e, desenhado depois, o fundo cobria
         # o texto (os numeros ficavam apagados)
@@ -236,10 +236,10 @@ class InputHolografico(TextInput):
         except Exception:
             pass
         super()._bind_keyboard()
-        self.bind(text=self._ao_digitar)
 
     def _ao_focar(self, inst, ativo):
         """Anima a borda ao ganhar/perder foco."""
+        Animation.cancel_all(self, 'borda_color')
         if ativo:
             Animation(borda_color=[0.55, 0.05, 0.95, 1.0],
                       duration=0.22, transition='out_quad').start(self)
@@ -248,27 +248,14 @@ class InputHolografico(TextInput):
                       duration=0.28, transition='out_quad').start(self)
 
     def _ao_digitar(self, inst, valor):
-        """
-        Efeito hacking/digitalização a cada tecla.
-        — foreground_color: flash branco puro -> ciano
-        — borda_color: pulso de alta intensidade -> retorna ao estado de foco
-        Tudo via bind passivo, sem tocar no buffer.
-        """
-        if not valor:
+        """Um pulso na borda acompanha a digitação e preserva a cor do texto."""
+        if not valor or not self.focus or self.readonly:
             return
-        # Flash do texto: branco -> ciano (sensação de materialização)
-        Animation.cancel_all(self, 'foreground_color')
-        (Animation(foreground_color=(1.0, 1.0, 1.0, 1.0),
-                   duration=0.04, transition='out_quad') +
-         Animation(foreground_color=(0.0, 0.92, 1.0, 1.0),
-                   duration=0.18, transition='out_quad')).start(self)
-
-        # Pulso da borda: energia explode e retorna ao estado de foco (roxo)
         Animation.cancel_all(self, 'borda_color')
-        (Animation(borda_color=[0.85, 0.15, 1.0, 1.0],
+        (Animation(borda_color=[0.72, 0.27, 1.0, 1.0],
                    duration=0.04, transition='out_quad') +
          Animation(borda_color=[0.55, 0.05, 0.95, 1.0],
-                   duration=0.22, transition='out_quad')).start(self)
+                   duration=0.14, transition='out_quad')).start(self)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -665,6 +652,7 @@ class BarraCircular(FloatLayout):
         super().__init__(**kwargs)
         self._anim_giro   = None
         self._anim_pulso  = None
+        self._cheio_ev    = None
         self._vida_ev     = None
         self._vida_g      = None
         self._faiscas     = []          # [x, y, vx, vy, vida, vida_max, Color, Rectangle]
@@ -680,6 +668,9 @@ class BarraCircular(FloatLayout):
         if self._anim_pulso:
             self._anim_pulso.stop(self)
             self._anim_pulso = None
+        if self._cheio_ev is not None:
+            self._cheio_ev.cancel()
+            self._cheio_ev = None
         if self._vida_ev is not None:
             self._vida_ev.cancel()
             self._vida_ev = None
@@ -697,9 +688,11 @@ class BarraCircular(FloatLayout):
         g = InstructionGroup()
         self._c_pulso = Color(1, 1, 1, 0)
         self._l_pulso = Line(width=dp(7), cap='round')
+        self._c_rastro = Color(1, 1, 1, 0)
+        self._l_rastro = Line(width=dp(2.2), cap='round')
         self._c_ponta = Color(1, 1, 1, 0)
         self._r_ponta = Rectangle(texture=_textura_halo())
-        for ins in (self._c_pulso, self._l_pulso, self._c_ponta, self._r_ponta):
+        for ins in (self._c_pulso, self._l_pulso, self._c_rastro, self._l_rastro, self._c_ponta, self._r_ponta):
             g.add(ins)
         self.canvas.after.add(g)
         self._vida_g = g
@@ -720,10 +713,12 @@ class BarraCircular(FloatLayout):
             rad = math.radians(ang)
             px, py = cx + raio * math.sin(rad), cy + raio * math.cos(rad)
             if ang > 2:
-                tam = dp(44) * (1 + 0.12 * math.sin(t * 4.2))
+                tam = dp(34) * (1 + 0.09 * math.sin(t * 3.6))
                 self._r_ponta.pos = (px - tam / 2, py - tam / 2)
                 self._r_ponta.size = (tam, tam)
-                self._c_ponta.rgba = (r, g, b, 0.55 + 0.2 * math.sin(t * 4.2))
+                self._c_ponta.rgba = (r, g, b, 0.60 + 0.14 * math.sin(t * 3.6))
+                self._c_rastro.rgba = (0.6 + r * 0.4, 0.6 + g * 0.4, 0.6 + b * 0.4, 0.70)
+                self._l_rastro.circle = (cx, cy, raio, max(0, ang - 8), ang)
                 # faiscas saindo da ponta
                 self._t_faisca += dt
                 while self._t_faisca > 0.07 and len(self._faiscas) < 26:
@@ -742,6 +737,7 @@ class BarraCircular(FloatLayout):
                                           py + random.uniform(-dp(5), dp(5)), vx, vy, vmax, vmax, cf, rf])
             else:
                 self._c_ponta.a = 0
+                self._c_rastro.a = 0
             vivas = []
             for fz in self._faiscas:
                 fz[4] -= dt
@@ -790,16 +786,18 @@ class BarraCircular(FloatLayout):
         self._ligar_vida()
 
         if alvo >= 359.5:
-            Clock.schedule_once(self._pulso_cheio, 1.7)
+            self._cheio_ev = Clock.schedule_once(self._pulso_cheio, 1.7)
 
     def _pulso_cheio(self, dt):
+        self._cheio_ev = None
+        if self.get_root_window() is None or self._anim_pulso is not None:
+            return
         original = list(self.cor_anel)
+        claro = [c + (1 - c) * 0.4 for c in original[:3]] + [original[3]]
         self._anim_pulso = (
-            Animation(cor_anel=[1.0, 1.0, 1.0, 1.0],
-                      duration=0.35, transition='out_sine') +
+            Animation(cor_anel=claro, duration=0.65, transition='in_out_sine') +
             Animation(cor_anel=original,
-                      duration=0.55, transition='in_out_sine'))
-        self._anim_pulso.repeat = True
+                      duration=0.70, transition='in_out_sine'))
         self._anim_pulso.start(self)
 
 
@@ -811,7 +809,7 @@ class BotaoAngular(Button):
     """
     Botão chanfrado JARVIS/SAO.
     - Scale é APENAS visual (canvas). O touch dispatch usa collide_point normal.
-    - on_press: dispara flash branco -> retorna ao ciano (novo requisito v6).
+    - on_press: comprime e ilumina a borda na cor do botão.
     """
     escala       = NumericProperty(1.0)
     brilho       = NumericProperty(0.0)
@@ -866,9 +864,11 @@ class BotaoAngular(Button):
         elif self.tatil:
             tatil.botao()
         Animation.cancel_all(self, 'escala', 'cor_borda')
-        Animation(escala=0.93, duration=0.07, transition='out_quad').start(self)
+        Animation(escala=0.96 if self.tatil == 'tecla' else 0.975,
+                  duration=0.06, transition='out_quad').start(self)
         original = list(self.cor_borda_kv)
-        (Animation(cor_borda=[1.0, 1.0, 1.0, 1.0], duration=0.06,
+        destaque = [c + (1 - c) * 0.52 for c in original[:3]] + [1.0]
+        (Animation(cor_borda=destaque, duration=0.06,
                    transition='out_quad') +
          Animation(cor_borda=original, duration=0.22,
                    transition='out_quad')).start(self)
@@ -1993,7 +1993,7 @@ class GraficoBarras(Widget):
     dados = ListProperty([])
     titulo = StringProperty('PRODUÇÃO · ÚLTIMOS DIAS')
 
-    ATRASO, DURACAO = 0.05, 0.5          # cascata entre barras / subida de cada uma
+    ATRASO, DURACAO = 0.035, 0.42        # cascata entre barras / subida de cada uma
     __events__ = ('on_barra',)
 
     def on_barra(self, i):
@@ -2097,19 +2097,19 @@ class GraficoBarras(Widget):
         de = self._de[i] if i < len(self._de) else 0.0
         k = min(1.0, max(0.0, (self._t - i * self.ATRASO) / self.DURACAO))
         if de <= 0.0:
-            e = 1 + 1.7 * (k - 1) ** 3 + 0.7 * (k - 1) ** 2    # cresce passando um pouco e assenta
+            e = 1 + 1.3 * (k - 1) ** 3 + 0.3 * (k - 1) ** 2    # cresce e assenta
         else:
             e = 1 - (1 - k) ** 3                                 # transforma sem passar
         return de + (alvo - de) * e, k
 
-    def _get_tex(self, text, size, cor):
+    def _get_tex(self, text, size):
         """Retorna textura cacheada — cria apenas na primeira chamada."""
-        key = (str(text), size, cor)
+        key = (str(text), size)
         if key not in self._tex_cache:
             try:
                 from kivy.core.text import Label as CoreLabel
                 from kivy.metrics import sp
-                lbl = CoreLabel(text=str(text), font_size=sp(size), color=cor,
+                lbl = CoreLabel(text=str(text), font_size=sp(size),
                                 font_name='rajdhani.ttf', bold=size >= 11)
                 lbl.refresh()
                 self._tex_cache[key] = lbl.texture
@@ -2118,7 +2118,7 @@ class GraficoBarras(Widget):
         return self._tex_cache[key]
 
     def _txt(self, text, cx, y, cor, size=10):
-        tex = self._get_tex(text, size, cor)
+        tex = self._get_tex(text, size)
         if tex:
             tw, th = tex.size
             Color(*cor)
@@ -2146,6 +2146,11 @@ class GraficoBarras(Widget):
 
             self._txt(self.titulo,
                       self.center_x, self.top - dp(15), (0, 0.9, 1, 0.75), 10)
+            Color(0.28, 0.53, 0.85, 0.15)
+            for fracao in (0.30, 0.60, 0.90):
+                y_grade = self.y + pb + hmax * fracao
+                Line(points=[self.x + px, y_grade, self.right - px, y_grade],
+                     width=dp(0.6), dash_length=dp(3), dash_offset=dp(4))
             Color(0, 0.9, 1, 0.12)
             Line(points=[self.x + px, self.y + pb - 1,
                          self.right - px, self.y + pb - 1], width=dp(1))
@@ -2172,30 +2177,34 @@ class GraficoBarras(Widget):
 
                 Color(*fc)
                 Rectangle(pos=(bx, by), size=(larg, alt))
-                Color(fc[0] + 0.15, fc[1] + 0.15, fc[2] + 0.15, fc[3] * 0.55)
-                Rectangle(pos=(bx, by + alt * 0.8), size=(larg, alt * 0.2))
+                Color(*bc[:3], 0.24)
+                faixa = min(alt, max(dp(2), alt * 0.22))
+                Rectangle(pos=(bx, by + alt - faixa), size=(larg, faixa))
                 Color(*bc)
                 Line(rectangle=[bx, by, larg, alt], width=dp(0.8))
                 Color(1, 1, 1, 0.28)
                 Line(points=[bx + 1, by + alt, bx + larg - 1, by + alt], width=dp(1.2))
 
                 if self._destaque is not None and self._destaque[0] == i:
-                    # a barra tocada acende e apaga
-                    a = 1 - self._destaque[1] / 0.7
-                    Color(1, 1, 1, 0.22 * a)
-                    Rectangle(pos=(bx, by), size=(larg, alt))
-                    Color(1, 1, 1, 0.95 * a)
-                    Line(rectangle=[bx - dp(2), by - dp(2), larg + dp(4), alt + dp(4)], width=dp(1.2))
+                    fase = min(1, self._destaque[1] / 0.7)
+                    pulso = (1 - fase) ** 2
+                    luz = min(alt, dp(8))
+                    Color(*bc[:3], 0.66 * pulso)
+                    Rectangle(pos=(bx, by + (alt - luz) * (1 - (1 - fase) ** 2)),
+                              size=(larg, luz))
+                    Color(0.7 + 0.3 * bc[0], 0.7 + 0.3 * bc[1], 0.7 + 0.3 * bc[2], 0.82 * pulso)
+                    Line(rectangle=[bx, by, larg, alt], width=dp(1.2))
                 if kb < 1:
                     # a ponta da barra subindo brilha
                     Color(bc[0], bc[1], bc[2], 0.5 * (1 - kb))
                     Rectangle(pos=(bx - 1, by + alt - dp(2)), size=(larg + 2, dp(4)))
 
                 val = item.get('valor', 0)
-                if val > 0 and kb > 0.35:
+                if val > 0 and kb > 0.3:
                     # (o recorde em dourado: o '*' de antes nao cabia sem tapar o titulo)
                     cor_v = (1, 0.86, 0.25, 1) if item.get('record') else (1, 1, 1, 0.92)
-                    self._txt(str(val), cx, by + alt + dp(2), cor_v, 11)
+                    alfa = min(1, (kb - 0.3) / 0.4) * cor_v[3]
+                    self._txt(str(val), cx, by + alt + dp(2), (*cor_v[:3], alfa), 11)
                 lbl = item.get('label', '')
                 if lbl:
                     self._txt(lbl, cx, self.y + dp(4), (0.62, 0.62, 0.86, 0.95), 9.5)
@@ -2443,7 +2452,7 @@ def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14, px=N
     """
     Estilhacos no estilo SAO, em pixel art: a foto do item vira blocos de
     `px` px de tela e se parte em cacos feitos desses blocos (contorno ciano
-    de 1 bloco). Os cacos piscam brancos no estalo, voam em degraus de
+    de 1 bloco). Os cacos acendem no estalo, voam em degraus de
     bloco (30 por segundo), giram de 90 em 90 graus, viram cristal ciano,
     se desfazem em xadrez e soltam faiscas quadradas que sobem.
     corte = angulo (graus) do golpe que acertou o item, ou dois angulos (o
@@ -2612,7 +2621,7 @@ def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14, px=N
                     k['y'] += k['vy'] * dt
                     if not novo:
                         continue
-                    cara = 1 if tv < 2 / 30. else (0 if u < 0.45 else (2 if u < 0.72 else (3 if u < 1 else 4)))
+                    cara = 0 if u < 0.35 else (2 if u < 0.72 else (3 if u < 1 else 4))
                     if cara != k['cara']:
                         k['cara'] = cara
                         if cara == 4:
@@ -2622,6 +2631,10 @@ def explodir_estilhacos(widget_alvo, callback_final, corte=None, tremor=14, px=N
                             k['ret'].texture = k['texs'][cara]
                     if cara == 4:
                         continue
+                    # Tinge a foto no primeiro instante em vez de tornar todo o cartão branco.
+                    luz = max(0.0, 1.0 - tv / 0.15)
+                    k['cor'].rgb = (1.0 - 0.24 * luz, 1.0 - 0.06 * luz, 1.0)
+                    k['cor'].a = min(1.0, max(0.0, (1.0 - u) / 0.2))
                     if k['giro']:
                         k['rq'] = k['giro'] * int(tv / k['per'])
                     _poe(k)
@@ -3004,17 +3017,17 @@ class BarraMeta(Widget):
             self.cor = list(cor)
         Animation.cancel_all(self, 'valor')
         alvo = max(0.0, min(float(valor), self.maximo))
-        if animar:
+        if animar and abs(alvo - self.valor) > 0.01:
             self._flash = {}
-            self.valor = 0.0
-            self._ultimo = 0.0
+            self._ultimo = self.valor
             self._subindo = True
-            a = Animation(valor=alvo, duration=1.1, transition='out_cubic')
+            a = Animation(valor=alvo, duration=0.8, transition='out_cubic')
             a.bind(on_complete=self._fim_subida)
             a.start(self)
         else:
-            self.valor = alvo
+            self._subindo = False
             self._ultimo = alvo
+            self.valor = alvo
         self._desenhar()
 
     def _fim_subida(self, *_):
@@ -3085,9 +3098,11 @@ class BarraMeta(Widget):
         x, y, w = self.x, self.y, self.width
         topo_txt = dp(14)
         h = max(dp(8), self.height - topo_txt)
-        bloco, vao = dp(5), dp(2)
-        n = max(1, int((w + vao) // (bloco + vao)))
-        f = n * self.valor / max(1.0, self.maximo)
+        n = max(1, int(w / dp(7)))
+        passo = w / n
+        vao = min(dp(2), passo * 0.25)
+        bloco = passo - vao
+        f = min(float(n), max(0.0, n * self.valor / max(1.0, self.maximo)))
         cheios = int(f)
         r, g, b, a = self.cor
         varre = None if self._varre is None else self._varre * (cheios + 6) - 3
@@ -3095,7 +3110,7 @@ class BarraMeta(Widget):
             Color(0.03, 0.04, 0.10, 0.9)
             Rectangle(pos=(x, y), size=(w, h))
             for i in range(n):
-                bx = x + i * (bloco + vao)
+                bx = x + i * passo + vao / 2
                 if i < cheios:
                     luz = 1.0 if i == cheios - 1 else 0.82       # a ponta acesa mais forte
                     br = 0.0
@@ -3107,15 +3122,19 @@ class BarraMeta(Widget):
                     cg = g * luz + (1 - luz) * 0.2
                     cb = b * luz + (1 - luz) * 0.2
                     Color(cr + (1 - cr) * br, cg + (1 - cg) * br, cb + (1 - cb) * br, a)
-                elif i == cheios and self._subindo:
-                    Color(1, 1, 1, a * (f - cheios))              # o bloco que esta acendendo
                 else:
                     Color(r, g, b, 0.10)
                 Rectangle(pos=(bx, y + dp(2)), size=(bloco, h - dp(4)))
+                frac = f - cheios
+                if i == cheios and frac > 0:
+                    Color(r + (1 - r) * 0.24, g + (1 - g) * 0.24, b + (1 - b) * 0.24, a)
+                    Rectangle(pos=(bx, y + dp(2)), size=(bloco * frac, h - dp(4)))
             if self._subindo and cheios > 0:
-                px = x + min(f, n) * (bloco + vao)               # halo na ponta
-                Color(r, g, b, 0.28)
-                Rectangle(pos=(px - dp(9), y - dp(1)), size=(dp(14), h + dp(2)))
+                px = x + f * passo
+                inicio = max(x, px - dp(9))
+                fim = min(x + w, px + dp(3))
+                Color(r, g, b, 0.22)
+                Rectangle(pos=(inicio, y), size=(fim - inicio, h))
             Color(r, g, b, 0.55)
             Line(rectangle=(x, y, w, h), width=1.1)
             for k, (v, txt, rgba) in enumerate(self.marcas):
@@ -3123,8 +3142,9 @@ class BarraMeta(Widget):
                 fl = max(0.0, self._flash.get(k, 0.0))
                 ja = self.valor >= v
                 if fl > 0:
-                    Color(rgba[0], rgba[1], rgba[2], 0.45 * fl)
-                    Rectangle(pos=(mx - dp(5), y - dp(4)), size=(dp(10), h + dp(8)))
+                    largura = dp(4) + dp(13) * (1 - fl)
+                    Color(rgba[0], rgba[1], rgba[2], 0.34 * fl ** 2)
+                    Rectangle(pos=(mx - largura / 2, y - dp(2)), size=(largura, h + dp(4)))
                 cor_m = [rgba[0] + (1 - rgba[0]) * fl, rgba[1] + (1 - rgba[1]) * fl,
                          rgba[2] + (1 - rgba[2]) * fl, rgba[3] if ja else rgba[3] * 0.55]
                 Color(*cor_m)

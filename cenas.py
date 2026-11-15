@@ -563,6 +563,57 @@ def _anel(camada, centro, r0, r1, dur, cor=CIANO, esp=None, achat=1.0, grao=1):
         print(f"[cena] anel: {e}")
 
 
+def _marca_impacto(camada, centro, largura, altura, cor=CIANO, dur=0.40):
+    """Quatro cantos em pixel art convergem para o ponto marcado e se apagam."""
+    if camada is None:
+        return
+    cx, cy = centro
+    paleta = (('traco', (*cor, 0.76)), ('ponta', (*tuple(c * 0.65 + 0.35 for c in cor), 0.88)))
+
+    def forma(t, p, u):
+        progressao = min(1.0, t / dur)
+        entrada = min(1.0, progressao * 2.8)
+        afastamento = 1 + 0.28 * (1 - entrada) ** 2
+        se_apaga = max(0.0, (progressao - 0.50) / 0.50)
+        u = max(1.0, round(max(u, dp(1.4))))
+        l = max(u, round(min(largura * 0.13, dp(14)) * (1 - 0.58 * se_apaga) / u) * u)
+        h = max(u, round(min(altura * 0.29, dp(10)) * (1 - 0.58 * se_apaga) / u) * u)
+        for sx, sy in ((-1, -1), (-1, 1), (1, -1), (1, 1)):
+            x = round((cx + sx * largura * afastamento / 2) / u) * u
+            y = round((cy + sy * altura * afastamento / 2) / u) * u
+            p.setdefault('traco', []).extend(((x - l if sx > 0 else x, y, l, u),
+                                               (x, y - h if sy > 0 else y, u, h)))
+            p.setdefault('ponta', []).append((x, y, u, u))
+        efeito.opacity = min(1.0, progressao * 8) * (1 - se_apaga)
+
+    efeito = _EfeitoPixel(paleta, dur, forma)
+    camada.add_widget(efeito)
+
+
+def _acentuar_titulo(camada, titulo):
+    """Traços simétricos aparecem sob a palavra depois de ela se completar."""
+    x, y = titulo._origem()
+    dur = 0.70
+    def forma(t, p, u):
+        grau = t / dur
+        entrada = min(1.0, grau * 3)
+        passo = max(u, dp(1.4))
+        base = round((y - titulo.th * 0.17) / passo) * passo
+        meio = x + titulo.tw / 2
+        largura = round((titulo.tw * 0.21 * (1 - (1 - entrada) ** 2)) / passo) * passo
+        if largura > passo:
+            for sentido in (-1, 1):
+                ponta = meio + sentido * (titulo.tw * 0.12 + largura)
+                ponta = round(ponta / passo) * passo
+                inicio = ponta - (largura if sentido > 0 else 0)
+                p.setdefault('linha', []).append((inicio, base, largura, passo))
+                p.setdefault('ponta', []).append((ponta - passo, base - passo, 2 * passo, 3 * passo))
+        efeito.opacity = min(1.0, grau * 8) * min(1.0, (1 - grau) * 2.8)
+
+    efeito = _EfeitoPixel((('linha', (*CIANO, 0.54)), ('ponta', (0.68, 0.93, 1, 0.78))), dur, forma)
+    camada.add_widget(efeito)
+
+
 _TEX_COLUNA = None
 
 
@@ -627,8 +678,8 @@ def _estrela(camada, x, y, u, cor=CIANO, raios=5, dur=0.14):
                         r.size = (u, u)
                     else:
                         r.size = (0, 0)
-                c_raio.a = 1.0 if k < 0.6 else 0.5
-                c_miolo.a = 1.0 if k < 0.5 else 0.0
+                c_raio.a = 0.9 * min(1.0, max(0.0, (1.0 - k) / 0.55))
+                c_miolo.a = 0.86 * min(1.0, max(0.0, (0.80 - k) / 0.45))
                 if k >= 1:
                     if w.parent:
                         w.parent.remove_widget(w)
@@ -817,32 +868,39 @@ def _materializar(k, camada, faiscas, dur=0.32, on_fim=None, cor=CIANO):
 
         def forma(t, p, u):
             v = min(1.0, t / dur)
-            rr = max(u, r * (1 - v))
-            n = max(10, int(2 * math.pi * rr / u))
+            rr = max(u, r * (1 - v) ** 1.35)
+            n = min(120, max(16, int(2 * math.pi * rr / u)))
+            giro = v * math.pi / 4.0
             for i in range(n):
-                a = 2 * math.pi * i / n
+                a = 2 * math.pi * i / n + giro
+                if math.cos(4 * (a - giro)) > 0.68 and v < 0.75:
+                    continue
                 gx = math.floor((ax + math.cos(a) * rr) / u)
-                gy = math.floor((ay + math.sin(a) * rr) / u)
-                p.setdefault('luz' if v > 0.6 else 'clara', []).append((gx * u, gy * u, u, u))
+                gy = math.floor((ay + math.sin(a) * rr * 0.72) / u)
+                p.setdefault('clara' if i % 5 == 0 else 'cor', []).append((gx * u, gy * u, u, u))
                 if v < 0.6 and i % 2 == 0:
                     gx2 = math.floor((ax + math.cos(a) * (rr + u)) / u)
-                    gy2 = math.floor((ay + math.sin(a) * (rr + u)) / u)
-                    p.setdefault('cor', []).append((gx2 * u, gy2 * u, u, u))
-        camada.add_widget(_EfeitoPixel(_cores_efeito(cor), dur, forma))
+                    gy2 = math.floor((ay + math.sin(a) * (rr + u) * 0.72) / u)
+                    p.setdefault('brilho', []).append((gx2 * u, gy2 * u, u, u))
+            portal.opacity = min(1.0, v * 6) * min(1.0, (1 - v) * 6)
+        portal = _EfeitoPixel(_cores_efeito(cor, brilho=0.28), dur, forma)
+        camada.add_widget(portal)
         t = [0.0]
+        passo = [-1]
 
         def _p(dt):
             try:
                 t[0] += dt
                 u = min(1.0, t[0] / dur)
-                rr = max(1.0, r * (1 - u))
-                if random.random() < 0.6:
-                    ang = random.uniform(0, 2 * math.pi)
-                    faiscas.estourar(ax + math.cos(ang) * rr, ay + math.sin(ang) * rr,
-                                     random.choice((cor, BRANCO)), n=1, forca=dp(20),
-                                     tam=max(2, k.ps * 0.7), gravidade=0)
+                rr = max(1.0, r * (1 - u) ** 1.35)
+                atual = int(t[0] * 24)
+                if atual != passo[0] and atual % 2 == 0 and u < 0.86:
+                    ang = atual * 2.39996
+                    faiscas.estourar(ax + math.cos(ang) * rr, ay + math.sin(ang) * rr * 0.72,
+                                     cor, n=1, forca=dp(22), tam=max(2, k.ps * 0.55), gravidade=0)
+                passo[0] = atual
                 if u >= 1:
-                    faiscas.estourar(ax, ay, cor, n=10, forca=dp(90), tam=max(2, k.ps * 0.8))
+                    faiscas.estourar(ax, ay, cor, n=7, forca=dp(70), tam=max(2, k.ps * 0.7))
                     return False
                 return True
             except Exception:
@@ -1746,12 +1804,16 @@ class BalaoFala(Widget):
         try:
             self.t += dt
             t = self.t
-            if t >= self.dur or self.k.parent is None:
+            if t >= self.dur or self.k.get_root_window() is None:
                 return self.parar()
             grito = self.tipo == 'grito'
-            # pop: cresce passando do ponto, volta com uma molinha; sai encolhendo
-            pico = 1.25 if grito else 1.12
-            if t < 0.07:
+            entrada = min(1.0, t / 0.21)
+            saida = max(0.0, 1.0 - (self.dur - t) / 0.18)
+            pico = 1.16
+            if not grito:
+                e = entrada * entrada * (3 - 2 * entrada)
+                s = 0.94 + 0.06 * e - 0.04 * saida
+            elif t < 0.07:
                 s = 0.3 + (pico - 0.3) * (t / 0.07)
             elif t < 0.13:
                 s = pico - (pico - 0.94) * (t - 0.07) / 0.06
@@ -1760,15 +1822,15 @@ class BalaoFala(Widget):
             elif t > self.dur - 0.13:
                 s = max(0.05, 1.0 - (t - (self.dur - 0.13)) / 0.13)
             else:
-                s = 1.0 + (0.02 * math.sin(t * 9.0) if not grito else 0.0)
+                s = 1.0
             px, py = _topo_cabeca(self.k)
             treme = (0.0, 0.0)
             if grito and 0.1 < t < 0.45:
                 treme = (random.choice((-1, 0, 1)) * dp(2.5), random.choice((-1, 0, 1)) * dp(2.5))
-            self._tr.xy = (round(px + treme[0]), round(py + treme[1]))
+            self._tr.xy = (round(px + treme[0]), round(py + treme[1] - (0 if grito else dp(5) * (1 - entrada))))
             self._sc.x = self._sc.y = s
             self._rot.angle = (-6.0 * self.lado) if grito else 0.0
-            a = 1.0 if t < self.dur - 0.13 else max(0.0, s)
+            a = (min(1.0, t / 0.07) if grito else entrada) * (1 - saida)
             self._c.a = self._cl.a = self._ct.a = a
             if self._c_sombra is not None:
                 self._c_sombra.a = 0.9 * a
@@ -2002,7 +2064,7 @@ class TituloLuz(Widget):
             self.revelar(i0, i1, dur=0.12, cor=(1, 1, 1))
 
     def clarao_final(self):
-        """Titulo inteiro pulsa branco e ganha um brilho que respira."""
+        """O título ganha um halo ciano que se apaga aos poucos."""
         t = [0.0]
         cores = [ins for ins in self._grupo.children if isinstance(ins, Color)]
 
@@ -2010,15 +2072,15 @@ class TituloLuz(Widget):
             try:
                 t[0] += dt
                 u = t[0]
-                k = max(0.0, 1 - u / 0.6)
+                k = 0.42 * max(0.0, 1 - u / 0.55)
                 for c in cores:
                     c.rgba = (self.cor[0] + (1 - self.cor[0]) * k,
                               self.cor[1] + (1 - self.cor[1]) * k,
                               self.cor[2] + (1 - self.cor[2]) * k, 1)
-                self._c_glow.a = 0.30 * min(1.0, u / 0.15) * (0.75 + 0.25 * math.sin(u * 3))
-                s = 1.10 - 0.04 * min(1.0, u / 0.6)
+                self._c_glow.a = 0.24 * math.sin(math.pi * min(1.0, u / 1.1))
+                s = 1.04 + 0.03 * min(1.0, u / 0.6)
                 self._sc_glow.x = self._sc_glow.y = s
-                return self.parent is not None
+                return u < 1.1 and self.get_root_window() is not None
             except Exception as e:
                 print(f"[titulo] clarao: {e}")
                 return False
@@ -2245,8 +2307,8 @@ def _linhas_velocidade(camada, dur, cor=BRANCO, vertical=False, x0=None, x1=None
 
 def cena_entrada_rapida(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
     """Entrada rapida (a senha ainda esta valendo), em cena de anime: as
-    faixas de cinema fecham, o Yoru despenca do alto num risco de luz, a
-    camera aproxima... um instante parado com a mao no cabo (brilho no fio)
+    faixas de cinema fecham, o Yoru pousa num risco de luz e espera um
+    instante com a mao no cabo (brilho no fio)
     e ele atravessa a frase num iai - quadro de impacto, a luz da katana
     grava TRAVETE FOCUS de ponta a ponta -, freia do outro lado, salta para
     cima da frase, embainha e um balao diz 'Bem-vindo!'. Uns 4 s."""
@@ -2284,8 +2346,6 @@ def cena_entrada_rapida(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         camada.add_widget(faiscas)
         cine = _FaixasCinema(W, H)
         camada.add_widget(cine)
-        cam = _Camera(tela)
-        camada._restaurar = cam.soltar
         _precarregar_sons(['pulo', 'sacar_iai', 'corte', 'embainhar', 'pouso', 'titulo', 'fala_tou', 'koiguchi',
                            'golpe_final'])
         P = K.POSE_A
@@ -2324,31 +2384,26 @@ def cena_entrada_rapida(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             ini = (-kk.extensao(p_pulo)[2] - dp(10), H + ps * 10)
             kk.ancorar(*ini)
             kk.opacity = 1
-            n = max(6, int(0.42 * K.FPS))
-            bola = K.bola(p_pulo)
-            kk.tocar(K.sequencia([(max(2, n // 4), K.esticado(p_pulo), 'out'),
-                                  (n - n // 4 - 2, bola, 'segura'), (2, bola, 'out'),
-                                  (1, _com(pronto, estica=1))]))
+            kk.mostrar(K.esticado(p_pulo))
             _som('pulo')
             kk.empurrar(capa=-10, cabelo=-8, lift=10)
             cine.entrar()
-            _linhas_velocidade(camada, 0.42, CIANO, vertical=True, x0=0, x1=A0[0] + 60 * te, n=12)
-            _mover(kk, ini, A0, 0.42, rot=(0, -720), fantasmas=4, ease='in', on_fim=_pousa0,
-                   rot_janela=(0.12, 0.85))
+            _linhas_velocidade(camada, 0.46, CIANO, vertical=True, x0=0, x1=A0[0] + 60 * te, n=8)
+            _mover(kk, ini, A0, 0.46, fantasmas=2, ease='in', on_fim=_pousa0,
+                   on_passo=_voo(kk, K.esticado(p_pulo), p_pulo, pronto, (0.3, 0.76)))
         ag.depois(0.05, _mergulha)
 
         def _pousa0():
-            # pousa agachado, a mao no cabo: a camera aproxima, um brilho corre no fio... silencio
+            # pousa agachado e um brilho corre no fio da espada
             kk.rotacao = 0
             ax, ay = kk.ancora()
             _som('pouso')
-            _tremer(6)
+            _tremer(3)
             faiscas.estourar(ax, ay - kk.extensao()[1], POEIRA, n=10, forca=dp(110), tam=max(2, ps * 0.8),
                              gravidade=dp(300))
             _anel(camada, (ax, ay - kk.extensao()[1] + te * 2), te * 4, te * 60, 0.3, CIANO, esp=dp(2), achat=0.3)
             kk.tocar(K.sequencia([(2, _com(pronto, estica=-1), 'segura'), (4, pronto, 'out'), (1, pronto)]))
             kk.empurrar(lift=-10, capa=-8)
-            cam.ir(1.22, foco=(ax + th * 0.6, ay + th * 0.4), dur=0.3)
 
             def _brilho():
                 hx, hy = kk.ponto_mao(1)
@@ -2360,10 +2415,9 @@ def cena_entrada_rapida(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
         def _corta():
             # o iai: desliza de ponta a ponta da frase
             kk.rotacao = 0
-            cam.ir(1.0, dur=0.12)
             _quadro_impacto(camada, kk, (ox_t + titulo.tw / 2.0, cy))
             _linhas_velocidade(camada, 0.3, BRANCO, y0=cy - th * 2.2, y1=cy + th * 2.2, n=16, sentido=1)
-            _tremer(14)
+            _tremer(5)
             chaves = [(1, pronto, 'segura'), (1, K.misturar(pronto, corta, 0.5, 0.5), 'segura'),
                       (5, corta, 'out'), (4, segue, 'mola'), (1, segue)]
             kk.tocar(K.sequencia(chaves))
@@ -2402,7 +2456,7 @@ def cena_entrada_rapida(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             # freia do outro lado (o sobretudo passa do ponto) e ja salta
             _som('corte')
             _som('golpe_final')
-            _tremer(12)
+            _tremer(4)
             kk.impacto()
             kk.pausar(0.05)
             kk.empurrar(capa=-18, cabelo=-14)
@@ -2410,9 +2464,9 @@ def cena_entrada_rapida(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
             for sent, cor_ in ((1, CIANO), (-1, AZUL)):          # a frase estala: duas meias-luas cruzadas
                 camada.add_widget(CorteMeiaLua(centro=(ox_t + titulo.tw / 2.0, cy), raio=titulo.tw * 0.6,
                                                ang_ini=160 if sent > 0 else 20, ang_fim=-45 if sent > 0 else 225,
-                                               espessura=th * 1.1, achat=0.34, rotacao=12 * sent, cor=cor_,
-                                               dur_cheio=4 / 30.0, dur_decai=7 / 30.0, por_s=30))
-            faiscas.estourar(ox_t + titulo.tw / 2.0, cy, CIANO, n=30, forca=dp(300), tam=ps)
+                                               espessura=th * 0.52, achat=0.34, rotacao=12 * sent, cor=cor_,
+                                               dur_cheio=3 / 30.0, dur_decai=8 / 30.0, por_s=30))
+            faiscas.estourar(ox_t + titulo.tw / 2.0, cy, CIANO, n=18, forca=dp(220), tam=te * 2)
             p_pulo = _com(P['pulo'], olhos='s')
             ax, ay = kk.ancora()
             kk.tocar(K.sequencia([(3, K.esticado(p_pulo), 'out'), (4, K.encolhido(p_pulo), 'suave'),
@@ -2440,6 +2494,7 @@ def cena_entrada_rapida(tela, label, on_fim=None, texto="TRAVETE FOCUS"):
                 if q == 13:
                     _som('embainhar')
                     titulo.clarao_final()
+                    _acentuar_titulo(camada, titulo)
                     balao(camada, 'Bem-vindo!', kk, dur=1.5)
             kk.tocar(seq, on_quadro=_q, on_fim=lambda: kk.idle(base=fim_p))
             ag.depois(1.9, encerrar)
@@ -2546,13 +2601,15 @@ class KiritoPin:
 
     def _depois(self, t, fn):
         def _x(dt):
+            self._evs.remove(ev)
             if self.k is None:
                 return
             try:
                 fn()
             except Exception as e:
                 print(f"[kirito pin] passo: {e}")
-        self._evs.append(Clock.schedule_once(_x, t))
+        ev = Clock.schedule_once(_x, t)
+        self._evs.append(ev)
 
     def _animar_desc(self, alvo, dur, on_fim=None, volta=0.0):
         """Anima o quanto ele esta abaixado atras da borda (volta = passa do
@@ -2616,7 +2673,7 @@ class KiritoPin:
             self._evs.append(Clock.schedule_interval(self._seguir, 1 / 30.))
             self._ocupado = True
             # 1) as maos agarram a borda  2) a cabeca sobe devagar e espia
-            self._animar_desc(0.0, 0.12, on_fim=self._agarrou)
+            self._animar_desc(0.0, 0.18, on_fim=self._agarrou)
         except Exception as e:
             print(f"[kirito pin] aparecer: {e}")
             self.remover()
@@ -2646,11 +2703,11 @@ class KiritoPin:
         quadros = []
         for f in range(100):
             q = dict(olha if 44 <= f < 66 else base)
-            if 18 <= f < 24 or 76 <= f < 82:        # respira
+            if 14 <= f < 34 or 73 <= f < 87:        # respira em dois tempos
                 q['dy'] = q['dy'] + 1
                 q['m1'] = (q['m1'][0], q['m1'][1] - 1)
                 q['m2'] = (q['m2'][0], q['m2'][1] - 1)
-            if f in (60, 61):
+            if f in (29, 30, 60, 61):
                 q['olhos'] = 'f'
             quadros.append(q)
         self.k.tocar(quadros, loop=True)
@@ -2686,6 +2743,9 @@ class KiritoPin:
                                       (1, _com(P['espia_alto'], olhos='u')),
                                       (1, _com(P['espia_baixo'], olhos='u'))]))
             emote(self.clip, self.k, '!!', 0.45)
+            x, y = self.k.ancora()
+            _marca_impacto(self.faiscas.parent, (x, y + ps * 4), ps * 8, ps * 3,
+                          cor=(0.95, 0.35, 0.43), dur=0.27)
 
             def _de_volta():
                 if self._bloq:
@@ -2761,6 +2821,8 @@ class KiritoPin:
             W, H = Window.size
             x0, topo, x1 = self._borda()
             ps = k.ps
+            _marca_impacto(self.faiscas.parent, (k.ancora()[0], topo + ps * 2),
+                          ps * 10, ps * 3, cor=(0.32, 0.92, 0.67), dur=0.32)
             if H - topo < 30 * ps:
                 # sem espaco para ficar em pe na caixa: some dali mesmo
                 k.tocar(K.sequencia([(3, _com(P['espia_alto'], olhos='e')),
@@ -2947,57 +3009,12 @@ def _rachaduras(cx, cy, rx, ry, rw, rh, te, n=9, semente=5):
 
 
 def _quadro_impacto(camada, k, centro=None):
-    """Quadro de impacto de anime nos golpes grandes: 1 quadro com a tela
-    preta e o Yoru em silhueta branca, 1 quadro com a tela branca e ele em
-    silhueta preta - com linhas de foco (pixels grossos) vindo das bordas
-    para o ponto do golpe. Depois tudo volta ao normal."""
+    """Halo de impacto atrás do Yoru, limitado ao ponto do golpe."""
     try:
-        W, H = Window.size
         cx, cy = centro or k.ancora()
-        fundo = Widget(size_hint=(None, None), size=(0, 0))
-        with fundo.canvas:
-            c_fundo = Color(0, 0, 0, 1)
-            Rectangle(pos=(0, 0), size=(W, H))
-        i = camada.children.index(k) + 1 if k in camada.children else len(camada.children)
-        camada.add_widget(fundo, index=i)
-        rnd = random.Random(int(cx) * 31 + int(cy))
-        raios = [(rnd.uniform(0, 2 * math.pi), rnd.uniform(0.14, 0.26), rnd.choice((1, 1, 2)))
-                 for _ in range(22)]
-        R = math.hypot(W, H)
-
-        antes = tuple(k._cor_clarao.rgb)
-        k.clarao_preso = True
-        k._cor_clarao.rgb = (1, 1, 1)
-        k.clarao = 1.0
-        virou = [False]
-
-        def forma(t, p, u):
-            # um relogio so: no 2o quadro a tela fica branca e ele preto
-            if t >= 1 / 30.0 and not virou[0]:
-                virou[0] = True
-                c_fundo.rgb = (1, 1, 1)
-                k._cor_clarao.rgb = (0, 0, 0.02)
-                k._desenhar(forcar=True)
-            u = u * 3
-            nome = 'escuro' if virou[0] else 'claro'
-            for a, ini, g in raios:
-                ca, sa = math.cos(a), math.sin(a)
-                n = int(R * (0.75 - ini) / u)
-                for j in range(n):
-                    d = R * 0.75 - j * u
-                    gg = g if j < n * 0.6 else 1
-                    x = math.floor((cx + ca * d) / u) * u
-                    y = math.floor((cy + sa * d) / u) * u
-                    p.setdefault(nome, []).append((x, y, u * gg, u * gg))
-
-        def _fim():
-            k._cor_clarao.rgb = antes
-            k.clarao_preso = False
-            k.clarao = 0.0
-            if fundo.parent:
-                fundo.parent.remove_widget(fundo)
-        camada.add_widget(_EfeitoPixel((('escuro', (0.0, 0.0, 0.02, 1.0)), ('claro', (1.0, 1.0, 1.0, 1.0))),
-                                       2.2 / 30.0, forma, on_fim=_fim))
+        _anel(camada, (cx, cy), max(dp(8), k.ps * 2), min(dp(92), k.ps * 14),
+              0.22, CIANO, esp=dp(2), achat=0.42, grao=2)
+        _marca_impacto(camada, (cx, cy), min(dp(150), k.ps * 18), min(dp(66), k.ps * 8))
     except Exception as e:
         print(f"[cena] impacto: {e}")
 
@@ -3090,7 +3107,7 @@ def _entrar(s, on_fim, tipos=('teleporte', 'queda', 'corrida', 'sombra')):
                 s.poeira(lado=-1 if k.espelhar else 1)
                 k.empurrar(capa=12, cabelo=10)
                 Clock.schedule_once(lambda dt: (k.mostrar(pose), fim()), 0.14)
-            _mover(k, ini, alvo, 0.17, linear=True, fantasmas=3, on_fim=_freia)
+            _mover(k, ini, alvo, 0.22, ease='out', fantasmas=2, on_fim=_freia)
         else:
             # poca de sombra no chao; ele sobe dela em faixas, escuro, e ganha cor
             te = s.te
@@ -3164,7 +3181,7 @@ def _sair(s, on_fim, tipos=('teleporte', 'salto', 'sombra', 'corrida')):
             destino = (-dir_ - dp(30), ay) if vai_esq else (s.W + esq + dp(30), ay)
             s.poeira(lado=1 if vai_esq else -1)
             _som('desliza')
-            _mover(k, (ax, ay), destino, 0.2, linear=True, fantasmas=3, on_fim=_sumiu)
+            _mover(k, (ax, ay), destino, 0.24, ease='in', fantasmas=2, on_fim=_sumiu)
         elif tipo == 'sombra':
             _afunda(s, fim)
         else:
@@ -3626,6 +3643,7 @@ class _Mini:
         Clock.schedule_once(lambda dt: self._fim_camada(), 0.4)
 
     def _fim_camada(self):
+        self.k.parar()
         _remover_da_janela(self.cam)
         if not self._solto:                     # libera a vez uma vez so
             self._solto = True
@@ -3677,7 +3695,7 @@ def _apagar_iai(alvo, on_fim):
                     _som('sacar_iai')
                     _gemido()
                     s.soltar_arco('iai', dur=0.1, decai=0.28)
-                    _mover(k, k.ancora(), fim_p, 0.1, ease='out', fantasmas=4)
+                    _mover(k, k.ancora(), fim_p, 0.13, ease='out', fantasmas=2)
                 elif i == i_r:
                     k.impacto()
                     k.pausar(0.08)
@@ -3700,7 +3718,9 @@ def _apagar_iai(alvo, on_fim):
 
         def _cai():
             # no clique da bainha o item racha no risco e as metades se soltam
-            s.faiscas.estourar(s.cx, s.cy, BRANCO, n=12, forca=dp(140), tam=s.ps * 0.8)
+            _marca_impacto(s.cam, (s.cx, s.cy), min(s.rw * 0.37, dp(128)),
+                          min(s.rh * 0.72, dp(52)), CIANO, dur=0.34)
+            s.faiscas.estourar(s.cx, s.cy, CIANO, n=9, forca=dp(120), tam=s.ps * 0.62)
             s.explodir(0.0, racha=0.3)
 
         _entrar(s, lambda: Clock.schedule_once(lambda dt: _tensao(), 0.08))
@@ -3718,18 +3738,26 @@ def _apagar_estocada(alvo, on_fim):
     s = _Mini(alvo, on_fim, seguranca=5.0)
     k, P = s.k, K.POSE_A
     try:
-        esq = random.random() < 0.5
-        k.espelhar = not esq
         arma = _com(P['estoca_arma'], olhos='s')
         crava = _com(P['estoca'], olhos='g')
         puxa = _com(P['estoca_puxa'], olhos='s')
         # a ponta da lamina no meio do cartao
-        k.mostrar(crava)
-        ax0, ay0 = k.ancora()
-        tx, ty = k.ponta_espada(1, crava)
-        alvo_a = (s.cx - (tx - ax0), s.cy - (ty - ay0))
         dist = max(s.rw * 0.5 + dp(24), dp(60))
-        ini = s.no_quadro(alvo_a[0] - dist if esq else alvo_a[0] + dist, alvo_a[1], [arma])
+        lados = []
+        for sentido in (1, -1):
+            k.espelhar = sentido < 0
+            k.mostrar(crava)
+            ax0, ay0 = k.ancora()
+            tx, ty = k.ponta_espada(1, crava)
+            destino = (s.cx - (tx - ax0), s.cy - (ty - ay0))
+            partida = s.no_quadro(destino[0] - sentido * dist, destino[1], [arma])
+            avanco = (destino[0] - partida[0]) * sentido
+            lados.append((avanco, sentido, partida, destino))
+        avanco, sentido, ini, alvo_a = max(lados)
+        esq = sentido > 0
+        k.espelhar = not esq
+        if avanco < 0:
+            ini = alvo_a
         k.ancorar(*ini)
         k.mostrar(arma)
         recua = _com(arma, dx=arma['dx'] - 1, m1=(arma['m1'][0] - 2, arma['m1'][1]), incl=-1)
@@ -3754,7 +3782,7 @@ def _apagar_estocada(alvo, on_fim):
                 _som('pulo')
                 _gemido()
                 s.soltar_arco('estocada', dur=0.1, decai=0.22)
-                _mover(k, k.ancora(), alvo_a, 0.1, linear=True, fantasmas=4,
+                _mover(k, k.ancora(), alvo_a, 0.14, ease='out', fantasmas=2,
                        on_fim=lambda: (k.mostrar(crava), _crava()))
             k.tocar(K.sequencia([(3, recua, 'in'), (1, recua)]), on_fim=_vai)
 
@@ -3764,10 +3792,11 @@ def _apagar_estocada(alvo, on_fim):
             s.preparar_cacos(max_celulas=12000, n_cacos=44)     # cartao grande: cacos miudos
             _som('golpe_final')
             _som('vidro')
-            _tremer(10)
-            _anel(s.cam, (s.cx, s.cy), s.ps, s.ps * 5, 0.25, BRANCO, esp=dp(2))
-            s.faiscas.estourar(s.cx, s.cy, BRANCO, n=10, forca=dp(150), tam=s.ps * 0.7)
-            rach = _rachaduras(s.cx, s.cy, s.rx, s.ry, s.rw, s.rh, s.te, n=9,
+            _tremer(4)
+            _anel(s.cam, (s.cx, s.cy), s.ps, s.ps * 5, 0.27, CIANO, esp=dp(2), achat=0.62)
+            _marca_impacto(s.cam, (s.cx, s.cy), dp(66), dp(37), CIANO)
+            s.faiscas.estourar(s.cx, s.cy, CIANO, n=8, forca=dp(130), tam=s.ps * 0.64)
+            rach = _rachaduras(s.cx, s.cy, s.rx, s.ry, s.rw, s.rh, s.te, n=7,
                                semente=random.randint(1, 9999))
             s.cam.add_widget(_PixelsLuz(rach, s.te, cresce=0.22, fica=0.5, some=0.1, grossura=1), index=0)
             Clock.schedule_once(lambda dt: _puxa(), 0.55)
@@ -3787,6 +3816,7 @@ def _apagar_estocada(alvo, on_fim):
         def _pousa():
             k.rotacao = 0
             k.mostrar(_com(P['guarda'], olhos='s'))
+            s.poeira(lado=1 if esq else -1)
             Clock.schedule_once(lambda dt: s.sair(), 0.2)
 
         _entrar(s, lambda: Clock.schedule_once(lambda dt: _mira(), 0.06))
@@ -3835,9 +3865,11 @@ def _apagar_x(alvo, on_fim):
             _som('corte2')
             _som('corte')
             _gemido()
-            _tremer(9)
+            _tremer(5)
             s.soltar_arco('x1', dur=0.1, decai=0.26)
-            Clock.schedule_once(lambda dt: s.soltar_arco('x2', dur=0.1, decai=0.26), 0.04)
+            Clock.schedule_once(lambda dt: s.soltar_arco('x2', dur=0.11, decai=0.26), 0.065)
+            _marca_impacto(s.cam, (s.cx, s.cy), min(s.rw * 0.38, dp(122)),
+                          min(s.rh * 0.65, dp(53)), AZUL, dur=0.31)
             _estrela(s.cam, s.cx, s.cy, s.ps, CIANO, raios=4, dur=0.16)
             s.faiscas.estourar(s.cx, s.cy, CIANO, n=14, forca=dp(170), tam=s.ps * 0.8)
             s.faiscas.estourar(s.cx, s.cy, AZUL, n=10, forca=dp(140), tam=s.ps * 0.8)
@@ -3970,8 +4002,10 @@ def kirito_fatiar(alvo, on_fim=None, tipo=None):
 def kirito_carimbo(alvo, on_impacto=None):
     """ADICIONAR LOTE: o Yoru aparece ao lado do item novo com a lamina
     erguida por cima do ombro, da um corte curto e rapido na horizontal que
-    'carimba' o +XP (o numero nasce no corte) e some."""
-    feito = _Uma(on_impacto)
+    'carimba' o +XP (o numero nasce no corte) e some. on_impacto recebe
+    a coordenada horizontal do XP ou None quando a cena não pode tocar."""
+    xp_x = None
+    feito = _Uma(lambda: on_impacto(xp_x) if on_impacto else None)
     if not _yoru_livre():
         feito()                                                 # ja tem um Yoru em cena: so o +XP
         return
@@ -3995,6 +4029,7 @@ def kirito_carimbo(alvo, on_impacto=None):
         k.espelhar = not esq
         pos = s.no_quadro(pos[0], pos[1], [arma, corta])
         k.ancorar(*pos)
+        xp_x = s.rx + s.rw * (0.72 if esq else 0.28)
         k.mostrar(arma)
         # o corte do carimbo: um arco de luz curto atravessando o item (em
         # pixel, como os outros golpes) - antes era so uma linha de 1 pixel
@@ -4011,7 +4046,7 @@ def kirito_carimbo(alvo, on_impacto=None):
         def _festa():
             feliz = _com(P['guarda'], olhos='e')
             emote(s.cam, k, 'nota', 0.9)
-            _pulinhos(k, feliz, n=2, altura=s.ps * 3,
+            _pulinhos(k, feliz, n=1, altura=s.ps * 3,
                       on_fim=lambda: Clock.schedule_once(lambda dt: s.sair(), 0.1))
 
         def _corta():
@@ -4025,6 +4060,8 @@ def kirito_carimbo(alvo, on_impacto=None):
                         linha.reverse()
                     s.cam.add_widget(_PixelsLuz([linha], s.te, cresce=0.05, fica=0.12, some=0.15), index=0)
                     s.soltar_arco('carimbo', dur=0.08, decai=0.2)
+                    _marca_impacto(s.cam, (xp_x, s.cy), min(s.rw * 0.36, dp(106)),
+                                  min(s.rh * 0.72, dp(42)), CIANO)
                     s.faiscas.estourar(s.cx, s.cy, CIANO, n=8, forca=dp(130), tam=s.ps * 0.7)
                     _som('corte')
                     _gemido()
@@ -4239,7 +4276,7 @@ def kirito_vitoria(alvo, linhas=None, area=None):
     e se juntam num cartao do turno ao lado dele; ele sacode a lamina,
     embainha ate o clique, carimba o cartao com a mao (o visto verde de
     salvo), o cartao voa para as Memorias e ele comemora. Nenhum corte."""
-    if _na_fila(lambda: kirito_vitoria(alvo, linhas, area)):
+    if alvo.get_root_window() is None or _na_fila(lambda: kirito_vitoria(alvo, linhas, area)):
         return
     try:
         s = _Mini(alvo, None, seguranca=6.0, destruir=False)
@@ -4314,6 +4351,7 @@ def kirito_vitoria(alvo, linhas=None, area=None):
                     _som('golpe_final')
                     _tremer(5)
                     _anel(s.cam, centro, te * 6, lc * 0.75, 0.3, VERDE_ZAP, esp=dp(2), achat=0.55)
+                    _marca_impacto(s.cam, centro, lc * 0.96, ac * 0.78, VERDE_ZAP, dur=0.43)
                     s.faiscas.estourar(centro[0], centro[1], VERDE_ZAP, n=12, forca=dp(150), tam=te * 2,
                                        gravidade=dp(260))
             k.tocar(seq, on_quadro=_q, on_fim=_guarda)
@@ -4330,9 +4368,10 @@ def kirito_vitoria(alvo, linhas=None, area=None):
             _som('papel')
             cartao.voar(fora, 0.42, altura=te * 14, ease='in', on_passo=_rastro,
                         on_fim=lambda: (cartao.parar(), visto.parar()))
-            k.mostrar(_com(P['guardado'], olhos='f'))
-            emote(s.cam, k, 'gota', 0.5)
-            Clock.schedule_once(lambda dt: _comemora(), 0.5)
+            espera = _com(P['guardado'], olhos='f')
+            k.tocar(K.sequencia(_de_agora(k, 5, 'suave', proxima=espera) + [(1, espera)]),
+                    on_fim=lambda: (emote(s.cam, k, 'gota', 0.45),
+                                    Clock.schedule_once(lambda dt: _comemora(), 0.32)))
 
         def _comemora():
             # ... turno guardado: !!, olhos brilhando, corado, pulinhos
@@ -4341,7 +4380,8 @@ def kirito_vitoria(alvo, linhas=None, area=None):
             emote(s.cam, k, '!!', 0.45)
             emote(s.cam, k, 'brilho', 1.0, atraso=0.08)
             emote(s.cam, k, 'rubor', 1.2, atraso=0.08)
-            _pulinhos(k, feliz, n=2, altura=s.ps * 4, on_fim=_convencido)
+            k.tocar(K.sequencia(_de_agora(k, 4, 'out', proxima=feliz) + [(1, feliz)]),
+                    on_fim=lambda: _pulinhos(k, feliz, n=2, altura=s.ps * 3, on_fim=_convencido))
 
         def _convencido():
             k.mostrar(_com(P['vitoria'], olhos='v'))
@@ -4438,7 +4478,7 @@ def kirito_carta(alvo, on_fim=None, linhas=None, area=None):
             carta.linhas = carta.nr
             carta.cx, carta.cy = na_mao()
             _som('papel')
-            carta.voar(no_corte, 0.36, altura=te * 26, ease='lin', girar=True)
+            carta.voar(no_corte, 10 / K.FPS, altura=te * 22, ease='lin', girar=True)
             # enquanto a carta sobe ele ergue a lamina; corta quando ela desce na frente
             seq = K.sequencia([(7, arma, 'out'), (2, arma, 'segura'), (1, K.smear(corta, arma['a1']), 'segura'),
                                (5, corta, 'segura'), (4, fim_p, 'out'), (8, fim_p, 'segura'), (1, fim_p)])
@@ -4453,6 +4493,7 @@ def kirito_carta(alvo, on_fim=None, linhas=None, area=None):
                     _som('corte')
                     _gemido()
                     _estrela(s.cam, cx, cy, s.ps * 0.8, VERDE_ZAP, raios=4, dur=0.16)
+                    _marca_impacto(s.cam, (cx, cy), b * 12, b * 8, VERDE_ZAP, dur=0.32)
                     s.faiscas.estourar(cx, cy, VERDE_ZAP, n=10, forca=dp(150), tam=te * 2)
 
                     def _rastro(u):
@@ -4485,7 +4526,7 @@ def kirito_nivel(alvo):
     espada apontando para ele; o proprio NUMERO responde - um anel de luz
     dourada abre em volta dele, com estrelas e faiscas pela faixa toda; ele
     vira de frente com o meio sorriso (brilho no olho) e some."""
-    if _na_fila(lambda: kirito_nivel(alvo)):
+    if alvo.get_root_window() is None or _na_fila(lambda: kirito_nivel(alvo)):
         return
     try:
         s = _Mini(alvo, None, seguranca=4.5, destruir=False)
@@ -4532,7 +4573,9 @@ def kirito_nivel(alvo):
                     r1 = min(s.rw * 0.52, s.cx - s.area[0] - dp(3), s.area[2] - s.cx - dp(3))
                     ach = max(0.2, min(0.5, (s.rh * 0.9) / max(1.0, r1)))
                     _anel(s.cam, (s.cx, s.cy), s.ps * 2, r1, 0.5, OURO, esp=dp(3), achat=ach)
-                    _anel(s.cam, (s.cx, s.cy), s.ps, r1 * 0.6, 0.4, BRANCO, esp=dp(2), achat=ach)
+                    _anel(s.cam, (s.cx, s.cy), s.ps, r1 * 0.6, 0.4, CIANO, esp=dp(1.5), achat=ach)
+                    _marca_impacto(s.cam, (s.cx, s.cy), min(s.rw * 0.86, dp(152)),
+                                  min(s.rh * 0.98, dp(68)), OURO, dur=0.52)
                     for f in (-0.36, -0.18, 0.18, 0.36):
                         _estrela(s.cam, s.cx + s.rw * f, s.cy + s.rh * random.uniform(-0.3, 0.3), s.ps * 0.5,
                                  OURO, raios=4, dur=0.22)
@@ -4549,12 +4592,12 @@ def kirito_nivel(alvo):
         _remover_da_janela(s.cam)
 
 
-def kirito_meta(alvo):
+def kirito_meta(alvo, dentro=False):
     """BATEU A META: o Yoru aparece de pe em cima da caixa do resultado (sem
     tapar o texto nem o botao OK), gira as duas espadas, e chovem moedas de
     luz douradas por cima do valor; termina de frente na pose de vitoria e
     some."""
-    if _na_fila(lambda: kirito_meta(alvo)):
+    if alvo.get_root_window() is None or _na_fila(lambda: kirito_meta(alvo, dentro=dentro)):
         return
     try:
         s = _Mini(alvo, None, seguranca=5.0, destruir=False)
@@ -4570,9 +4613,12 @@ def kirito_meta(alvo):
         poses_m = [g1, P['giro_2'], P['giro_3'], vit]
         k.mostrar(_com(P['dupla'], olhos='s'))
         x = s.rx + s.rw * (0.8 if k.espelhar else 0.2)
-        k.ancorar(x, s.ry + s.rh)
-        sobe = (s.ry + s.rh) - (k.y + K._PES * s.ps)     # os pes na borda
-        pos = s.no_quadro(x, s.ry + s.rh + sobe, poses_m)
+        if dentro:
+            pos = s.lugar_livre(x, s.cy, poses_m, xs=[s.rx + s.rw * f for f in (0.2, 0.8)], ys=[s.cy])
+        else:
+            k.ancorar(x, s.ry + s.rh)
+            sobe = (s.ry + s.rh) - (k.y + K._PES * s.ps)     # os pes na borda
+            pos = s.no_quadro(x, s.ry + s.rh + sobe, poses_m)
         k.espelhar = pos[0] > s.cx
         k.ancorar(*pos)
         g2 = _com(P['giro_2'], olhos='v')                  # de costas
@@ -4605,9 +4651,10 @@ def kirito_meta(alvo):
                     _anel(s.cam, (ax, ay), s.ps * 2, s.ps * 9, 0.35, OURO, esp=dp(2), achat=0.35)
                 elif q == 7:
                     _som('moedas')
+                    _marca_impacto(s.cam, (s.cx, s.ry + s.rh * 0.89),
+                                  min(s.rw * 0.5, dp(138)), min(s.rh * 0.35, dp(42)), OURO)
                     Clock.schedule_once(_chuva, 0.0)
-                    Clock.schedule_once(_chuva, 0.25)
-                    Clock.schedule_once(_chuva, 0.5)
+                    Clock.schedule_once(_chuva, 0.32)
                 elif q == 15:
                     emote(s.cam, k, 'brilho', 0.8)
 
@@ -4813,16 +4860,15 @@ def kirito_wipe(widgets, on_fim=None, grafico=None, area_lista=None, extras=None
                                 ang_fim=-45 if sent > 0 else 225, espessura=max(dp(50), gh * 0.9),
                                 achat=0.5, rotacao=35 * sent, cor=cor, dur_cheio=5 / 30.0,
                                 dur_decai=9 / 30.0))
-                        faiscas.estourar(gcx, gcy, CIANO, n=60, forca=dp(380), tam=ps)
-                        faiscas.estourar(gcx, gcy, BRANCO, n=24, forca=dp(260), tam=ps)
+                        faiscas.estourar(gcx, gcy, CIANO, n=38, forca=dp(345), tam=ps * 0.75)
+                        faiscas.estourar(gcx, gcy, AZUL, n=14, forca=dp(240), tam=ps * 0.62)
                         _estrela(cam, gcx, gcy, ps, CIANO, raios=8, dur=0.2)
                         _som('titulo')
                         _gemido()
-                        _tremer(28)
+                        _tremer(7)
                         k.impacto(forte=True)
                         k.pausar(0.14)
                         _quadro_impacto(cam, k, (gcx, gcy))
-                        _brilho_tela(cam, 0.35, 0.3)
                         if grafico is not None:
                             _desintegra(grafico, -25.0)
                 k.tocar(K.sequencia(chaves_f), on_quadro=_q, on_fim=_sai)
