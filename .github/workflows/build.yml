@@ -151,6 +151,7 @@ jobs:
           sed -i "/^version = /a android.numeric_version = $CODIGO" buildozer.spec
           grep -n "^version\|^android.numeric_version" buildozer.spec
           echo "VERSAO_APP=$V" >> $GITHUB_ENV
+          echo "CODIGO_APP=$CODIGO" >> $GITHUB_ENV
           echo "::notice::TraveteFocus $V (numero interno $CODIGO)"
           # o app mostra a versao no rodape do menu
           echo "{\"versao\": \"$V\"}" > versao.json
@@ -184,12 +185,23 @@ jobs:
           ESPERADA="94ef9ec68ebd71c6ce1cc15936c440985a0fbd5900f04694009bb3bbd50709eb"
           "${BT}apksigner" sign --ks ~/.android/travete.keystore --ks-pass pass:android --key-pass pass:android "$APK"
           CERTS=$("${BT}apksigner" verify --print-certs "$APK")
-          DIG=$(awk '/^Signer #[0-9]+ certificate SHA-256 digest:/ {print $NF}' <<< "$CERTS")
+          # O apksigner 37 identifica o esquema no prefixo. O campo do certificado é o mesmo.
+          DIG=$(awk '/certificate SHA-256 digest: / {print tolower($NF)}' <<< "$CERTS" | sort -u)
+          if [ -z "$DIG" ]; then
+            echo "::error::O apksigner não informou a impressão digital do certificado."
+            exit 1
+          fi
           if [ "$DIG" != "$ESPERADA" ]; then
             echo "::error::A assinatura do APK difere da chave de atualização. Publicação interrompida."
             exit 1
           fi
-          echo "::notice::APK assinado com a chave fixa do TraveteFocus."
+          BADGING=$("${BT}aapt" dump badging "$APK")
+          PACOTE=$(awk '/^package: / {print; exit}' <<< "$BADGING")
+          if [[ "$PACOTE" != "package: name='com.travetefocus.travetefocus' versionCode='$CODIGO_APP' versionName='$VERSAO_APP'"* ]]; then
+            echo "::error::O pacote ou a versão do APK não corresponde à atualização. Publicação interrompida."
+            exit 1
+          fi
+          echo "::notice::Identidade, versão e assinatura de atualização do TraveteFocus verificadas."
 
       # ── 11. DIAGNÓSTICO ────────────────────────────────────────────────────
       - name: Exibir últimas 300 linhas do log
